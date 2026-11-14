@@ -583,6 +583,17 @@ type TaskProgress struct {
 	Value float64
 }
 
+// BarFraction is the fraction a bar drawn for p fills where the platform has no indeterminate or cleared state of its own, as the Dock tile and Unity's LauncherEntry: none for no progress, half for an indeterminate task, which a snapshot cannot animate, and Value otherwise.
+func (p TaskProgress) BarFraction() float64 {
+	switch p.State {
+	case TaskProgressNone:
+		return 0
+	case TaskProgressIndeterminate:
+		return .5
+	}
+	return p.Value
+}
+
 // StorageOp says what a StorageChange does.
 type StorageOp uint8
 

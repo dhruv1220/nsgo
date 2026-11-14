@@ -78,10 +78,7 @@ func drawTaskProgressBar(self objc.ID, _ objc.SEL, _ apple.CGRect) {
 	track := apple.CGColor(driver.RGBA(0x777777, .55))
 	apple.FillRects(ctx, []apple.CGRect{bounds}, track)
 	apple.Release(track)
-	value := dockProgressState.Value
-	if dockProgressState.State == driver.TaskProgressIndeterminate {
-		value = .5
-	}
+	value := dockProgressState.BarFraction()
 	if value <= 0 {
 		return
 	}

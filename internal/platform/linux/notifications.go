@@ -139,10 +139,7 @@ func setLauncherProgress(bus uintptr, appID string, progress driver.TaskProgress
 	}
 	bindLauncherEntry()
 	visible := progress.State != driver.TaskProgressNone
-	value := progress.Value
-	if progress.State == driver.TaskProgressIndeterminate {
-		value = .5
-	}
+	value := progress.BarFraction()
 	entries := []uintptr{
 		gVariantNewDictEntry(gVariantNewString(cstr("progress")), gVariantNewVariant(gVariantNewDouble(value))),
 		gVariantNewDictEntry(gVariantNewString(cstr("progress-visible")), gVariantNewVariant(gVariantNewBoolean(boolInt(visible)))),

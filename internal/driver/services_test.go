@@ -42,3 +42,20 @@ func TestAnswerPermission(t *testing.T) {
 		t.Error("a phone keeps Accessibility")
 	}
 }
+
+func TestTaskProgressBarFraction(t *testing.T) {
+	for _, tc := range []struct {
+		in   TaskProgress
+		want float64
+	}{
+		{TaskProgress{Value: .7}, 0},
+		{TaskProgress{State: TaskProgressIndeterminate}, .5},
+		{TaskProgress{State: TaskProgressNormal, Value: .25}, .25},
+		{TaskProgress{State: TaskProgressPaused, Value: .4}, .4},
+		{TaskProgress{State: TaskProgressError, Value: 1}, 1},
+	} {
+		if got := tc.in.BarFraction(); got != tc.want {
+			t.Errorf("%+v.BarFraction() = %g, want %g", tc.in, got, tc.want)
+		}
+	}
+}
