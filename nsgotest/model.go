@@ -447,6 +447,12 @@ func (a *App) apply(b *driver.MountBatch) {
 		case driver.ItemReleaseAwake:
 			a.AwakeReleases = append(a.AwakeReleases, it.Count)
 			a.Awake = slices.DeleteFunc(a.Awake, func(h AwakeHold) bool { return h.ID == it.Count })
+		case driver.ItemTaskProgress:
+			if it.Progress == nil {
+				a.TaskProgress = core.TaskProgress{}
+			} else {
+				a.TaskProgress = core.TaskProgress{State: core.TaskProgressState(it.Progress.State), Value: it.Progress.Value}
+			}
 		case driver.ItemBiometricAvailability:
 			a.post(driver.Event{Kind: driver.EventBiometric, Count: it.Count, Index: int(a.BiometricAvailability)})
 		case driver.ItemBiometricAuthenticate:

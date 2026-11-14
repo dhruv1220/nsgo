@@ -84,6 +84,8 @@ const (
 	toastHistoryRemoveGroupedTag     = 9
 	xmlDocumentIOLoadXML             = 6
 	taskbarHrInit                    = 3
+	taskbarSetProgressValue          = 9
+	taskbarSetProgressState          = 10
 	taskbarSetOverlayIcon            = 18
 )
 
@@ -312,6 +314,40 @@ func (w *window) notify(it *driver.MountItem) {
 		w.closeToast(it.Value)
 	case driver.ItemBadge:
 		w.setOverlayBadge(it.Count)
+	case driver.ItemTaskProgress:
+		w.setTaskProgress(*it.Progress)
+	}
+}
+
+const (
+	tbpfNoProgress    = 0
+	tbpfIndeterminate = 1
+	tbpfNormal        = 2
+	tbpfError         = 4
+	tbpfPaused        = 8
+)
+
+// setTaskProgress updates the taskbar button's progress state and value.
+func (w *window) setTaskProgress(progress driver.TaskProgress) {
+	list := taskbar()
+	if list == nil {
+		return
+	}
+	state := uintptr(tbpfNoProgress)
+	switch progress.State {
+	case driver.TaskProgressIndeterminate:
+		state = tbpfIndeterminate
+	case driver.TaskProgressNormal:
+		state = tbpfNormal
+	case driver.TaskProgressPaused:
+		state = tbpfPaused
+	case driver.TaskProgressError:
+		state = tbpfError
+	}
+	list.call(taskbarSetProgressState, w.hwnd, state)
+	if state == tbpfNormal || state == tbpfPaused || state == tbpfError {
+		completed := uintptr(progress.Value * 1000)
+		list.call(taskbarSetProgressValue, w.hwnd, completed, 1000)
 	}
 }
 

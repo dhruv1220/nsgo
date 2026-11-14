@@ -812,7 +812,7 @@ func (s *surface) RequestFrame() {
 // Mount implements engine.Platform: one message per commit, then the
 // loads of the image sources it changed.
 func (s *surface) Mount(b *driver.MountBatch) {
-	b = s.withoutPermissions(s.withoutUpdateChecks(withoutEffects(b)))
+	b = s.withoutPermissions(s.withoutUpdateChecks(withoutTaskProgress(withoutEffects(b))))
 	// Android has no file manager an app can reveal in or trash through. The batch may be the engine's own, which a test's observer holds, so the items are filtered from a copy.
 	fileManager := func(it driver.MountItem) bool {
 		return it.Kind == driver.ItemRevealFile || it.Kind == driver.ItemTrashFile

@@ -566,6 +566,23 @@ type KeepAwake struct {
 	Display bool
 }
 
+// TaskProgressState is the state of an app task's platform progress bar.
+type TaskProgressState uint8
+
+const (
+	TaskProgressNone TaskProgressState = iota
+	TaskProgressNormal
+	TaskProgressIndeterminate
+	TaskProgressPaused
+	TaskProgressError
+)
+
+// TaskProgress is the progress shown on an app icon or taskbar button.
+type TaskProgress struct {
+	State TaskProgressState
+	Value float64
+}
+
 // StorageOp says what a StorageChange does.
 type StorageOp uint8
 

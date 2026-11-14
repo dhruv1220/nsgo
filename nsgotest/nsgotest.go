@@ -240,8 +240,11 @@ type App struct {
 	// the app may show them with, the user not asked at first; a request
 	// while not asked makes it NotificationAnswer, the user granting it
 	// when that is zero. Only a granted app shows them.
-	Notifications          []core.Notification
-	Badge                  int
+	Notifications []core.Notification
+	Badge         int
+	// TaskProgress is the last task progress sent by the app. A zero value
+	// means the indicator is cleared.
+	TaskProgress           core.TaskProgress
 	NotificationPermission core.NotificationPermission
 	NotificationAnswer     core.NotificationPermission
 	// BiometricAvailability is the enrolled biometric the test platform

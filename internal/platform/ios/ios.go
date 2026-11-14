@@ -903,7 +903,7 @@ func (s *surface) apply(b *driver.MountBatch) {
 		case driver.ItemReleaseAwake:
 			s.releaseAwake(it.Count)
 			continue
-		case driver.ItemNotificationPermission, driver.ItemShowNotification, driver.ItemCloseNotification, driver.ItemBadge,
+		case driver.ItemNotificationPermission, driver.ItemShowNotification, driver.ItemCloseNotification, driver.ItemBadge, driver.ItemTaskProgress,
 			driver.ItemBiometricAvailability, driver.ItemBiometricAuthenticate:
 			s.notify(it)
 			continue

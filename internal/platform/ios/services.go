@@ -109,6 +109,8 @@ func (s *surface) notify(it *driver.MountItem) {
 		if !apple.SetCenterBadge(it.Count) {
 			objc.ID(apple.Class("UIApplication")).Send(sel("sharedApplication")).Send(sel("setApplicationIconBadgeNumber:"), int(it.Count))
 		}
+	case driver.ItemTaskProgress:
+		// iOS has no app-icon progress surface.
 	case driver.ItemBiometricAvailability, driver.ItemBiometricAuthenticate:
 		apple.HandleBiometric(it, s.engine.Dispatch)
 	}

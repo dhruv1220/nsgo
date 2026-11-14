@@ -117,6 +117,7 @@ var itemNames = map[ItemKind]string{
 	ItemTakePhoto: "take-photo", ItemMatch: "match", ItemCheckForUpdates: "check-for-updates",
 	ItemBiometricAvailability: "biometric-availability", ItemBiometricAuthenticate: "biometric-authenticate", ItemPermission: "permission",
 	ItemRevealFile: "reveal-file", ItemTrashFile: "trash-file",
+	ItemTaskProgress: "task-progress",
 }
 
 // TraceLine is the item as traces print it: its kind, its view and what
@@ -154,6 +155,10 @@ func (it *MountItem) TraceLine() string {
 		fmt.Fprintf(&b, " %gx%g", it.Size.Width, it.Size.Height)
 	case ItemAnimation:
 		fmt.Fprintf(&b, " %d ops", len(it.Animation))
+	case ItemTaskProgress:
+		if it.Progress != nil {
+			fmt.Fprintf(&b, " state=%d value=%g", it.Progress.State, it.Progress.Value)
+		}
 	}
 	return b.String()
 }

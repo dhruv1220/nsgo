@@ -195,6 +195,19 @@ GNOME's inhibitors refuse an empty app ID and an empty reason, so on Linux a hol
 
 A playing `Video` keeps the display on only on iOS, where `AVPlayer`'s `preventsDisplaySleepDuringVideoPlayback` is on by default; on macOS that default is off, and the other targets' players ask for nothing, so an app that plays video, or draws its own frames, takes a display hold while it plays.
 
+## Task progress
+
+`SetTaskProgress` puts a task's state and fraction on the app icon, where the platform has a surface, and clears it with `TaskProgressNone`. Values are clamped to 0..1; repeating the current state sends no update. It does not require notification access.
+
+| Target | Surface | States |
+| --- | --- | --- |
+| macOS | A bar over the Dock tile's icon | Normal, paused and error use colors; indeterminate is a static half-filled bar |
+| Windows | The window's taskbar button through `ITaskbarList3` | Normal, indeterminate, paused and error use the shell's native states |
+| Linux | Unity `LauncherEntry`'s `progress` and `progress-visible` properties where the launcher supports them | Indeterminate is a static half-filled bar; other states use their fraction |
+| iOS, Android, web and mini programs | None | No-op |
+
+`nsgotest.App.TaskProgress` keeps the last state so tests can assert normal, indeterminate and cleared progress.
+
 ## Haptics
 
 `mobile.PlayHaptic`, NSH's `Haptics`, plays a selection, an impact of five weights or a task's outcome: UIKit's feedback generators on iOS, and on Android the view's nearest `HapticFeedbackConstants`, `CONFIRM`, `REJECT` and `SEGMENT_TICK` where its API has them, as the user's touch feedback setting allows. The core sends nothing elsewhere.

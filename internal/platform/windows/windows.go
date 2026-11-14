@@ -1115,7 +1115,7 @@ func (w *window) apply(b *driver.MountBatch) {
 				w.openSurface(*it.Surface)
 			}
 			continue
-		case driver.ItemNotificationPermission, driver.ItemShowNotification, driver.ItemCloseNotification, driver.ItemBadge:
+		case driver.ItemNotificationPermission, driver.ItemShowNotification, driver.ItemCloseNotification, driver.ItemBadge, driver.ItemTaskProgress:
 			w.notify(it)
 			continue
 		case driver.ItemHotKeys:

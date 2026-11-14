@@ -342,6 +342,8 @@ const (
 	// by Count; ItemReleaseAwake releases the assertion identified by Count.
 	ItemKeepAwake
 	ItemReleaseAwake
+	// ItemTaskProgress, after the kinds Android's Protocol.java mirrors, sets the app's task progress bar to Progress.
+	ItemTaskProgress
 )
 
 // Biometric kinds, as reported by an availability request.
@@ -468,6 +470,8 @@ type MountItem struct {
 	Permission *PermissionRequest
 	// Awake is ItemKeepAwake's power assertion.
 	Awake *KeepAwake
+	// Progress is ItemTaskProgress's state.
+	Progress *TaskProgress
 	// Files is ItemPickFiles' request, Save ItemSaveFile's,
 	// Directories ItemPickDirectories', Open ItemOpenFile's and
 	// ItemInstallPackage's and Share ItemShare's.

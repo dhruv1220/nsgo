@@ -79,6 +79,8 @@ func (s *surface) notify(it *driver.MountItem) {
 		default:
 			then(nav.Call("setAppBadge", it.Count), func(js.Value) {}, func(js.Value) {})
 		}
+	case driver.ItemTaskProgress:
+		// Browsers have no portable app-icon progress surface.
 	}
 }
 

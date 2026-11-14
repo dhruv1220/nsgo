@@ -39,3 +39,15 @@ func (s *surface) withoutUpdateChecks(b *driver.MountBatch) *driver.MountBatch {
 	out.Items = slices.DeleteFunc(slices.Clone(b.Items), check)
 	return &out
 }
+
+// withoutTaskProgress removes the desktop-only task progress item. Android
+// launchers have no portable progress surface, and the Java protocol should
+// not need to carry a command that has no effect.
+func withoutTaskProgress(b *driver.MountBatch) *driver.MountBatch {
+	if !slices.ContainsFunc(b.Items, func(it driver.MountItem) bool { return it.Kind == driver.ItemTaskProgress }) {
+		return b
+	}
+	out := *b
+	out.Items = slices.DeleteFunc(slices.Clone(b.Items), func(it driver.MountItem) bool { return it.Kind == driver.ItemTaskProgress })
+	return &out
+}

@@ -15,6 +15,7 @@ import (
 var (
 	gVariantNewUint32              func(v uint32) uintptr
 	gVariantNewInt32               func(v int32) uintptr
+	gVariantNewDouble              func(v float64) uintptr
 	gVariantNewArray               func(childType uintptr, children *uintptr, n uintptr) uintptr
 	gVariantNewDictEntry           func(key, value uintptr) uintptr
 	gVariantNewVariant             func(v uintptr) uintptr
@@ -28,6 +29,7 @@ var (
 		bindInputSources()
 		purego.RegisterLibFunc(&gVariantNewUint32, glibLib, "g_variant_new_uint32")
 		purego.RegisterLibFunc(&gVariantNewInt32, glibLib, "g_variant_new_int32")
+		purego.RegisterLibFunc(&gVariantNewDouble, glibLib, "g_variant_new_double")
 		purego.RegisterLibFunc(&gVariantNewArray, glibLib, "g_variant_new_array")
 		purego.RegisterLibFunc(&gVariantNewDictEntry, glibLib, "g_variant_new_dict_entry")
 		purego.RegisterLibFunc(&gVariantNewVariant, glibLib, "g_variant_new_variant")
@@ -100,6 +102,8 @@ func (w *window) notify(it *driver.MountItem) {
 			}
 		case driver.ItemBadge:
 			setLauncherBadge(bus, appID, item.Count)
+		case driver.ItemTaskProgress:
+			setLauncherProgress(bus, appID, *item.Progress)
 		}
 	}
 }
@@ -118,6 +122,34 @@ func setLauncherBadge(bus uintptr, appID string, count uint32) {
 	t := gVariantTypeNew(cstr("{sv}"))
 	defer gVariantTypeFree(t)
 	args := []uintptr{str(launcherEntryURI(appID)), gVariantNewArray(t, &entries[0], uintptr(len(entries)))}
+	params := gVariantNewTuple(&args[0], uintptr(len(args)))
+	var err uintptr
+	gDBusConnectionEmitSignal(bus, nil, cstr(launcherEntryPath(appID)), cstr("com.canonical.Unity.LauncherEntry"), cstr("Update"), params, &err)
+	if err != 0 {
+		gErrorFree(err)
+	}
+}
+
+// setLauncherProgress updates the LauncherEntry progress properties. Unity's
+// protocol has no indeterminate state, so an indeterminate task uses a
+// static half-filled bar until it reports a fraction or clears itself.
+func setLauncherProgress(bus uintptr, appID string, progress driver.TaskProgress) {
+	if bus == 0 || appID == "" {
+		return
+	}
+	bindLauncherEntry()
+	visible := progress.State != driver.TaskProgressNone
+	value := progress.Value
+	if progress.State == driver.TaskProgressIndeterminate {
+		value = .5
+	}
+	entries := []uintptr{
+		gVariantNewDictEntry(gVariantNewString(cstr("progress")), gVariantNewVariant(gVariantNewDouble(value))),
+		gVariantNewDictEntry(gVariantNewString(cstr("progress-visible")), gVariantNewVariant(gVariantNewBoolean(boolInt(visible)))),
+	}
+	t := gVariantTypeNew(cstr("{sv}"))
+	defer gVariantTypeFree(t)
+	args := []uintptr{gVariantNewString(cstr(launcherEntryURI(appID))), gVariantNewArray(t, &entries[0], uintptr(len(entries)))}
 	params := gVariantNewTuple(&args[0], uintptr(len(args)))
 	var err uintptr
 	gDBusConnectionEmitSignal(bus, nil, cstr(launcherEntryPath(appID)), cstr("com.canonical.Unity.LauncherEntry"), cstr("Update"), params, &err)

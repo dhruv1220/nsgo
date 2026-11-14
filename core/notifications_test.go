@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"errors"
+	"math"
 	"slices"
 	"testing"
 
@@ -74,6 +75,39 @@ func TestNotificationsHeldToAccess(t *testing.T) {
 	app.Settle()
 	if got != core.NotificationsUnavailable || shown || app.Badge != 0 {
 		t.Errorf("refused code: permission %v, shown %v, badge %d", got, shown, app.Badge)
+	}
+}
+
+func TestTaskProgressClampsDeduplicatesAndClears(t *testing.T) {
+	var scope *core.Scope
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		scope = cx
+		return core.View{}
+	})
+	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: 2})
+	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: 2})
+	app.Settle()
+	if got := app.TaskProgress; got.State != core.TaskProgressNormal || got.Value != 1 {
+		t.Errorf("progress = %+v, want normal 1", got)
+	}
+	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressIndeterminate, Value: .8})
+	scope.SetTaskProgress(core.TaskProgress{})
+	app.Settle()
+	if got := app.TaskProgress; got != (core.TaskProgress{}) {
+		t.Errorf("cleared progress = %+v", got)
+	}
+}
+
+func TestTaskProgressRejectsNaN(t *testing.T) {
+	var scope *core.Scope
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		scope = cx
+		return core.View{}
+	})
+	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: math.NaN()})
+	app.Settle()
+	if got := app.TaskProgress.Value; got != 0 {
+		t.Errorf("NaN progress = %g, want 0", got)
 	}
 }
 
