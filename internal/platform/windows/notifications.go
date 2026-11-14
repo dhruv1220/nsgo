@@ -349,27 +349,58 @@ func (w *window) taskbarButtonReady() {
 	if w.badge != 0 {
 		w.showOverlayBadge()
 	}
-	if w.progress.State != driver.TaskProgressNone {
+	if w.shownProgress().State != driver.TaskProgressNone {
 		w.showTaskProgress()
 	}
 }
 
-// setTaskProgress keeps progress for the window's taskbar button and shows it there once the button is in place.
+// ownsTaskbarButton reports whether the window has a taskbar button of its own. The hidden root window of an app that opens its own windows has none, as it only ever shows as an alert's window; nor do panels and tray icons' views, which are tool windows, or a host's child window.
+func (w *window) ownsTaskbarButton() bool {
+	return !w.embedded && w.kind == driver.SurfaceWindow && !(w.primary && w.opts.Hidden)
+}
+
+// rootWindow is the backend's root window of the app w is a surface of.
+func (w *window) rootWindow() *window {
+	if w.hostWindow != nil {
+		return w.hostWindow
+	}
+	return w
+}
+
+// setTaskProgress keeps progress for the window's taskbar button and shows it there once the button is in place. A window without a button of its own sets the app's progress instead, which every window of the app shows while it has none of its own, as the Dock tile and Linux launchers show one progress for the app.
 func (w *window) setTaskProgress(progress driver.TaskProgress) {
-	w.progress = progress
-	w.showTaskProgress()
+	if w.ownsTaskbarButton() {
+		w.progress = progress
+		w.showTaskProgress()
+		return
+	}
+	root := w.rootWindow()
+	root.appProgress = progress
+	for _, o := range windows {
+		if o.rootWindow() == root && o.ownsTaskbarButton() && o.progress.State == driver.TaskProgressNone {
+			o.showTaskProgress()
+		}
+	}
+}
+
+// shownProgress is the progress the window's taskbar button shows: its own, or the app's while it has none.
+func (w *window) shownProgress() driver.TaskProgress {
+	if w.progress.State != driver.TaskProgressNone {
+		return w.progress
+	}
+	return w.rootWindow().appProgress
 }
 
 // showTaskProgress sets the taskbar button's progress state and value.
 func (w *window) showTaskProgress() {
-	if !w.buttonReady {
+	if !w.buttonReady || !w.ownsTaskbarButton() {
 		return
 	}
 	list := taskbar()
 	if list == nil {
 		return
 	}
-	state, completed := taskbarProgress(w.progress)
+	state, completed := taskbarProgress(w.shownProgress())
 	list.call(taskbarSetProgressState, w.hwnd, state)
 	if completed >= 0 {
 		list.call(taskbarSetProgressValue, w.hwnd, uintptr(completed), taskbarProgressTotal)

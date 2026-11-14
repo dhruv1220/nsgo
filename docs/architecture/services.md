@@ -202,7 +202,7 @@ A playing `Video` keeps the display on only on iOS, where `AVPlayer`'s `prevents
 | Target | Surface | States |
 | --- | --- | --- |
 | macOS | A bar over the Dock tile's icon | Normal, paused and error use colors; indeterminate is a static half-filled bar |
-| Windows | The window's taskbar button through `ITaskbarList3` | Normal, indeterminate, paused and error use the shell's native states |
+| Windows | The window's taskbar button through `ITaskbarList3`, set once the taskbar sends `TaskbarButtonCreated` and again after Explorer restarts; a surface without a button (the hidden root of `nsgo.Run(App)`, panels, tray views) sets the progress every window shows while it has none of its own | Normal, indeterminate, paused and error use the shell's native states |
 | Linux | Unity `LauncherEntry`'s `progress` and `progress-visible` properties where the launcher supports them | Indeterminate is a static half-filled bar; other states use their fraction |
 | iOS, Android, web and mini programs | None | No-op |
 

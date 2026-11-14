@@ -415,10 +415,10 @@ type window struct {
 	menuOwner uintptr
 	// ownPerf is the performance monitor of a hidden root window, which the first window it opens shows.
 	ownPerf *engine.PerfMonitor
-	// badge and progress are what the window's taskbar button shows, kept to show once the button is in place and again after Explorer starts again; buttonReady says the button is in place (taskbarButtonCreated).
-	badge       uint32
-	progress    driver.TaskProgress
-	buttonReady bool
+	// badge and progress are what the window's taskbar button shows, kept to show once the button is in place and again after Explorer starts again; buttonReady says the button is in place (taskbarButtonCreated). appProgress, on a root window, is the progress its surfaces without a button of their own set, which the app's windows show while they have none (setTaskProgress).
+	badge                 uint32
+	progress, appProgress driver.TaskProgress
+	buttonReady           bool
 	// appearance is the one the app forces, or the system's; host the one
 	// an embedding host sets in place of the system's.
 	appearance, host driver.Appearance

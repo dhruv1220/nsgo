@@ -1206,3 +1206,30 @@ func TestTaskbarProgressMapsStatesAndFractions(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskProgressOfSurfacesWithoutAButtonShowsOnTheAppsWindows(t *testing.T) {
+	root := &window{primary: true, opts: Options{Hidden: true}}
+	opened := &window{hostWindow: root}
+	panel := &window{hostWindow: root, kind: driver.SurfacePanel}
+	tray := &window{hostWindow: root, kind: driver.SurfaceTrayIcon}
+	if root.ownsTaskbarButton() || panel.ownsTaskbarButton() || tray.ownsTaskbarButton() || !opened.ownsTaskbarButton() {
+		t.Fatal("only the opened window has a taskbar button")
+	}
+	if shown := (&window{primary: true}); !shown.ownsTaskbarButton() {
+		t.Error("a shown root window has no taskbar button")
+	}
+	busy := driver.TaskProgress{State: driver.TaskProgressNormal, Value: .5}
+	root.setTaskProgress(busy)
+	if opened.shownProgress() != busy || opened.progress != (driver.TaskProgress{}) {
+		t.Errorf("the opened window shows %+v and keeps %+v", opened.shownProgress(), opened.progress)
+	}
+	own := driver.TaskProgress{State: driver.TaskProgressPaused, Value: .2}
+	opened.setTaskProgress(own)
+	if opened.shownProgress() != own {
+		t.Errorf("the opened window shows %+v over its own", opened.shownProgress())
+	}
+	opened.setTaskProgress(driver.TaskProgress{})
+	if opened.shownProgress() != busy {
+		t.Errorf("a cleared window shows %+v, want the app's again", opened.shownProgress())
+	}
+}

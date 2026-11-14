@@ -30,7 +30,7 @@ type TaskProgress struct {
 	Value float64
 }
 
-// SetTaskProgress shows p on the taskbar button of the scope's window on Windows, or on the app's icon on macOS and Linux. Android, iOS and the web ignore it. Repeating the value the same window sent last sends nothing, unless another window changed the progress since.
+// SetTaskProgress shows p on the taskbar button of the scope's window on Windows, or on the app's icon on macOS and Linux. On Windows, a scope whose surface has no button, such as the app's own scope where it opens its windows, a panel or a tray icon's view, sets the progress every window of the app shows while it sets none of its own. Android, iOS and the web ignore it. Repeating the value the same window sent last sends nothing, unless another window changed the progress since.
 func (cx *Scope) SetTaskProgress(p TaskProgress) {
 	t := cx.tree()
 	if t == nil {
