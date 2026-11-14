@@ -403,7 +403,9 @@ func (w *window) showTaskProgress() {
 	state, completed := taskbarProgress(w.shownProgress())
 	list.call(taskbarSetProgressState, w.hwnd, state)
 	if completed >= 0 {
-		list.call(taskbarSetProgressValue, w.hwnd, uintptr(completed), taskbarProgressTotal)
+		// Both counts are ULONGLONGs, two words each on 386.
+		args := append([]uintptr{w.hwnd}, u64Args(uint64(completed))...)
+		list.call(taskbarSetProgressValue, append(args, u64Args(taskbarProgressTotal)...)...)
 	}
 }
 
