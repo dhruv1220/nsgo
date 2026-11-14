@@ -1,6 +1,6 @@
 ---
 title: Notifications
-description: Ask to show notifications, show and close them, count them on the app's icon and hear presses.
+description: Ask to show notifications, show and close them, count them and show a task's progress on the app's icon and hear presses.
 group: Platform features
 order: 45
 ---
@@ -42,6 +42,16 @@ An Android app asking from Android 13 lists `android.permission.POST_NOTIFICATIO
 
 ```go
 cx.SetBadge(len(unread.Get()))
+```
+
+## Task progress
+
+`cx.SetTaskProgress` shows how far a long task has gone on the app's icon: a bar over the Dock tile on macOS, the taskbar button on Windows and Unity-compatible Linux launchers. It needs no permission and shows beside the badge. `TaskProgressNormal` shows `Value`, a fraction from 0 to 1; `TaskProgressPaused` and `TaskProgressError` color it on Windows and macOS; `TaskProgressIndeterminate` moves on Windows and is a still, half-filled bar on macOS and Linux; the zero `TaskProgress` clears it. On Windows it shows on the button of the scope's window, and progress set where no window has a button of its own, such as the app's own scope or a tray panel, shows on every window of the app that sets none. iOS, Android and the web show nothing.
+
+```go
+cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressIndeterminate}) // no fraction yet
+cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: .43})
+cx.SetTaskProgress(core.TaskProgress{}) // done
 ```
 
 ## Next

@@ -22,7 +22,6 @@ What NSH added between 0.4.0 and 0.5.0 that NSGo has not, in the order to build 
 | Item | NSH reference | Done when |
 | --- | --- | --- |
 | Notifications on screens | #931, #1373 | With the permission granted, a notification shows, its press reaches the app and the badge shows on a Mac, an iPhone, Windows in a signed-in session and an Android 13 device, and a toast pressed after the app ended starts it through a COM activator; so far Linux and the Android emulator (API 29) showed and closed one, macOS, iOS's simulator and the web answered the permission without asking, and Windows, over SSH, reached its notifier, which reports the platform unavailable there (2026-11-12) |
-| Task progress on app icons | [#116](https://github.com/nsgo-dev/nsgo/issues/116) | `core.SetTaskProgress` updates the macOS Dock tile, Windows taskbar button and Linux LauncherEntry, with native indeterminate, paused and error states where available, and `nsgotest` records it; iOS, Android, web and mini programs no-op |
 | Sounds and audio | `audio-design.md` (The API, The platforms) | `audio.Sound` plays a short sound from a file or bytes and `audio.Player`, NSH's `AudioPlayer`, plays, pauses, seeks and loops audio on every target, decoding off the main thread, as [audio playback](architecture/audio.md) designs it, and the gallery gives each kind of moment a sound |
 | Haptics felt | #1328 | `mobile.PlayHaptic` is felt on an iPhone and an Android phone; so far it ran in the iOS simulator and the Android emulator, which have none (2026-11-12) |
 | Biometric authentication | #55 | `core` asks for enrolled Face ID, Touch ID or Android biometrics and reports authentication results through LocalAuthentication and BiometricPrompt, with nsgotest fakes and sandbox capability checks |
@@ -84,6 +83,7 @@ What NSGo's own issues ask for beyond NSH's releases, each issue where its desig
 | Item | Reference | Done when |
 | --- | --- | --- |
 | Mention completion in Composer | [#46](https://github.com/nsgo-dev/nsgo/issues/46), [mention completion](architecture/mention-completion.md) | A `core.Suggest` owns a field's trigger, query and UTF-16 insertion and a `base.SuggestList` its rows, keys and announcements, while `Composer`'s `Suggest` supplies rows and `ui` the look; a test types `@re`, sees two rows, presses Down and Return, and finds the chosen row inserted at the caret with the list gone |
+| Task progress on app icons | [#116](https://github.com/nsgo-dev/nsgo/issues/116) | `core.SetTaskProgress` shows, updates and clears a bar beside the badge on the macOS Dock tile, the Windows taskbar button, indeterminate there, and Linux launchers with LauncherEntry (Ubuntu dock, Plasma, Dash to Dock), and clearing it on macOS brings back the plain icon; so far it ran only in `nsgotest` and pure-logic tests, on no Dock, taskbar or launcher (2026-11-15) |
 
 ## Application and windows
 

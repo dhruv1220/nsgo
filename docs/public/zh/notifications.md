@@ -1,6 +1,6 @@
 ---
 title: 通知
-description: 请求显示通知的权限，显示和关闭通知，在应用图标上显示数字并接收点按。
+description: 请求显示通知的权限，显示和关闭通知，在应用图标上显示数字和任务进度并接收点按。
 group: 平台功能
 order: 45
 ---
@@ -42,6 +42,16 @@ cx.OnNotificationPress(func(id string) { openChat(strings.TrimPrefix(id, "chat:"
 
 ```go
 cx.SetBadge(len(unread.Get()))
+```
+
+## 任务进度
+
+`cx.SetTaskProgress` 在应用图标上显示一个耗时任务的进度：macOS 是程序坞图标上的进度条，Windows 是任务栏按钮，以及兼容 Unity 的 Linux 启动器。它不需要权限，并与角标同时显示。`TaskProgressNormal` 显示 `Value`，即 0 到 1 之间的完成比例；`TaskProgressPaused` 和 `TaskProgressError` 在 Windows 和 macOS 上用颜色区分；`TaskProgressIndeterminate` 在 Windows 上会滚动，在 macOS 和 Linux 上是静止的半满进度条；零值 `TaskProgress` 会清除它。在 Windows 上，进度显示在该作用域所在窗口的按钮上；在没有自己任务栏按钮的地方设置的进度，例如应用自身的作用域或托盘面板，会显示在应用中所有没有自己进度的窗口上。iOS、Android 和 Web 不显示任何内容。
+
+```go
+cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressIndeterminate}) // 还没有完成比例
+cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: .43})
+cx.SetTaskProgress(core.TaskProgress{}) // 完成
 ```
 
 ## 下一步
