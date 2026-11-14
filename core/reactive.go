@@ -187,6 +187,10 @@ type runtime struct {
 	// keeps those pressed before any did.
 	notificationPresses []*notificationPressHandler
 	pressesPending      []string
+	// taskProgress is the task progress sent last, by the tree whose ID is taskProgressFrom, once taskProgressSent. Only a repeat from that same tree sends nothing: the Dock tile and a Linux launcher entry show one progress for the whole app, which another tree may have changed since.
+	taskProgress     driver.TaskProgress
+	taskProgressFrom uint32
+	taskProgressSent bool
 	// windows are the main window's options where the platform opens
 	// windows (RootOptions.Windows); surfaces the trees of the windows,
 	// panels and tray views opened, keyed those opened with a key.

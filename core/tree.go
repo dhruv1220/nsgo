@@ -84,16 +84,11 @@ type Tree struct {
 	history      int
 	historyAgain bool
 	alertID      uint32
-	// taskProgress is the last progress state sent to the platform. Keeping
-	// it here avoids redrawing a Dock tile or sending a taskbar update when
-	// an app reports the same value repeatedly.
-	taskProgress    driver.TaskProgress
-	taskProgressSet bool
-	menuActions     map[uint32]menuAction
-	popup           popupMenu
-	menuID          uint32
-	menuGen         uint32
-	rtl             bool // the layout direction the nodes were mapped for
+	menuActions  map[uint32]menuAction
+	popup        popupMenu
+	menuID       uint32
+	menuGen      uint32
+	rtl          bool // the layout direction the nodes were mapped for
 	// directionSent records that the platform has the direction and
 	// language, the language it was told last and whether the app forced it.
 	directionSent bool

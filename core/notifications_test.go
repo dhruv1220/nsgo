@@ -78,19 +78,23 @@ func TestNotificationsHeldToAccess(t *testing.T) {
 	}
 }
 
-func TestTaskProgressClampsDeduplicatesAndClears(t *testing.T) {
+// TestTaskProgressClampsAndClears checks what nsgotest records; TestTaskProgressRepeatsWhatAnotherTreeChanged checks which repeats are sent.
+func TestTaskProgressClampsAndClears(t *testing.T) {
 	var scope *core.Scope
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
 		scope = cx
 		return core.View{}
 	})
 	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: 2})
-	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: 2})
 	app.Settle()
 	if got := app.TaskProgress; got.State != core.TaskProgressNormal || got.Value != 1 {
 		t.Errorf("progress = %+v, want normal 1", got)
 	}
 	scope.SetTaskProgress(core.TaskProgress{State: core.TaskProgressIndeterminate, Value: .8})
+	app.Settle()
+	if got := app.TaskProgress; got != (core.TaskProgress{State: core.TaskProgressIndeterminate}) {
+		t.Errorf("indeterminate progress = %+v, want no value", got)
+	}
 	scope.SetTaskProgress(core.TaskProgress{})
 	app.Settle()
 	if got := app.TaskProgress; got != (core.TaskProgress{}) {

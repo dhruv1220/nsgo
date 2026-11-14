@@ -30,9 +30,7 @@ type TaskProgress struct {
 	Value float64
 }
 
-// SetTaskProgress shows p on the taskbar button of the scope's window on
-// Windows, or on the app's icon on macOS and Linux. Android, iOS and the web
-// ignore it. Repeating the current value sends no platform update.
+// SetTaskProgress shows p on the taskbar button of the scope's window on Windows, or on the app's icon on macOS and Linux. Android, iOS and the web ignore it. Repeating the value the same window sent last sends nothing, unless another window changed the progress since.
 func (cx *Scope) SetTaskProgress(p TaskProgress) {
 	t := cx.tree()
 	if t == nil {
@@ -52,10 +50,11 @@ func (cx *Scope) SetTaskProgress(p TaskProgress) {
 		value = 0
 	}
 	next := driver.TaskProgress{State: driver.TaskProgressState(state), Value: value}
-	if t.taskProgressSet && t.taskProgress == next {
+	rt := cx.rt
+	if rt.taskProgressSent && rt.taskProgressFrom == t.id && rt.taskProgress == next {
 		return
 	}
-	t.taskProgress, t.taskProgressSet = next, true
+	rt.taskProgress, rt.taskProgressFrom, rt.taskProgressSent = next, t.id, true
 	t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemTaskProgress, Progress: &next})
 	t.changed = true
 }
