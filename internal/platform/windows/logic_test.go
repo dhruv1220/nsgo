@@ -1187,3 +1187,22 @@ func TestRecycleBinKeeps(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskbarProgressMapsStatesAndFractions(t *testing.T) {
+	for _, tc := range []struct {
+		in        driver.TaskProgress
+		state     uintptr
+		completed int
+	}{
+		{driver.TaskProgress{}, tbpfNoProgress, -1},
+		{driver.TaskProgress{State: driver.TaskProgressIndeterminate, Value: .5}, tbpfIndeterminate, -1},
+		{driver.TaskProgress{State: driver.TaskProgressNormal, Value: .29}, tbpfNormal, 290},
+		{driver.TaskProgress{State: driver.TaskProgressPaused, Value: .4}, tbpfPaused, 400},
+		{driver.TaskProgress{State: driver.TaskProgressError, Value: 1}, tbpfError, taskbarProgressTotal},
+		{driver.TaskProgress{State: driver.TaskProgressNormal, Value: 2}, tbpfNormal, taskbarProgressTotal},
+	} {
+		if state, completed := taskbarProgress(tc.in); state != tc.state || completed != tc.completed {
+			t.Errorf("taskbarProgress(%+v) = %d, %d, want %d, %d", tc.in, state, completed, tc.state, tc.completed)
+		}
+	}
+}

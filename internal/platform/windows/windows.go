@@ -415,6 +415,10 @@ type window struct {
 	menuOwner uintptr
 	// ownPerf is the performance monitor of a hidden root window, which the first window it opens shows.
 	ownPerf *engine.PerfMonitor
+	// badge and progress are what the window's taskbar button shows, kept to show once the button is in place and again after Explorer starts again; buttonReady says the button is in place (taskbarButtonCreated).
+	badge       uint32
+	progress    driver.TaskProgress
+	buttonReady bool
 	// appearance is the one the app forces, or the system's; host the one
 	// an embedding host sets in place of the system's.
 	appearance, host driver.Appearance
@@ -600,6 +604,7 @@ func Run(app engine.App, opts Options) {
 		w.placeAt(opts.Frame)
 	}
 	windows[hwnd] = w
+	hearTaskbarButton(hwnd)
 	beginToastActivation(w)
 	defer endToastActivation(w)
 	// Nothing has the focus yet: typing must not open a composition.
@@ -879,6 +884,7 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 		setWindowPos.Call(hwnd, 0, 0, 0, uintptr(child.px(opts.Width)), uintptr(child.px(opts.Height)), swpNoActivate|swpNoZOrder)
 	}
 	windows[hwnd] = child
+	hearTaskbarButton(hwnd)
 	child.updateIME()
 	child.configureGestures()
 	if child.baseComposed {
@@ -2005,6 +2011,10 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 	}
 	if message == taskbarCreated && taskbarCreated != 0 {
 		w.readdTrays()
+		return 0
+	}
+	if message == taskbarButtonCreated && taskbarButtonCreated != 0 {
+		w.taskbarButtonReady()
 		return 0
 	}
 	w.reportModality(message, wParam)

@@ -327,28 +327,73 @@ const (
 	tbpfPaused        = 8
 )
 
-// setTaskProgress updates the taskbar button's progress state and value.
+// taskbarButtonCreated is the message the taskbar sends a window once its button is in place, and again after Explorer starts again. ITaskbarList3 must not be called for a window before it, so the window keeps its overlay badge and progress, shows them once the message comes and shows them again with each one after it.
+var taskbarButtonCreated = func() uint32 {
+	m, _, _ := registerWindowMessageW.Call(uintptr(unsafe.Pointer(wide("TaskbarButtonCreated"))))
+	return uint32(m)
+}()
+
+var changeWindowMessageFilterEx = user32.NewProc("ChangeWindowMessageFilterEx")
+
+// hearTaskbarButton lets TaskbarButtonCreated reach hwnd from Explorer while the app runs elevated, where UIPI blocks it otherwise.
+func hearTaskbarButton(hwnd uintptr) {
+	const msgfltAllow = 1
+	if taskbarButtonCreated != 0 {
+		changeWindowMessageFilterEx.Call(hwnd, uintptr(taskbarButtonCreated), msgfltAllow, 0)
+	}
+}
+
+// taskbarButtonReady shows what the window keeps for its taskbar button, which is now in place (taskbarButtonCreated).
+func (w *window) taskbarButtonReady() {
+	w.buttonReady = true
+	if w.badge != 0 {
+		w.showOverlayBadge()
+	}
+	if w.progress.State != driver.TaskProgressNone {
+		w.showTaskProgress()
+	}
+}
+
+// setTaskProgress keeps progress for the window's taskbar button and shows it there once the button is in place.
 func (w *window) setTaskProgress(progress driver.TaskProgress) {
+	w.progress = progress
+	w.showTaskProgress()
+}
+
+// showTaskProgress sets the taskbar button's progress state and value.
+func (w *window) showTaskProgress() {
+	if !w.buttonReady {
+		return
+	}
 	list := taskbar()
 	if list == nil {
 		return
 	}
-	state := uintptr(tbpfNoProgress)
-	switch progress.State {
-	case driver.TaskProgressIndeterminate:
-		state = tbpfIndeterminate
+	state, completed := taskbarProgress(w.progress)
+	list.call(taskbarSetProgressState, w.hwnd, state)
+	if completed >= 0 {
+		list.call(taskbarSetProgressValue, w.hwnd, uintptr(completed), taskbarProgressTotal)
+	}
+}
+
+// taskbarProgressTotal is the whole of a task as SetProgressValue is given it.
+const taskbarProgressTotal = 1000
+
+// taskbarProgress is progress as ITaskbarList3 takes it: its TBPF_ state, and the completed part of taskbarProgressTotal for the states that show a fraction, -1 for those that show none.
+func taskbarProgress(p driver.TaskProgress) (state uintptr, completed int) {
+	switch p.State {
 	case driver.TaskProgressNormal:
 		state = tbpfNormal
 	case driver.TaskProgressPaused:
 		state = tbpfPaused
 	case driver.TaskProgressError:
 		state = tbpfError
+	case driver.TaskProgressIndeterminate:
+		return tbpfIndeterminate, -1
+	default:
+		return tbpfNoProgress, -1
 	}
-	list.call(taskbarSetProgressState, w.hwnd, state)
-	if state == tbpfNormal || state == tbpfPaused || state == tbpfError {
-		completed := uintptr(progress.Value * 1000)
-		list.call(taskbarSetProgressValue, w.hwnd, completed, 1000)
-	}
+	return state, int(math.Round(min(max(p.Value, 0), 1) * taskbarProgressTotal))
 }
 
 // toastXML is a toast's content: its launch arguments, its title, its body and, when silent, no sound.
@@ -509,9 +554,18 @@ func taskbar() *comObject {
 	return nil
 }
 
-// setOverlayBadge shows count on the window's taskbar button, a red disc
-// drawn at the small icon's size, or clears it for 0.
+// setOverlayBadge keeps count for the window's taskbar button and shows it there once the button is in place.
 func (w *window) setOverlayBadge(count uint32) {
+	w.badge = count
+	w.showOverlayBadge()
+}
+
+// showOverlayBadge shows the window's badge count on its taskbar button, a red disc drawn at the small icon's size, or clears it for 0.
+func (w *window) showOverlayBadge() {
+	if !w.buttonReady {
+		return
+	}
+	count := w.badge
 	list := taskbar()
 	if list == nil {
 		return
