@@ -70,13 +70,14 @@ type Tree struct {
 	layoutAnim   *LayoutAnimation
 	fontScale    float32
 	// ratio is the device pixels per point layout rounds to.
-	ratio       float32
-	alerts      map[uint32]alertWait
-	waits       map[uint32]wait
-	imageInfos  map[uint32]imageInfoWait
-	keys        []*keyBinding
-	keysChanged bool
-	backs       []*backHandler
+	ratio        float32
+	alerts       map[uint32]alertWait
+	waits        map[uint32]wait
+	imageInfos   map[uint32]imageInfoWait
+	keys         []*keyBinding
+	keysChanged  bool
+	confirmation *node
+	backs        []*backHandler
 	// peeking is the screen a back gesture may uncover (Tree.peek).
 	peeking *node
 	// history is the depth ItemHistory last sent, which historyAgain

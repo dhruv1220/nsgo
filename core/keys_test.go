@@ -75,3 +75,59 @@ func TestBackGoesToTheNewestHandlerThatTakesIt(t *testing.T) {
 		t.Fatalf("log = %q, want %q", log, want)
 	}
 }
+
+func TestReturnChoosesOnlyTheTopLayersDefault(t *testing.T) {
+	for _, c := range []struct {
+		name                string
+		overlay, hasDefault bool
+	}{{"modal", false, true}, {"modal-without-default", false, false}, {"overlay", true, true}, {"overlay-without-default", true, false}} {
+		t.Run(c.name, func(t *testing.T) {
+			var outer, inner *Signal[bool]
+			var calls []string
+			h := newHost(t, Size{Width: 300, Height: 400}, func(cx *Scope) Node {
+				outer, inner = NewSignal(cx, true), NewSignal(cx, true)
+				return Show{When: outer.Get, Then: func(*Scope) Node {
+					return Modal{OnConfirm: func() { calls = append(calls, "outer") }, Children: []Node{
+						Show{When: inner.Get, Then: func(*Scope) Node {
+							var confirm func()
+							if c.hasDefault {
+								confirm = func() { calls = append(calls, "inner") }
+							}
+							if c.overlay {
+								return Overlay{Role: RoleDialog, OnCancel: func() {}, OnConfirm: confirm}
+							}
+							return Modal{OnConfirm: confirm}
+						}},
+					}}
+				}}
+			})
+			checkKey := func(want bool) {
+				t.Helper()
+				key, _ := driver.FindKey(h.tree.keymap(), []string{"enter"}, false, false)
+				if (key == "enter") != want {
+					t.Fatalf("Return binding %q, want active %v", key, want)
+				}
+			}
+			h.commit()
+			checkKey(c.hasDefault)
+			h.tree.Dispatch(driver.Event{Kind: driver.EventKey, Text: "enter"})
+			if c.hasDefault && !slices.Equal(calls, []string{"inner"}) || !c.hasDefault && len(calls) != 0 {
+				t.Fatalf("top layer confirmation called %v", calls)
+			}
+			calls = nil
+			inner.Set(false)
+			b := h.commit()
+			if kinds(b)[driver.ItemKeymap] != 1 {
+				t.Fatal("removing top layer did not refresh keyboard bindings")
+			}
+			checkKey(true)
+			h.tree.Dispatch(driver.Event{Kind: driver.EventKey, Text: "enter"})
+			if !slices.Equal(calls, []string{"outer"}) {
+				t.Fatalf("outer confirmation called %v", calls)
+			}
+			outer.Set(false)
+			h.commit()
+			checkKey(false)
+		})
+	}
+}

@@ -100,17 +100,59 @@ func (t *Tree) keymap() []driver.KeyBinding {
 	for _, b := range t.keys {
 		out = append(out, b.KeyBinding)
 	}
+	if t.confirmation != nil {
+		out = append(out, driver.KeyBinding{Key: "enter"})
+	}
 	return out
 }
 
 func (t *Tree) pressKey(key string) {
 	key = driver.NormalizeKey(key)
+	if key == "enter" {
+		if n := t.topConfirmation(); n != nil {
+			fn := n.hoist.confirmAction()
+			t.within(n.owner, fn)
+			return
+		}
+	}
 	for i := len(t.keys) - 1; i >= 0; i-- {
 		if b := t.keys[i]; b.Key == key && !b.owner.disposed {
 			t.within(b.owner, b.fn)
 			return
 		}
 	}
+}
+
+// topConfirmation chooses the same modal host as back, then its top
+// interactive overlay. A layer without a default blocks lower defaults.
+func (t *Tree) topConfirmation() *node {
+	host := t.view
+	for top := topModal(host); top != nil; top = topModal(host) {
+		host = top
+	}
+	for i := len(host.hosted) - 1; i >= 0; i-- {
+		n := host.hosted[i]
+		if !n.deleted && !hiddenIn(n) && n.hoist.overlay != nil && (n.h.cancel != nil || n.hoist.overlay.OnConfirm != nil) {
+			if n.hoist.overlay.OnConfirm != nil {
+				return n
+			}
+			return nil
+		}
+	}
+	if host.hoist != nil && host.hoist.confirmAction() != nil {
+		return host
+	}
+	return nil
+}
+
+func (h *hoistNode) confirmAction() func() {
+	if h.modal != nil {
+		return h.modal.OnConfirm
+	}
+	if h.overlay != nil {
+		return h.overlay.OnConfirm
+	}
+	return nil
 }
 
 // EditsText reports whether a text input with the keyboard focus uses

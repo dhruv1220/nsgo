@@ -14,6 +14,9 @@ type Dialog struct {
 	OnOpen       func()
 	OnClose      func()
 	OnCancel     func()
+	// OnConfirm runs the default action on Return, then asks to close
+	// with ReasonSelect. With no default, Return keeps its usual behavior.
+	OnConfirm func()
 
 	Animation core.ModalAnimation
 	// TransitionShader, when set, is how the dialog comes and goes
@@ -123,5 +126,6 @@ func (d Dialog) Render(cx *core.Scope) core.Node {
 		IOS: d.IOS, Android: d.Android, StatusBar: d.StatusBar, StatusBarFunc: d.StatusBarFunc, Class: d.LayerClass,
 		OnShown: report(true), OnDismissed: report(false),
 		Style: core.Style{JustifyContent: core.JustifyCenter, AlignItems: core.AlignCenter}.Merge(d.LayerStyle)}
+	m.OnConfirm = st.confirm(d.OnConfirm)
 	return modalLayer(st, motion, m, d)
 }

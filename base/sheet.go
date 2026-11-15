@@ -21,6 +21,9 @@ type Sheet struct {
 	OnOpen       func()
 	OnClose      func()
 	OnCancel     func()
+	// OnConfirm runs the default action on Return, then asks to close
+	// with ReasonSelect.
+	OnConfirm func()
 
 	// Side is the edge the panel sits on; the bottom by default.
 	Side                   core.Placement
@@ -43,13 +46,20 @@ type Sheet struct {
 	// Children are the content, made on each opening.
 	Children []core.Node
 	Label    string
-	TestID   string
+	// Role is RoleDialog by default; RoleAlertDialog asks for an answer.
+	Role                     core.Role
+	AccessibilityDescription string
+	TestID                   string
 }
 
 // Render implements core.Node.
 func (s Sheet) Render(cx *core.Scope) core.Node {
 	st := newPopup(cx, s.Open, s.DefaultOpen, s.OnOpenChange, s.OnOpen, s.OnClose)
 	st.onCancel = s.OnCancel
+	role := s.Role
+	if role == core.RoleNone {
+		role = core.RoleDialog
+	}
 	side := s.Side
 	if side == core.PlaceDefault {
 		side = core.PlaceBottom
@@ -62,6 +72,7 @@ func (s Sheet) Render(cx *core.Scope) core.Node {
 		Swipe:         s.CloseOnSwipe && side == core.PlaceBottom,
 		Swiped:        func() { st.cancel(ReasonSwipe, false) },
 		Cancel:        func() { st.cancel(ReasonCancel, s.NoCloseOnEscape) },
-		Role:          core.RoleDialog, Label: s.Label, TestID: s.TestID, Content: s.Children,
+		Confirm:       st.confirm(s.OnConfirm),
+		Role:          role, Label: s.Label, AccessibilityDescription: s.AccessibilityDescription, TestID: s.TestID, Content: s.Children,
 		Layer: parts.Of(s.Class, s.Style, s.StyleFunc)}.Node()
 }

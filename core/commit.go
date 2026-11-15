@@ -255,6 +255,10 @@ func (t *Tree) commitRound() {
 	t.transits = t.transits[:0]
 	t.emitMoves()
 	t.emitAnimation()
+	if n := t.topConfirmation(); n != t.confirmation {
+		t.confirmation = n
+		t.keysChanged = true
+	}
 	if t.keysChanged {
 		t.keysChanged = false
 		t.items = append(t.items, driver.MountItem{Kind: driver.ItemKeymap, Keys: t.keymap()})

@@ -44,6 +44,9 @@ type Button struct {
 	// NoFocus keeps it out of the Tab stops, for a button of a row the
 	// keyboard reaches another way.
 	NoFocus bool
+	// AutoFocus moves keyboard focus here after mounting, unless NoFocus
+	// or Disabled keeps the button out of the keyboard stops.
+	AutoFocus bool
 	// AccessibilityElementsHidden hides it from assistive technology while
 	// it returns true, as a leaf's chevron.
 	AccessibilityElementsHidden func() bool
@@ -60,7 +63,12 @@ func (b Button) Render(cx *core.Scope) core.Node {
 	if role == core.RoleNone {
 		role = core.RoleButton
 	}
-	return barItem(cx, core.View{
+	var ref *core.Ref
+	if b.AutoFocus && !b.NoFocus {
+		ref = &core.Ref{}
+	}
+	view := barItem(cx, core.View{
+		Ref:                         ref,
 		Class:                       b.Class,
 		Style:                       b.Style,
 		StyleFunc:                   b.StyleFunc,
@@ -83,4 +91,12 @@ func (b Button) Render(cx *core.Scope) core.Node {
 		AccessibilityElementsHidden: b.AccessibilityElementsHidden,
 		TestID:                      b.TestID, OnLayout: b.OnLayout,
 	}, nil)
+	if ref != nil {
+		cx.Post(func() {
+			if view.Disabled == nil || !view.Disabled() {
+				ref.Focus()
+			}
+		})
+	}
+	return view
 }

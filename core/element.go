@@ -833,6 +833,9 @@ type Overlay struct {
 	// OnCancel receives Escape or back while it is the topmost overlay
 	// that listens.
 	OnCancel func()
+	// OnConfirm is core's part of base.Sheet's default action. Return
+	// invokes it only while this is the topmost interactive layer.
+	OnConfirm func()
 	// OnMouseEnter and OnMouseLeave are View's.
 	OnMouseEnter, OnMouseLeave func(MouseEvent)
 	// OnPosition reports where an anchored overlay went, again when it
@@ -912,6 +915,9 @@ type Modal struct {
 	// whether to remove it. A sheet swiped away has left the screen
 	// already and stays hidden until the app removes it.
 	OnRequestClose func(reason string)
+	// OnConfirm is core's part of base.Dialog's default action. Return
+	// invokes it only while this is the topmost interactive layer.
+	OnConfirm func()
 	// OnShown and OnDismissed receive the platform's reports that it
 	// finished presenting the modal and taking it away, where it makes
 	// them (EventModalShown, EventModalDismissed).
