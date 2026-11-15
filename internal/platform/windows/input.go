@@ -582,7 +582,8 @@ func (w *window) setFocus(in *textInput) {
 	}
 	w.restore = nil
 	if old != nil {
-		w.notifyComposition(cpsCancel)
+		// Losing the focus commits what the IME composes, as Windows' own edit controls do. ImmNotifyIME delivers the result while old still has the focus, so its change and the composition's end precede the blur.
+		w.notifyComposition(cpsComplete)
 		old.focused = false
 		old.drag = dragNone
 		old.model.composition = nil

@@ -3,10 +3,15 @@
 package windows
 
 import (
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/driver"
+	"github.com/nsgo-dev/nsgo/internal/testhost"
 )
 
 // TestTestHostChoosesNativeMenus chooses a menu bar item and an item of a
@@ -67,5 +72,98 @@ func TestTestHostChoosesNativeMenus(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Error("the context menu's item was not chosen")
+	}
+}
+
+// TestTestHostCommitsCompositionBeforeBlur moves the focus from a field while an input method composes in it, by a click on another field and from the app, and checks that the field reports the committed text, then the composition's end, then its blur; a click in the composing field itself commits without a blur. A machine without an input method skips it.
+func TestTestHostCommitsCompositionBeforeBlur(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens a window")
+	}
+	for by, want := range map[string]string{"click": "focus,change,end,blur", "app": "focus,change,end,blur", "same": "focus,change,end"} {
+		t.Run(by, func(t *testing.T) {
+			title := "nsgo-ime-blur-" + by
+			var root *core.Scope
+			second := &core.Ref{}
+			app := func(cx *core.Scope) core.Node {
+				root = cx
+				value, events := core.NewSignal(cx, ""), core.NewSignal(cx, "")
+				add := func(event string) {
+					events.Update(func(old string) string {
+						if old == "" {
+							return event
+						}
+						return old + "," + event
+					})
+				}
+				cx.Effect(func() { cx.SetTitle(fmt.Sprintf("%s|%s|%s", title, value.Get(), events.Get())) })
+				field := core.Style{Width: driver.Pt(300), Height: driver.Pt(30)}
+				return core.View{Style: core.Style{Width: driver.Pt(320), Height: driver.Pt(120), Padding: driver.All(10), Gap: 10}, Children: []core.Node{
+					core.Input{Value: value.Get, AutoFocus: true, Style: field,
+						OnChange: func(v string) { value.Set(v); add("change") },
+						OnCompositionChange: func(c core.Composition) {
+							if c.Composing {
+								add("composition")
+							} else {
+								add("end")
+							}
+						},
+						OnFocus: func() { add("focus") },
+						OnBlur:  func() { add("blur") }},
+					core.Input{Ref: second, Style: field},
+				}}
+			}
+			hwnd := startApp(t, title, app, 320, 120)
+			waitForTitle(t, hwnd, title+"||focus", 5*time.Second)
+			var ts *testSurface
+			onMain(t, hwnd, func(w *window) { ts = &testSurface{w: w} })
+			if err := ts.Compose("ni"); err != nil {
+				if errors.Is(err, testhost.ErrNoInputMethod) {
+					t.Skip(err)
+				}
+				t.Fatal(err)
+			}
+			waitForTitle(t, hwnd, title+"||focus,composition", 5*time.Second)
+			switch by {
+			case "click":
+				if err := ts.Press(driver.Point{X: 20, Y: 65}, 0); err != nil {
+					t.Fatal(err)
+				}
+			case "same":
+				if err := ts.Press(driver.Point{X: 20, Y: 25}, 0); err != nil {
+					t.Fatal(err)
+				}
+			case "app":
+				root.Post(second.Focus)
+			}
+			order := func() (string, bool) {
+				parts := strings.SplitN(windowText(hwnd), "|", 3)
+				if len(parts) != 3 {
+					return "", false
+				}
+				var events []string
+				for _, ev := range strings.Split(parts[2], ",") {
+					if ev != "composition" {
+						events = append(events, ev)
+					}
+				}
+				return strings.Join(events, ","), parts[1] != ""
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if got, committed := order(); committed && got == want {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("window title = %q, want the committed text and %s", windowText(hwnd), want)
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			// Nothing follows, such as a late blur.
+			time.Sleep(200 * time.Millisecond)
+			if got, _ := order(); got != want {
+				t.Fatalf("events %s after %s", got, want)
+			}
+		})
 	}
 }
