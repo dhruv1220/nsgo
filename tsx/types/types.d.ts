@@ -519,10 +519,12 @@ export interface WebViewHostProps {
   /** What the pages may capture through `getUserMedia`; a package needs
    * them in its `webview` capability's `media` too. */
   media?: readonly ("microphone" | "camera")[];
+  /** The origins whose pages reach onMessage ("https://example.com"), or "*" for any; by default the source's alone. Frames in a page never do. */
+  messageOrigins?: string[];
   onLoadStart?: (e: WebViewNavigation) => void;
   onLoad?: (e: WebViewNavigation) => void;
   onError?: (e: { message: string }) => void;
-  onMessage?: (e: { data: string }) => void;
+  onMessage?: (e: { data: string; origin: string }) => void;
   onNavigationStateChange?: (e: WebViewNavigation) => void;
   onDownload?: (e: WebViewDownload) => void;
 }

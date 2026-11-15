@@ -47,16 +47,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A web view node's android.webkit.WebView, filling the node's view, as
- * NSH's WebBox. Pages post to the app through window.nsgo.postMessage: the
- * JavaScript interface INTERFACE is there from the page's first script,
- * and the bridge Go puts first in the script before content wraps it to
- * pass any value as a string. The view loads its source again when it or
- * the scripts change.
+ * A web view node's android.webkit.WebView, filling the node's view, as NSH's WebBox. Pages post to the app through window.nsgo.postMessage, which the bridge defines as each page starts over the JavaScript interface INTERFACE. The view loads its source again when it or the scripts change.
+ *
+ * android.webkit adds a JavaScript interface to every frame of every page and tells it no caller, and only androidx's WebViewCompat.addWebMessageListener, which the runtime does without, would. So the bridge, which evaluateJavascript runs in the top frame alone, holds a token Java makes anew for each page, and Java takes only the messages that carry the current page's: a frame, or a page that came after, posting to the interface itself is dropped. A message reports the URL the view showed when it handed the page its token.
  */
 @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface", "ClickableViewAccessibility"})
 final class WebNode {
-    /** The JavaScript interface pages post to, as webInterface in android.go. */
+    /** The JavaScript interface the bridge posts to. */
     static final String INTERFACE = "nsgo";
     /** The JavaScript interface a page hands the bytes of a blob: download to, under the token Java gave it. */
     private static final String BLOBS = "nsgoBlobs";
@@ -83,9 +80,12 @@ final class WebNode {
             + " document.addEventListener('click', function (e) { note(e.target && e.target.closest ? e.target.closest('a[download]') : null); }, true);"
             + "})();";
 
-    /** Receives a web view's events; navigation is null for messages and has only the URL for errors. UI thread. */
+    /** Receives a web view's events; navigation has only the URL for errors. UI thread. */
     interface Reporter {
         void report(int kind, String text, Navigation navigation);
+
+        /** A message the page at url posted from its top frame. */
+        void message(String data, String url);
 
         void download(String data);
 
@@ -107,8 +107,20 @@ final class WebNode {
         }
     }
 
+    /** The page the bridge belongs to: the token its messages carry, and the URL the view showed as it got it. */
+    private static final class Page {
+        final String token, url;
+
+        Page(String token, String url) {
+            this.token = token;
+            this.url = url;
+        }
+    }
+
     final WebView view;
     private final Reporter reporter;
+    /** The current page's bridge; read on the binder thread pages post from. */
+    private volatile Page page;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private boolean configured;
     private String src = "", html = "", baseURL = "";
@@ -175,11 +187,21 @@ final class WebNode {
         }
     }
 
-    /** Called from the page on a binder thread. */
+    /** The script that defines window.nsgo.postMessage in the page token is for, passing any value as a string. */
+    private static String bridge(String token) {
+        return "(function (n, t) { if (n && n.post) window." + INTERFACE
+                + " = { postMessage: function (data) { n.post(t, String(data)); } }; })(window." + INTERFACE + ", " + JSONObject.quote(token) + ");";
+    }
+
+    /** Called from a page's frames on a binder thread: only the current page's bridge knows its token. */
     private final class Bridge {
         @JavascriptInterface
-        public void postMessage(String data) {
-            ui.post(() -> reporter.report(Protocol.EVENT_MESSAGE, data != null ? data : "", null));
+        public void post(String token, String data) {
+            Page current = page;
+            if (current == null || !current.token.equals(token)) return;
+            ui.post(() -> {
+                if (!destroyed) reporter.message(data != null ? data : "", current.url);
+            });
         }
     }
 
@@ -231,11 +253,10 @@ final class WebNode {
 
         @Override
         public void onPageStarted(WebView web, String url, Bitmap favicon) {
-            // android.webkit cannot run a script at document start: only
-            // androidx's WebViewCompat.addDocumentStartJavaScript can, which
-            // the runtime does without. The script before content (the bridge,
-            // then the app's) runs as the page starts loading instead, so a
-            // page's earliest scripts may run before it.
+            // android.webkit cannot run a script at document start: only androidx's WebViewCompat.addDocumentStartJavaScript can, which the runtime does without. The bridge, then the app's script before content, run as the page starts loading instead, so a page's earliest scripts may run before them. The page the view shows now is the one evaluateJavascript reaches, also when it moved on before this ran.
+            String shown = web.getUrl();
+            page = new Page(UUID.randomUUID().toString(), shown != null ? shown : url);
+            web.evaluateJavascript(bridge(page.token), null);
             if (!injectedBefore.isEmpty()) web.evaluateJavascript(injectedBefore, null);
             if (!downloadDir.isEmpty()) web.evaluateJavascript(DOWNLOAD_NAMES, null);
             // A blob: URL lives as long as its document: the page leaving takes the downloads still reading theirs.
@@ -647,7 +668,9 @@ final class WebNode {
         WebSettings settings = view.getSettings();
         if (!html.isEmpty()) {
             settings.setAllowFileAccess(baseURL.startsWith("file:"));
-            view.loadDataWithBaseURL(baseURL.isEmpty() ? null : baseURL, html, "text/html", "UTF-8", null);
+            // The base URL is also the page's in history, so that the view shows the page at it, as other platforms do, rather than about:blank.
+            String base = baseURL.isEmpty() ? null : baseURL;
+            view.loadDataWithBaseURL(base, html, "text/html", "UTF-8", base);
         } else if (!src.isEmpty()) {
             settings.setAllowFileAccess(src.startsWith("file:"));
             view.loadUrl(src, headers);
@@ -673,6 +696,7 @@ final class WebNode {
     /** Stops the page and frees the WebView. */
     void destroy() {
         destroyed = true;
+        page = null;
         blobs.clear();
         view.stopLoading();
         // A WebView is destroyed out of the view hierarchy.

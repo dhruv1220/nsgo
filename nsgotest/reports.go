@@ -345,13 +345,18 @@ func (a *App) Navigate(selector string, nav driver.WebNavigation) {
 	}
 }
 
-// PostMessage reports that the page in the web view selector matches
-// posted data.
+// PostMessage reports that the page the web view selector matches loaded posted data, from its top frame and its source's origin.
 func (a *App) PostMessage(selector, data string) {
+	a.t.Helper()
+	a.PostMessageFrom(selector, a.Find(selector).Web.Source.Origin(), true, data)
+}
+
+// PostMessageFrom reports that a frame of origin, the page's top one when mainFrame is set, posted data in the web view selector matches, as a page the view navigated to or a frame within it would.
+func (a *App) PostMessageFrom(selector, origin string, mainFrame bool, data string) {
 	a.t.Helper()
 	v := a.Find(selector)
 	if v.Events.Has(driver.EventMessage) {
-		a.dispatch(driver.Event{Kind: driver.EventMessage, ID: v.ID, Text: data})
+		a.dispatch(driver.Event{Kind: driver.EventMessage, ID: v.ID, Text: data, Origin: origin, MainFrame: mainFrame})
 	}
 }
 

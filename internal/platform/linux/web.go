@@ -3,6 +3,8 @@
 package linux
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"maps"
@@ -217,7 +219,11 @@ const (
 // window.webkit.messageHandlers.nsgo.
 const webHandler = "nsgo"
 
-var webBridge = driver.WebBridge("function (d) { window.webkit.messageHandlers." + webHandler + ".postMessage(d); }")
+// webBridge is the bridge of a page whose messages start with token. WebKitGTK tells no message's frame, and WebKit gives every frame of a page its handlers, so only the top frame's bridge, which keeps the token in a closure and the handler's postMessage as the page found it, gets the app's messages; a frame posting to the handler itself is dropped (webMessageCallback).
+func webBridge(token string) string {
+	return "(function () { var h = window.webkit.messageHandlers." + webHandler + ", send = h.postMessage.bind(h), t = " + driver.JSString(token) + "; " +
+		driver.WebBridge("function (d) { send(t + d); }") + " })();"
+}
 
 // webNoScroll keeps the top document from scrolling.
 const webNoScroll = "html, body { overflow: hidden !important; }"
@@ -230,6 +236,7 @@ type web struct {
 	widget     uintptr // WebKitWebView
 	session    uintptr // the ephemeral network session an Incognito page owns, released with it; 0 for the app's
 	content    uintptr // its WebKitUserContentManager
+	token      string  // what its top frame's messages start with (webBridge)
 	config     driver.WebConfig
 	made       bool
 	failed     bool         // the navigation failed; WebKit still finishes it
@@ -303,7 +310,7 @@ func (w *window) configureWeb(v *view, c *driver.WebConfig) {
 		c.InjectedJavaScriptBeforeContent != old.InjectedJavaScriptBeforeContent
 	if scripts {
 		webkitContentRemoveAllScripts(wv.content)
-		addScript(wv.content, webBridge, webkitAtStart)
+		addScript(wv.content, webBridge(wv.token), webkitAtStart)
 		addScript(wv.content, c.InjectedJavaScriptBeforeContent, webkitAtStart)
 		addScript(wv.content, c.InjectedJavaScript, webkitAtEnd)
 	}
@@ -388,6 +395,9 @@ func (w *window) makeWeb(v *view) {
 	}
 	wv.widget = gObjectNew(webkitWebViewGetType(), cstr("network-session"), session, uintptr(0))
 	wv.content = webkitWebViewGetUserContentManager(wv.widget)
+	var token [16]byte
+	_, _ = rand.Read(token[:])
+	wv.token = hex.EncodeToString(token[:]) + ":"
 	webPages[wv.widget] = webPage{window: w, view: v}
 	registerWebSchemes(wv)
 	webkitContentRegisterHandler(wv.content, cstr(webHandler), nil)
@@ -852,7 +862,13 @@ func webMessageCallback(content, value uintptr, data uintptr) {
 	if p != 0 {
 		gFree(p)
 	}
-	w.report(v, driver.Event{Kind: driver.EventMessage, ID: v.id, Text: text})
+	text, ok := strings.CutPrefix(text, v.web.token)
+	if !ok {
+		return
+	}
+	// The page's top frame posted it: the page the view shows as the message comes.
+	origin := driver.WebOrigin(goString(webkitWebViewGetURI(v.web.widget)))
+	w.report(v, driver.Event{Kind: driver.EventMessage, ID: v.id, Text: text, Origin: origin, MainFrame: true})
 }
 
 func webMapCallback(page uintptr, data uintptr) {

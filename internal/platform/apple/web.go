@@ -5,6 +5,7 @@ package apple
 import (
 	"log"
 	"maps"
+	"mime"
 	neturl "net/url"
 	"os"
 	"path/filepath"
@@ -93,7 +94,9 @@ func loadWebKit() {
 			{Cmd: sel("userContentController:didReceiveScriptMessage:"), Fn: func(self objc.ID, _ objc.SEL, _, message objc.ID) {
 				if w := webHandlers[self]; w != nil {
 					body := message.Send(sel("body"))
-					w.Dispatch(driver.Event{Kind: driver.EventMessage, Text: GoString(body.Send(sel("description")))})
+					frame := message.Send(sel("frameInfo"))
+					w.Dispatch(driver.Event{Kind: driver.EventMessage, Text: GoString(body.Send(sel("description"))),
+						Origin: frameOrigin(frame), MainFrame: objc.Send[bool](frame, sel("isMainFrame"))})
 				}
 			}},
 			{Cmd: sel("webView:startURLSchemeTask:"), Fn: func(self objc.ID, _ objc.SEL, _, task objc.ID) {
@@ -110,10 +113,15 @@ func loadWebKit() {
 					return
 				}
 				body := handler(raw)
-				mimeType := driver.WebMIME(GoString(u.Send(sel("path"))), body)
+				// NSURLResponse takes the media type and its charset apart: WebKit shows "text/html; charset=utf-8" as no HTML.
+				mimeType, params, _ := mime.ParseMediaType(driver.WebMIME(GoString(u.Send(sel("path"))), body))
+				encoding := objc.ID(0)
+				if charset := params["charset"]; charset != "" {
+					encoding = NSString(charset)
+				}
 				response := objc.ID(Class("NSURLResponse")).Send(sel("alloc")).Send(
 					sel("initWithURL:MIMEType:expectedContentLength:textEncodingName:"), u,
-					NSString(mimeType), int64(len(body)), objc.ID(0))
+					NSString(mimeType), int64(len(body)), encoding)
 				task.Send(sel("didReceiveResponse:"), response)
 				response.Send(sel("release"))
 				var ptr unsafe.Pointer
@@ -459,6 +467,23 @@ func fileURLInDir(raw, dir string) bool {
 	}
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// frameOrigin is the origin of a WKFrameInfo's document, as driver.WebOrigin writes it: its security origin's, or for a document whose security origin is opaque, such as a sandboxed one, its URL's.
+func frameOrigin(frame objc.ID) string {
+	origin := frame.Send(sel("securityOrigin"))
+	scheme := GoString(origin.Send(sel("protocol")))
+	if scheme == "" {
+		return driver.WebOrigin(GoString(frame.Send(sel("request")).Send(sel("URL")).Send(sel("absoluteString"))))
+	}
+	host := GoString(origin.Send(sel("host")))
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
+	}
+	if port := objc.Send[int](origin, sel("port")); port != 0 {
+		host += ":" + strconv.Itoa(port)
+	}
+	return driver.WebOrigin(scheme + "://" + host + "/")
 }
 
 func nsURL(s string) objc.ID {

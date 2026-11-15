@@ -464,7 +464,8 @@ func (wv *webView) listen() {
 		} else {
 			data = takeString(p)
 		}
-		wv.report(driver.Event{Kind: driver.EventMessage, Text: data})
+		// CoreWebView2's WebMessageReceived is the top document's alone; its frames' come through CoreWebView2Frame, which the host does not follow.
+		wv.report(driver.Event{Kind: driver.EventMessage, Text: data, Origin: driver.WebOrigin(a.getString(messageGetSource)), MainFrame: true})
 	}))
 }
 

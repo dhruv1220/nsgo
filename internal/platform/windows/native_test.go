@@ -5,6 +5,8 @@ package windows
 import (
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"runtime"
 	"strings"
@@ -1108,6 +1110,81 @@ func waitForTitle(t *testing.T, hwnd uintptr, want string, timeout time.Duration
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// TestWebMessagesComeOnlyFromTheSourcesPage loads a page with a frame of another origin, which posts to WebView2 itself and relays a message through the page, and which then goes to a page of the frame's origin. A web view reaches the app only from its source's page by default, one taking any origin from every page it shows, and neither from the frame.
+func TestWebMessagesComeOnlyFromTheSourcesPage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens a window")
+	}
+	if _, err := findWebView2(); err != nil {
+		t.Skip(err)
+	}
+	other := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/frame":
+			fmt.Fprint(rw, `<!doctype html><script>
+try { window.chrome.webview.postMessage('frame'); } catch (e) {}
+try { window.nsgo.postMessage('frame'); } catch (e) {}
+parent.postMessage('relay', '*');
+</script>`)
+		case "/next":
+			fmt.Fprint(rw, `<!doctype html><script>window.nsgo.postMessage('other');</script>`)
+		}
+	}))
+	defer other.Close()
+	page := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(rw, `<!doctype html><script>
+addEventListener('message', (e) => {
+  if (e.data !== 'relay') return;
+  window.nsgo.postMessage('relayed');
+  location.href = '%[1]s/next';
+});
+window.nsgo.postMessage('main');
+</script><iframe src="%[1]s/frame"></iframe>`, other.URL)
+	}))
+	defer page.Close()
+	title := "nsgo-web-origins"
+	app := func(cx *core.Scope) core.Node {
+		own, anyOrigin := core.NewSignal(cx, ""), core.NewSignal(cx, "")
+		cx.Effect(func() { cx.SetTitle(title + "|" + own.Get() + "|" + anyOrigin.Get()) })
+		heard := func(s *core.Signal[string]) func(core.WebMessage) {
+			return func(m core.WebMessage) { s.Update(func(v string) string { return v + m.Data + "@" + m.Origin + ";" }) }
+		}
+		frame := core.Style{Width: driver.Pt(150), Height: driver.Pt(100)}
+		return core.View{Style: core.Style{Width: driver.Pt(320), Height: driver.Pt(120), Direction: core.Row}, Children: []core.Node{
+			core.WebView{Source: core.WebSrc(page.URL + "/"), Style: frame, OnMessageFrom: heard(own),
+				OnLoad: func(n core.WebNavigation) {
+					if strings.HasSuffix(n.URL, "/next") {
+						own.Update(func(v string) string { return v + "loaded" })
+					}
+				}},
+			core.WebView{Source: core.WebSrc(page.URL + "/"), Style: frame, MessageOrigins: []string{"*"}, OnMessageFrom: heard(anyOrigin)},
+		}}
+	}
+	done := make(chan struct{})
+	go func() {
+		runtime.LockOSThread()
+		defer close(done)
+		Run(app, Options{Title: title + "||", Width: 320, Height: 120})
+	}()
+	hwnd := waitForWindow(t, title+"||", done)
+	if hwnd == 0 {
+		return
+	}
+	defer func() {
+		postMessageW.Call(hwnd, wmClose, 0, 0)
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("the window did not close")
+		}
+	}()
+	from, to := page.URL, other.URL
+	// The first start of the browser process can take a while.
+	waitForTitle(t, hwnd, title+"|main@"+from+";relayed@"+from+";loaded|main@"+from+";relayed@"+from+";other@"+to+";", 30*time.Second)
 }
 
 // TestWebViewIsCoveredByLaterSiblings draws a view over part of a page:

@@ -111,6 +111,7 @@ func webViewFace(p *props) core.Node {
 		NoJavaScript:                    !p.boolOr("javaScriptEnabled", true),
 		BackForwardGestures:             p.bool("allowsBackForwardNavigationGestures"),
 		Media:                           r.webMedia(p.get("media")),
+		MessageOrigins:                  r.strs(p.get("messageOrigins")),
 		Class:                           p.class(),
 		StyleFunc:                       p.styleFunc(),
 		OnError:                         p.onError("onError"),
@@ -128,9 +129,10 @@ func webViewFace(p *props) core.Node {
 	}
 	w.OnLoadStart, w.OnLoad, w.OnNavigationStateChange = nav("onLoadStart"), nav("onLoad"), nav("onNavigationStateChange")
 	if h := p.handler("onMessage"); h != nil {
-		w.OnMessage = func(data string) {
+		w.OnMessageFrom = func(m core.WebMessage) {
 			e := r.vm.NewObject()
-			_ = e.Set("data", data)
+			_ = e.Set("data", m.Data)
+			_ = e.Set("origin", m.Origin)
 			h(e)
 		}
 	}
@@ -440,6 +442,18 @@ func (r *runtime) tokenKey(t core.ViewToken, item js.Value) string {
 }
 
 // ints reads an array of numbers.
+func (r *runtime) strs(v js.Value) []string {
+	items := r.arrayItems(v)
+	if items == nil {
+		return nil
+	}
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = it.String()
+	}
+	return out
+}
+
 func (r *runtime) ints(v js.Value) []int {
 	items := r.arrayItems(v)
 	if items == nil {

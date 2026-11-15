@@ -140,6 +140,26 @@ mount(App);`)
 	}
 }
 
+func TestWebViewMessagesCarryTheirOrigin(t *testing.T) {
+	app := run(t, `import { mount, signal, Text, View, WebView } from "nsgo";
+function App() {
+	const heard = signal("");
+	const add = (e) => heard.set(heard() + e.data + "@" + e.origin + ";");
+	return <View style={{ flex: 1 }}>
+		<WebView testID="own" src="https://app.example/" style={{ height: 50 }} onMessage={add} />
+		<WebView testID="listed" src="https://app.example/" messageOrigins={["https://other.example"]} style={{ height: 50 }} onMessage={add} />
+		<Text testID="heard">{heard}</Text>
+	</View>;
+}
+mount(App);`)
+	app.PostMessage("id:own", "a")
+	app.PostMessageFrom("id:own", "https://other.example", true, "b")
+	app.PostMessageFrom("id:listed", "https://app.example", true, "c")
+	app.PostMessageFrom("id:listed", "https://other.example", false, "d")
+	app.PostMessageFrom("id:listed", "https://other.example", true, "e")
+	app.WaitFor("text:a@https://app.example;e@https://other.example;", time.Second)
+}
+
 func TestPlatformPropsApplyOnTheirPlatform(t *testing.T) {
 	src := `import { mount, View } from "nsgo";
 mount(() => <View testID="v" style={{ width: 10, height: 10 }} ios={{ testID: "ios" }} desktop={{ accessibilityLabel: "desk" }} />);`

@@ -12,10 +12,7 @@ import (
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
 
-// WebView shows a web page in the platform's web view, which fills the
-// view and takes its own pointer, wheel and keyboard input. Pages reach
-// the app with window.nsgo.postMessage(data), which OnMessage receives;
-// Ref.PostMessage dispatches a MessageEvent on the page's window.
+// WebView shows a web page in the platform's web view, which fills the view and takes its own pointer, wheel and keyboard input. Pages reach the app with window.nsgo.postMessage(data), which OnMessage and OnMessageFrom receive from the pages MessageOrigins allows; Ref.PostMessage dispatches a MessageEvent on the page's window.
 type WebView struct {
 	Source WebSource
 	// The page loads again when SourceFunc's source changes.
@@ -59,8 +56,11 @@ type WebView struct {
 	OnNavigationStateChange func(WebNavigation)
 	// OnError receives a *WebError.
 	OnError func(err error)
-	// OnMessage receives what the page posted, as a string.
-	OnMessage func(data string)
+	// MessageOrigins are the origins whose pages reach OnMessage and OnMessageFrom, written as WebMessage.Origin is ("https://example.com"), or "*" for any. Without them only pages of the source's own origin do: Src's, or for HTML BaseURL's, and "null" for HTML without one, which every page without an origin of its own shares, such as about:blank. Only the page posts, never a frame in it, on every platform; a frame reaches the app through the page, with window.parent.postMessage, whose event tells the page the frame's origin.
+	MessageOrigins []string
+	// OnMessage receives what the page posted, as a string, and OnMessageFrom with the origin of the page that posted it.
+	OnMessage     func(data string)
+	OnMessageFrom func(WebMessage)
 	// OnDownload follows what the page downloads, which only a web view
 	// with one saves, to downloads/<id>/ in the app's data directory:
 	// files WebKit cannot show and links that ask for a download, on
@@ -84,6 +84,12 @@ func WebSrc(url string) WebSource { return WebSource{Src: url} }
 // against baseURL ("" for none).
 func WebHTML(html, baseURL string) WebSource { return WebSource{HTML: html, BaseURL: baseURL} }
 
+// WebMessage is what a web view's page posted, and the page's origin: scheme://host, with the port when it is not the scheme's own, in lower case ("https://example.com", "app://bundle"), "file://" for a file and "null" for a page without an origin of its own, such as HTML without a base URL.
+type WebMessage struct {
+	Data   string
+	Origin string
+}
+
 // WebError is a page that failed to load, or a navigation the
 // platform refused; URL is the page's, when known.
 type WebError struct {
@@ -99,7 +105,11 @@ type webNode struct {
 	loadStart, load, navigation func(WebNavigation)
 	loadError                   func(error)
 	message                     func(string)
+	messageFrom                 func(WebMessage)
 	download                    func(WebDownload)
+	// origins are MessageOrigins, as WebOrigin writes them; dropped is whether a message they refused was logged.
+	origins []string
+	dropped bool
 	// refused is the source Access refused last.
 	refused string
 	// evals are the Evaluates waiting for their pages' answers, by the
@@ -129,7 +139,8 @@ func (t *Tree) mountWebView(cx *Scope, parent *node, w WebView) {
 			NoScroll:       w.NoScroll, NoJavaScript: w.NoJavaScript, BackForwardGestures: w.BackForwardGestures,
 			Media: w.Media},
 		loadStart: w.OnLoadStart, load: w.OnLoad, navigation: w.OnNavigationStateChange,
-		loadError: w.OnError, message: w.OnMessage, download: w.OnDownload,
+		loadError: w.OnError, message: w.OnMessage, messageFrom: w.OnMessageFrom, download: w.OnDownload,
+		origins: messageOrigins(w.MessageOrigins),
 	}
 	if w.OnDownload != nil && cx.rt.dataDir != "" {
 		n.web.config.DownloadDir = filepath.Join(cx.rt.dataDir, "downloads")
@@ -142,6 +153,38 @@ func (t *Tree) mountWebView(cx *Scope, parent *node, w WebView) {
 			}
 		})
 	}
+}
+
+// messageOrigins returns origins as WebOrigin writes them, leaving out, with a log, what is no origin, so that "example.com" allows nothing rather than every page without an origin.
+func messageOrigins(origins []string) []string {
+	var out []string
+	for _, o := range origins {
+		switch w := driver.WebOrigin(o); {
+		case o == "*" || o == "null":
+			out = append(out, o)
+		case w == "null":
+			log.Printf("nsgo: WebView.MessageOrigins: %q is no origin, such as https://example.com", o)
+		default:
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// allows reports whether a message ev reports reaches the app: one the page's top frame posted, from an origin MessageOrigins allows, or without them the origin of the source the platform loaded.
+func (wn *webNode) allows(ev driver.Event) bool {
+	if !ev.MainFrame || ev.Origin == "" {
+		return false
+	}
+	if wn.origins == nil {
+		return ev.Origin == wn.sent.Source.Origin()
+	}
+	for _, o := range wn.origins {
+		if o == "*" || o == ev.Origin {
+			return true
+		}
+	}
+	return false
 }
 
 // restrictWeb holds c to the Access of n's owner: a source it refuses
@@ -233,8 +276,22 @@ func (t *Tree) dispatchWeb(n *node, ev driver.Event) {
 		if t.answerEval(n, ev.Text) {
 			return
 		}
+		if !wn.allows(ev) {
+			if !wn.dropped {
+				wn.dropped = true
+				from := "a frame of the page"
+				if ev.MainFrame {
+					from = "a page of " + ev.Origin
+				}
+				log.Printf("nsgo: a web view dropped a message from %s, which its MessageOrigins do not allow", from)
+			}
+			return
+		}
 		if wn.message != nil {
 			t.within(n.owner, func() { wn.message(ev.Text) })
+		}
+		if wn.messageFrom != nil {
+			t.within(n.owner, func() { wn.messageFrom(WebMessage{Data: ev.Text, Origin: ev.Origin}) })
 		}
 	}
 }
@@ -251,7 +308,7 @@ func (wn *webNode) events() driver.EventMask {
 	bit(driver.EventLoad, wn.load != nil)
 	bit(driver.EventNavigationStateChange, wn.navigation != nil)
 	bit(driver.EventError, wn.loadError != nil)
-	bit(driver.EventMessage, wn.message != nil || len(wn.evals) > 0)
+	bit(driver.EventMessage, wn.message != nil || wn.messageFrom != nil || len(wn.evals) > 0)
 	bit(driver.EventDownload, wn.download != nil)
 	return m
 }

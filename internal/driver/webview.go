@@ -15,6 +15,50 @@ type WebSource struct {
 	BaseURL string
 }
 
+// Origin is the origin of the page the source loads, as WebOrigin writes it: Src's, or for HTML, BaseURL's, which is "null" without one. A source with neither has none ("").
+func (s WebSource) Origin() string {
+	switch {
+	case s.HTML != "" && s.BaseURL == "":
+		return "null"
+	case s.HTML != "":
+		return WebOrigin(s.BaseURL)
+	case s.Src != "":
+		return WebOrigin(s.Src)
+	}
+	return ""
+}
+
+// WebOrigin is the origin of the page at rawURL as browsers write one: scheme://host, with the port when it is not the scheme's own, in lower case, such as "https://example.com" or "app://bundle". A blob: URL has the origin of the URL it holds and every file: URL "file://"; a URL with no host, such as about:blank or a data: URL, or one that does not parse, has an opaque origin, written "null". No URL ("") has no origin ("").
+func WebOrigin(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "null"
+	}
+	scheme := strings.ToLower(u.Scheme)
+	switch scheme {
+	case "blob":
+		return WebOrigin(u.Opaque)
+	case "file":
+		return "file://"
+	case "":
+		return "null"
+	}
+	if u.Host == "" || u.Opaque != "" {
+		return "null"
+	}
+	host := strings.ToLower(u.Host)
+	if p := u.Port(); p != "" && p == defaultPorts[scheme] {
+		host = strings.TrimSuffix(host, ":"+p)
+	}
+	return scheme + "://" + host
+}
+
+// defaultPorts are the ports WebOrigin leaves out, by scheme.
+var defaultPorts = map[string]string{"http": "80", "https": "443", "ws": "80", "wss": "443", "ftp": "21"}
+
 // WebNavigation is a web view's page and history.
 type WebNavigation struct {
 	URL          string

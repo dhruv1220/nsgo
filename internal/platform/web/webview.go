@@ -11,14 +11,7 @@ import (
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
 
-// webFrame is a web view's <iframe>, as NSH's web backend has it. HTML
-// loads as srcdoc in a sandbox with an origin of its own, so it never
-// reaches the app's page, with a bridge script first: the first message
-// carrying token hands the page a MessagePort, which
-// window.nsgo.postMessage writes to and which runs injected scripts and
-// history steps. A URL loads as it is (without its origin when it is the
-// app's own); the browser hides what such a page does, so it only gets
-// PostMessage and load events with the URL it was given.
+// webFrame is a web view's <iframe>, as NSH's web backend has it. HTML loads as srcdoc in a sandbox with an origin of its own, so it never reaches the app's page, with a bridge script first: it hands the app a MessagePort with token, which only the srcdoc's document knows, and window.nsgo.postMessage writes to the port, which also runs injected scripts and history steps. The app takes the port only from the frame's own window, so neither a frame within the page nor a page it went to has the bridge, and the page's messages report the source's origin. A URL loads as it is (without its origin when it is the app's own); the browser hides what such a page does, so it only gets PostMessage and load events with the URL it was given.
 type webFrame struct {
 	frame  js.Value
 	config driver.WebConfig
@@ -31,23 +24,17 @@ type webFrame struct {
 	warned bool // that commands do not reach the page
 }
 
-// webBridge is the script an HTML source starts with.
+// webBridge is the script an HTML source starts with: the port it hands the app queues what the page posts until the app takes it.
 func webBridge(token string) string {
 	return `(() => {
-  let port = null;
-  const queue = [];
-  window.nsgo = { postMessage(data) { data = String(data); port ? port.postMessage(data) : queue.push(data); } };
-  addEventListener("message", (e) => {
-    if (port || e.source !== parent || e.data !== ` + strconv.Quote(token) + ` || !e.ports[0]) return;
-    e.stopImmediatePropagation();
-    port = e.ports[0];
-    port.onmessage = (m) => {
-      const d = m.data;
-      if (d && d.eval != null) { try { (0, eval)(String(d.eval)); } catch (err) { console.error(err); } }
-      else if (d && d.go) history.go(d.go);
-    };
-    for (const data of queue.splice(0)) port.postMessage(data);
-  });
+  const channel = new MessageChannel(), port = channel.port1;
+  window.nsgo = { postMessage(data) { port.postMessage(String(data)); } };
+  port.onmessage = (m) => {
+    const d = m.data;
+    if (d && d.eval != null) { try { (0, eval)(String(d.eval)); } catch (err) { console.error(err); } }
+    else if (d && d.go) history.go(d.go);
+  };
+  parent.postMessage(` + strconv.Quote(token) + `, "*", [channel.port2]);
 })();`
 }
 
@@ -61,6 +48,26 @@ func (s *surface) createWeb(v *view) {
 	v.inner = w.frame
 	v.el.Call("appendChild", w.frame)
 	v.listeners.on(w.frame, "load", func(js.Value) { s.webLoaded(v) })
+	v.listeners.on(js.Global(), "message", func(e js.Value) { s.webBridged(v, e) })
+}
+
+// webBridged takes the port an HTML page's bridge hands the app: from the frame's own window, with the page's token.
+func (s *surface) webBridged(v *view, e js.Value) {
+	w := v.web
+	port := e.Get("ports").Index(0)
+	if w.token == "" || !e.Get("source").Equal(w.frame.Get("contentWindow")) || e.Get("data").Type() != js.TypeString ||
+		e.Get("data").String() != w.token || !port.Truthy() {
+		return
+	}
+	e.Call("stopImmediatePropagation")
+	w.closePort()
+	w.port = port
+	origin := w.config.Source.Origin()
+	w.portFn = js.FuncOf(func(_ js.Value, args []js.Value) any {
+		s.send(v, driver.Event{Kind: driver.EventMessage, Text: args[0].Get("data").String(), Origin: origin, MainFrame: true})
+		return nil
+	})
+	w.port.Set("onmessage", w.portFn)
 }
 
 // sameFrame reports whether a and b load the same frame, comparing what
@@ -196,24 +203,11 @@ func (s *surface) webNavigation(v *view, kind driver.EventKind, loading bool) {
 	}
 }
 
-// webLoaded hands a loaded HTML page its end of the bridge.
+// webLoaded reports a loaded page.
 func (s *surface) webLoaded(v *view) {
 	w := v.web
 	if !w.frame.Call("hasAttribute", "src").Bool() && !w.frame.Call("hasAttribute", "srcdoc").Bool() {
 		return
-	}
-	w.closePort()
-	if w.token != "" {
-		channel := js.Global().Get("MessageChannel").New()
-		w.port = channel.Get("port1")
-		w.portFn = js.FuncOf(func(_ js.Value, args []js.Value) any {
-			s.send(v, driver.Event{Kind: driver.EventMessage, Text: args[0].Get("data").String()})
-			return nil
-		})
-		w.port.Set("onmessage", w.portFn)
-		if win := w.frame.Get("contentWindow"); win.Truthy() {
-			win.Call("postMessage", w.token, "*", []any{channel.Get("port2")})
-		}
 	}
 	s.webNavigation(v, driver.EventLoad, false)
 }

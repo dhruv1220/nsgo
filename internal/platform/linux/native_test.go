@@ -360,6 +360,83 @@ func TestWebViewTalksToThePage(t *testing.T) {
 		driver.Bounds{Origin: driver.Point{X: 10, Y: 10}, Size: driver.Size{Width: 300, Height: 200}})
 }
 
+// TestWebMessagesComeOnlyFromTheSourcesPage loads a page with a frame of another origin, which posts to WebKit's handler itself and relays a message through the page, and which then goes to a page of the frame's origin. A web view reaches the app only from its source's page by default, one taking any origin from every page it shows, and neither from the frame. It runs in a process of its own, as TestWebViewsOutliveEachOther does.
+func TestWebMessagesComeOnlyFromTheSourcesPage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens a window")
+	}
+	if os.Getenv("NSGO_TEST_WEBKIT_PROCESS") != t.Name() {
+		cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
+		dir := t.TempDir()
+		cmd.Env = append(os.Environ(), "NSGO_TEST_WEBKIT_PROCESS="+t.Name(),
+			"XDG_DATA_HOME="+filepath.Join(dir, "data"), "XDG_CACHE_HOME="+filepath.Join(dir, "cache"))
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		if strings.Contains(string(out), "--- SKIP") {
+			t.Skipf("%s", out)
+		}
+		return
+	}
+	if err := openWebKit(); err != nil {
+		t.Skip(err)
+	}
+	page, other := webOriginServers(t)
+	title := "nsgo-native-" + t.Name()
+	app := func(cx *core.Scope) core.Node {
+		own, anyOrigin := core.NewSignal(cx, ""), core.NewSignal(cx, "")
+		cx.Effect(func() { cx.SetTitle(title + "|" + own.Get() + "|" + anyOrigin.Get()) })
+		heard := func(s *core.Signal[string]) func(core.WebMessage) {
+			return func(m core.WebMessage) { s.Update(func(v string) string { return v + m.Data + "@" + m.Origin + ";" }) }
+		}
+		frame := core.Style{Width: driver.Pt(150), Height: driver.Pt(100)}
+		return core.View{Style: core.Style{Width: driver.Pt(320), Height: driver.Pt(120), Direction: core.Row}, Children: []core.Node{
+			core.WebView{Source: core.WebSrc(page.URL + "/"), Style: frame, OnMessageFrom: heard(own),
+				OnLoad: func(n core.WebNavigation) {
+					if strings.HasSuffix(n.URL, "/next") {
+						own.Update(func(v string) string { return v + "loaded" })
+					}
+				}},
+			core.WebView{Source: core.WebSrc(page.URL + "/"), Style: frame, MessageOrigins: []string{"*"}, OnMessageFrom: heard(anyOrigin)},
+		}}
+	}
+	w := startTestWindow(t, app, Options{ID: "nsgo-test-web-origins", Title: title, Width: 320, Height: 120})
+	from, to := page.URL, other.URL
+	waitForTitle(t, w, title+"|main@"+from+";relayed@"+from+";loaded|main@"+from+";relayed@"+from+";other@"+to+";")
+}
+
+// webOriginServers serves the pages of TestWebMessagesComeOnlyFromTheSourcesPage from two origins: page's posts, holds a frame of other's and goes to other's once the frame relayed a message through it.
+func webOriginServers(t *testing.T) (page, other *httptest.Server) {
+	other = httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/frame":
+			fmt.Fprint(rw, `<!doctype html><script>
+try { window.webkit.messageHandlers.nsgo.postMessage('frame'); } catch (e) {}
+try { window.nsgo.postMessage('frame'); } catch (e) {}
+parent.postMessage('relay', '*');
+</script>`)
+		case "/next":
+			fmt.Fprint(rw, `<!doctype html><script>window.nsgo.postMessage('other');</script>`)
+		}
+	}))
+	t.Cleanup(other.Close)
+	page = httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(rw, `<!doctype html><script>
+addEventListener('message', (e) => {
+  if (e.data !== 'relay') return;
+  window.nsgo.postMessage('relayed');
+  location.href = '%[1]s/next';
+});
+window.nsgo.postMessage('main');
+</script><iframe src="%[1]s/frame"></iframe>`, other.URL)
+	}))
+	t.Cleanup(page.Close)
+	return page, other
+}
+
 // TestWebViewsOutliveEachOther opens an Incognito web view and one in the app's session, both serving an app-owned scheme, and one that serves none. Each page keeps its scheme and downloads as the others unmount and mount again, the page without a handler gets an error rather than a load that never ends, and a view that unmounts mid-download cancels it. It skips where WebKitGTK 6.0 is missing. WebKit takes the thread that first uses it for its main one, and each test runs GTK on a thread of its own, so the test runs in a process of its own.
 func TestWebViewsOutliveEachOther(t *testing.T) {
 	if testing.Short() {

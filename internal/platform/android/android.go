@@ -308,6 +308,9 @@ func (s *surface) serve(app engine.App, opts Options, test *testOpen) {
 				if json.Unmarshal([]byte(data), &download) == nil {
 					ev.Data = &download
 				}
+			case driver.EventMessage:
+				// WebNode takes only the top frame's, with the URL of its page.
+				ev.Origin, ev.MainFrame = driver.WebOrigin(data), true
 			}
 			if ev.Kind == driver.EventWheel {
 				// A wheel's delta comes as the velocity, and whether a
@@ -1096,17 +1099,6 @@ func readMessage(r *bufio.Reader) (byte, []byte, error) {
 	return head[0], payload, nil
 }
 
-// webInterface is the JavaScript interface WebNode adds for pages to post
-// through, as WebNode.INTERFACE: window.nsgo is there from a page's first
-// script, as NSH's window.nsh is.
-const webInterface = "nsgo"
-
-// webBridge wraps the interface once the script before content runs, so
-// pages post any value as a string, as core.WebBridge's do; the Java
-// bridge turns objects into "undefined".
-const webBridge = "(function (n) { if (n) window." + webInterface +
-	" = { postMessage: function (data) { n.postMessage(String(data)); } }; })(window." + webInterface + ");"
-
 // defaults are a new view's style and props as writeViewStyle and
 // writeViewProps write them, which a surface's first batch carries:
 // NsgoView starts each view it creates in them, with no events, so the
@@ -1397,8 +1389,8 @@ func encode(w *writer, b *driver.MountBatch, first bool, requests []uint32, nati
 			w.str(c.Source.HTML)
 			w.str(c.Source.BaseURL)
 			w.str(c.InjectedJavaScript)
-			// The bridge comes first, so the app's script can post.
-			w.str(webBridge + "\n" + c.InjectedJavaScriptBeforeContent)
+			// WebNode runs its bridge first, so the app's script can post.
+			w.str(c.InjectedJavaScriptBeforeContent)
 			w.str(c.UserAgent)
 			// Android has no back and forward swipes.
 			w.flags(c.NoScroll, c.NoJavaScript, c.Restricted, c.Incognito, c.Media&driver.WebMicrophone != 0, c.Media&driver.WebCamera != 0)

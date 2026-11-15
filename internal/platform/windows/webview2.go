@@ -173,6 +173,7 @@ const (
 	permissionPutSavesInProfile = 12
 
 	// ICoreWebView2WebMessageReceivedEventArgs
+	messageGetSource    = 3
 	messageGetJSON      = 4
 	messageTryGetString = 5
 
