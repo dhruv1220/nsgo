@@ -1003,8 +1003,21 @@ var indexHTML = template.Must(template.New("index").Parse(`<!doctype html>
 <script type="module" src="{{.Module}}"></script>
 {{- if .Reload}}
 <script type="module">
-// nsgo dev's server: each new build loads, a failed one shows over the app. Its address for the page carries the run's token in the fragment.
-const token = new URLSearchParams(location.hash.slice(1)).get("nsgo-token") ?? "";
+// nsgo dev's server: each new build loads, a failed one shows over the app. Its address for the page carries the run's token in the fragment, which the page moves to the tab's sessionStorage, out of the address bar, the history and whatever copies the address, and where a reload and the app's Go (devtools.Token) take it from; a browser that keeps no storage for the page leaves it in the address.
+const token = (() => {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const given = hash.get("nsgo-token");
+  try {
+    if (given === null) return sessionStorage.getItem("nsgo-token") ?? "";
+    sessionStorage.setItem("nsgo-token", given);
+  } catch {
+    return given ?? "";
+  }
+  hash.delete("nsgo-token");
+  const rest = hash.toString();
+  history.replaceState(history.state, "", location.pathname + location.search + (rest ? "#" + rest : ""));
+  return given;
+})();
 const events = new EventSource("/_nsgo/events?nsgo-token=" + encodeURIComponent(token));
 let overlay;
 events.onmessage = (e) => {

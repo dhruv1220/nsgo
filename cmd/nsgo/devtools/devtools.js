@@ -20,8 +20,21 @@ function el(tag, props, ...children) {
   return e;
 }
 
-// nsgo dev's address for the page carries the run's token in the fragment, which the server takes from a header or, from an EventSource, the query.
-const token = new URLSearchParams(location.hash.slice(1)).get("nsgo-token") ?? "";
+// nsgo dev's address for the page carries the run's token in the fragment, which the server takes from a header or, from an EventSource, the query. The page moves it to the tab's sessionStorage, out of the address bar, the history and whatever copies the address, and a reload takes it from there; a browser that keeps no storage for the page leaves it in the address.
+const token = (() => {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const given = hash.get("nsgo-token");
+  try {
+    if (given === null) return sessionStorage.getItem("nsgo-token") ?? "";
+    sessionStorage.setItem("nsgo-token", given);
+  } catch {
+    return given ?? "";
+  }
+  hash.delete("nsgo-token");
+  const rest = hash.toString();
+  history.replaceState(history.state, "", location.pathname + location.search + (rest ? "#" + rest : ""));
+  return given;
+})();
 
 function send(cmd) {
   return fetch("/_nsgo/devtools/command", { method: "POST", headers: { "Content-Type": "application/json", "X-NSGo-Token": token }, body: JSON.stringify({ surface: state.surface, ...cmd }) });

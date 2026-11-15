@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -263,5 +264,94 @@ func TestWebStrictCSP(t *testing.T) {
 	scripts := `Array.from(Object.keys(document.querySelector("iframe").contentWindow.__nsgoScripts ?? {})).sort().join()`
 	if got := eval(scripts); got != "App.tsx,focus.tsx" {
 		t.Fatalf("the realm's scripts = %v", got)
+	}
+}
+
+// TestWebDevClientKeepsItsToken runs examples/tsx built by nsgo dev -devtools for the web in a headless browser, opened at the address nsgo dev prints: the page takes the run's token out of its address, and the app's Go, which starts after, still answers DevTools, as it does after a reload, whose address has no token at all.
+func TestWebDevClientKeepsItsToken(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds an app for the web")
+	}
+	if _, err := findBrowser(); err != nil {
+		t.Skip(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	p, err := load("../../examples/tsx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.prepareDev(devOptions{devtools: true})
+	dir := t.TempDir()
+	if err := buildWeb(ctx, p, dir, true); err != nil {
+		t.Fatal(err)
+	}
+	s, err := startDevServer(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	s.serve(dir)
+	pages := events(t, s.url()+"/_nsgo/devtools/stream?nsgo-token="+s.token)
+	if got := next(t, pages); got != `{"type":"connected"}` {
+		t.Fatalf("the page's first event = %q", got)
+	}
+	// answered asks the app for its surfaces, as a DevTools page does, until it answers.
+	answered := func() {
+		t.Helper()
+		for deadline := time.Now().Add(90 * time.Second); time.Now().Before(deadline); {
+			resp := request(t, s, "POST", "/_nsgo/devtools/command", "application/json", `{"op":"surfaces"}`, s.token)
+			resp.Body.Close()
+			for wait := time.After(time.Second); ; {
+				select {
+				case got := <-pages:
+					if strings.Contains(got, `"type":"surfaces"`) {
+						return
+					}
+					continue
+				case <-wait:
+				}
+				break
+			}
+		}
+		t.Fatal("the app never answered DevTools")
+	}
+
+	b, err := startBrowser(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.close()
+	raw, err := b.call("", "Target.createTarget", map[string]any{"url": s.pageURL(fmt.Sprintf("http://localhost:%d", s.port), "/")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var target struct{ TargetID string }
+	json.Unmarshal(raw, &target)
+	raw, err = b.call("", "Target.attachToTarget", map[string]any{"targetId": target.TargetID, "flatten": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attached struct{ SessionID string }
+	json.Unmarshal(raw, &attached)
+	pg := &webPage{b: b, session: attached.SessionID}
+	answered()
+	if _, err := pg.call("Page.reload", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	// The app before the reload has gone once its page has; what answers is the reloaded one.
+	time.Sleep(time.Second)
+	for len(pages) > 0 {
+		<-pages
+	}
+	answered()
+	raw, err = pg.call("Runtime.evaluate", map[string]any{"expression": "location.href", "returnByValue": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var href struct{ Result struct{ Value string } }
+	json.Unmarshal(raw, &href)
+	if strings.Contains(href.Result.Value, s.token) {
+		t.Errorf("the page's address %s carries the run's token", href.Result.Value)
 	}
 }

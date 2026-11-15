@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -328,4 +330,117 @@ func TestDevTokenStaysOffCommandLines(t *testing.T) {
 	if !strings.Contains(gives, url) {
 		t.Errorf("opening the page gives the browser %q, not %s", gives, url)
 	}
+}
+
+// TestDevPagesTakeTheTokenOutOfTheirAddress opens the DevTools page and the web target's page at the addresses nsgo dev prints, in a headless browser: each takes the run's token out of its address at once, and keeps it for the tab, so that after a reload it still follows the server and the DevTools page still sends the app its commands.
+func TestDevPagesTakeTheTokenOutOfTheirAddress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts a browser")
+	}
+	if _, err := findBrowser(); err != nil {
+		t.Skip(err)
+	}
+	s, err := startDevServer(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	// The web target's page, with nothing to run but nsgo dev's script.
+	dir := t.TempDir()
+	for _, name := range []string{"exec.js", "page.css", "mount.js"} {
+		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := os.Create(filepath.Join(dir, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = indexHTML.Execute(f, map[string]any{"Name": "Token", "Exec": "exec.js", "Style": "page.css", "Module": "mount.js", "Reload": true})
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.serve(dir)
+	// A build failed, which the page shows once it follows the server.
+	s.send("error", "the build failed")
+	app := events(t, s.url()+"/_nsgo/events?nsgo-token="+s.token)
+	if got := next(t, app); got != "hello" {
+		t.Fatalf("the app's first event = %q", got)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	b, err := startBrowser(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.close()
+	open := func(url string) *webPage {
+		raw, err := b.call("", "Target.createTarget", map[string]any{"url": url})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var target struct{ TargetID string }
+		json.Unmarshal(raw, &target)
+		raw, err = b.call("", "Target.attachToTarget", map[string]any{"targetId": target.TargetID, "flatten": true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var attached struct{ SessionID string }
+		json.Unmarshal(raw, &attached)
+		return &webPage{b: b, session: attached.SessionID}
+	}
+	eval := func(pg *webPage, expr string) any {
+		t.Helper()
+		raw, err := pg.call("Runtime.evaluate", map[string]any{"expression": expr, "returnByValue": true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res struct{ Result struct{ Value any } }
+		json.Unmarshal(raw, &res)
+		return res.Result.Value
+	}
+	wait := func(pg *webPage, expr string) {
+		t.Helper()
+		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			if eval(pg, expr) == true {
+				return
+			}
+		}
+		t.Fatalf("the page at %v never had %s", eval(pg, "location.href"), expr)
+	}
+	// heard waits for the app to hear the DevTools page's first command, which it sends once it follows the app's messages.
+	heard := func() {
+		t.Helper()
+		for {
+			if got := next(t, app); strings.HasPrefix(got, "devtools ") && strings.Contains(got, `"surfaces"`) {
+				return
+			}
+		}
+	}
+	tokenGone := fmt.Sprintf("!location.href.includes(%q) && sessionStorage.getItem(\"nsgo-token\") === %q", s.token, s.token)
+	reload := func(pg *webPage) {
+		t.Helper()
+		eval(pg, "window.before = true")
+		if _, err := pg.call("Page.reload", map[string]any{}); err != nil {
+			t.Fatal(err)
+		}
+		wait(pg, "!window.before && document.readyState === 'complete'")
+	}
+
+	devtools := open(s.pageURL(s.url(), "/_nsgo/devtools/"))
+	heard()
+	wait(devtools, tokenGone)
+	reload(devtools)
+	heard()
+	wait(devtools, tokenGone)
+
+	failed := `document.body.innerText.includes("Build failed")`
+	web := open(s.pageURL(s.url(), "/?nsgo-fps"))
+	wait(web, failed)
+	wait(web, tokenGone+` && location.search === "?nsgo-fps"`)
+	reload(web)
+	wait(web, failed)
+	wait(web, tokenGone)
 }
