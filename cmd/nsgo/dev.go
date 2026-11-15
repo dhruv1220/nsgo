@@ -476,7 +476,7 @@ func ownHost(hostport string) bool {
 	if err != nil || name == "" {
 		return false
 	}
-	name = strings.ToLower(strings.TrimSuffix(name, ".local"))
+	name = strings.TrimSuffix(strings.ToLower(name), ".local")
 	return host == name || host == name+".local"
 }
 

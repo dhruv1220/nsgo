@@ -24,7 +24,7 @@ import (
 
 // nsgo dev -automation: the dev server relays the requests of nsgo mcp, or any tool holding the session file's token, to the running app, whose agent answers them (package nsgotest), and answers status, logs and reload itself. The requests and answers travel over the channel the app keeps with the server for DevTools (devtools.go), so the app never listens:
 //
-//	POST /_nsgo/automation     a tool's request; loopback only, no Origin, Authorization: Bearer <session token>
+//	POST /_nsgo/automation       a tool's request; loopback only, no Origin, Authorization: Bearer <session token>
 //	GET  /_nsgo/events?devtools  with the run's token, the app's DevTools stream, which also carries the requests as automation events; one app at a time
 //	POST /_nsgo/devtools/out     with the run's token, the app's DevTools messages, whose automation messages are the answers and reach no DevTools page
 //
