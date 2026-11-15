@@ -5,6 +5,7 @@
 NSGo's first release is a cross-platform native UI framework written in Go. Write an app once, in Go or TSX, and it runs on phones, tablets, TVs, watches, desktops and the web, drawn by each platform's own views.
 
 - **Native views.** Text, input methods, scrolling, menus and accessibility are the platform's own, and others imitate what one has, such as Liquid Glass.
+- **Editable combobox accessibility.** macOS exposes input-backed comboboxes as `AXComboBox` and keeps select triggers as `AXPopUpButton`.
 - **Go all the way down.** The engine, layout and every backend are Go, with no C, no cgo and no JavaScript engine for Go apps.
 - **Every target from one Mac.** Go and Xcode build every platform, with no NDK, Android SDK, JDK, GTK or Windows toolchain.
 - **Fine-grained updates.** Components run once, signals update only what reads them, and animation runs on the platform's frame clock.

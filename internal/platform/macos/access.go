@@ -131,6 +131,11 @@ func (v *view) axRole() [2]string {
 		// A button that stays on, as browsers make ARIA's aria-pressed.
 		return [2]string{"AXCheckBox", "AXToggle"}
 	}
+	if p.Role == driver.RoleCombobox && v.kind == driver.KindInput {
+		// An input that opens suggestions is an editable combobox. Keep the
+		// popup-button role for select-style triggers, which are containers.
+		return [2]string{"AXComboBox", ""}
+	}
 	if r, ok := roles[p.Role]; ok {
 		return r
 	}
