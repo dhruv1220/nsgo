@@ -156,7 +156,7 @@ func (cx *Scope) PopupMenu(items []MenuItem, at Point, closed func()) {
 		}
 		return
 	}
-	t.popupClosed(t.popup.id)
+	t.popupClosed(t.popup.id, false)
 	t.alertID++
 	// The menu before it can no longer report a choice.
 	t.popup = popupMenu{id: t.alertID, actions: map[uint32]menuAction{}, owner: owner, closed: closed}
@@ -166,10 +166,8 @@ func (cx *Scope) PopupMenu(items []MenuItem, at Point, closed func()) {
 	t.changed = true
 }
 
-// popupClosed runs the closed callback of context menu id once it
-// closed. Its items stay choosable until another menu replaces it, so a
-// platform may report the item chosen after the menu closed.
-func (t *Tree) popupClosed(id uint32) {
+// popupClosed runs the closed callback of context menu id once it closed: by the user when the platform reports it, else as another menu replaces it. Its items stay choosable until another menu replaces it, so a platform may report the item chosen after the menu closed.
+func (t *Tree) popupClosed(id uint32, user bool) {
 	p := t.popup
 	if id == 0 || p.id != id {
 		return
@@ -180,8 +178,10 @@ func (t *Tree) popupClosed(id uint32) {
 		if owner.disposed {
 			owner = t.root
 		}
-		// The user closed it, choosing or not (mayMoveFocus).
-		t.activated = owner
+		if user {
+			// The user closed it, choosing or not (mayMoveFocus); a menu replacing it is not the user's input on its owner's views.
+			t.activated = owner
+		}
 		t.within(owner, p.closed)
 	}
 }
