@@ -392,7 +392,8 @@ type Input struct {
 	Readonly     bool
 	Disabled     func() bool
 	KeyboardType KeyboardType
-	AutoFocus    bool
+	// AutoFocus focuses the field as it mounts; under a confined owner, only as Scope.Confine allows.
+	AutoFocus bool
 	// Multiline wraps the text in lines and grows with them unless its
 	// style sizes it; Return inserts a line break unless SubmitBehavior
 	// says else.
@@ -619,9 +620,9 @@ func (r *Ref) Frame() (Bounds, bool) {
 	return r.n.frame, true
 }
 
-// Focus moves keyboard focus to the element, a text field.
+// Focus moves keyboard focus to the element, a text field. Under a confined owner it does only as Scope.Confine allows.
 func (r *Ref) Focus() {
-	if r.n != nil && !r.n.deleted {
+	if r.n != nil && !r.n.deleted && r.t.mayMoveFocus(r.n.owner) {
 		r.t.command(driver.ItemFocus, r.n)
 	}
 }

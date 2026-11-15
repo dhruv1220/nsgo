@@ -323,6 +323,69 @@ mount(() => <View><Input testID="plugin-field" /><Text testID="plugin-log">{() =
 	}
 }
 
+// A plugin takes the focus on its own only while it has it or as the user's press on it opens what asks for it, so a timer cannot move the focus, and the host's keys with it, from the host's field; an app not sandboxed moves it as it likes.
+func TestSandboxTakesTheFocusOnlyFromTheUser(t *testing.T) {
+	const source = `import { mount, signal, keymap, View, Text } from "nsgo";
+import { Input, Dialog } from "nsgo/base";
+const log = signal(""), open = signal(false);
+keymap.bind("mod+s", () => log.set(log() + "save;"), { when: "always" });
+let field, other;
+setTimeout(() => field.focus(), 100);
+setTimeout(() => other.focus(), 300);
+mount(() => <View>
+	<Input testID="plugin-field" ref={field} />
+	<Input testID="plugin-other" ref={other} />
+	<Text testID="open" onPress={() => open.set(true)}>Open</Text>
+	<Dialog open={open()}><Input testID="dialog-field" autoFocus /></Dialog>
+	<Text testID="plugin-log">{() => "plugin " + log()}</Text>
+</View>);`
+	for _, sandboxed := range []bool{true, false} {
+		name := map[bool]string{true: "sandboxed", false: "not sandboxed"}[sandboxed]
+		var plugin func(cx *core.Scope) core.Node
+		if sandboxed {
+			p := verified(t, source, pkg.Capabilities{})
+			plugin = tsx.View{Package: p}.Render
+		} else {
+			code, err := bundler.Compile(fstest.MapFS{"App.tsx": {Data: []byte(source)}}, "App.tsx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			plugin = tsx.App("App.js", string(code))
+		}
+		var host []string
+		app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+			cx.OnKey("mod+s", func() { host = append(host, "save") })
+			return core.View{Children: []core.Node{core.Input{TestID: "host-field"}, core.Dynamic(plugin)}}
+		})
+		focused := func(what, want string) {
+			t.Helper()
+			for _, id := range []string{"host-field", "plugin-field", "plugin-other", "dialog-field"} {
+				if app.Exists("id:"+id) && app.Find("id:"+id).Focused != (id == want) {
+					t.Errorf("%s, %s: %s focused %v", name, what, id, !(id == want))
+				}
+			}
+		}
+		app.Focus("id:host-field")
+		app.Advance(150 * time.Millisecond)
+		if sandboxed {
+			focused("after a timer's focus", "host-field")
+			app.Key("mod+s")
+			if got := app.Find("id:plugin-log").Text; got != "plugin " || !slices.Equal(host, []string{"save"}) {
+				t.Errorf("after a timer's focus: the plugin's log %q, the host's %q", got, host)
+			}
+		} else {
+			focused("after a timer's focus", "plugin-field")
+		}
+		app.Focus("id:plugin-field")
+		app.Advance(200 * time.Millisecond)
+		focused("after a timer's focus while it has the focus", "plugin-other")
+		app.Focus("id:host-field")
+		app.Press("id:open")
+		app.WaitFor("id:dialog-field", time.Second)
+		focused("after a press on it opened a dialog", "dialog-field")
+	}
+}
+
 func TestStopsAtTheNodeQuota(t *testing.T) {
 	p := verified(t, `import { mount, signal, View, Text } from "nsgo";
 const n = signal(1);

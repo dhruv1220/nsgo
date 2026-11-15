@@ -157,6 +157,8 @@ type Tree struct {
 	// shows (updateFocusHint).
 	focusByKeyboard bool
 	focusHint       *node
+	// activated is the owner of the view the user's input last landed on, a press, a touch or a menu chosen, until the commit after it, which lets a confined owner move the focus (mayMoveFocus).
+	activated *Scope
 	// reveals are the Reveals asked for, done at the commit's layout.
 	reveals []reveal
 	// pointerStyled is set once a style has named PointerEvents, as apps
@@ -2123,6 +2125,12 @@ func (t *Tree) Dispatch(ev driver.Event) {
 	n := t.node(ev.ID)
 	if n == nil {
 		return
+	}
+	switch ev.Kind {
+	case driver.EventPressDown, driver.EventPressUp, driver.EventPress, driver.EventLongPress, driver.EventContextMenu,
+		driver.EventAccessibilityAction:
+		// The user's own input on n lets its owner move the focus until the commit after it (mayMoveFocus).
+		t.activated = n.owner
 	}
 	if n.web != nil {
 		t.dispatchWeb(n, ev)

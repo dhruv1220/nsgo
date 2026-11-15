@@ -1306,6 +1306,94 @@ func TestConfinedKeysAndBacksFollowTheFocus(t *testing.T) {
 	press("host save", "host back")
 }
 
+// A confined owner's views take the focus on their own, by a Ref's Focus, AutoFocus or DismissKeyboard, only while it is already in them or until the commit after the user's input landed on one of them; an owner not confined always may.
+func TestConfinedFocusFollowsTheUser(t *testing.T) {
+	for _, confined := range []bool{true, false} {
+		var field, other Ref
+		var open *Signal[bool]
+		var plugin *Scope
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			shown := Dynamic(func(cx *Scope) Node {
+				plugin = cx
+				if confined {
+					cx.Confine()
+				}
+				open = NewSignal(cx, false)
+				return View{Children: []Node{
+					Input{TestID: "plugin-field", Ref: &field},
+					Input{TestID: "plugin-other", Ref: &other},
+					View{TestID: "plugin-button", OnPress: func(PressEvent) { open.Set(true) }, Style: Style{Height: Pt(20)}},
+					View{TestID: "plugin-touch", OnTouch: func(TouchEvent) {}, Style: Style{Height: Pt(20)}},
+					Show{When: open.Get, Then: func(*Scope) Node { return Input{TestID: "plugin-dialog", AutoFocus: true} }},
+				}}
+			})
+			return View{Children: []Node{Input{TestID: "host-field"}, View{TestID: "host-button", OnPress: func(PressEvent) {}}, shown}}
+		})
+		h.commit()
+		// focused is the view the commit's focus requests focus, reported back as a platform does; 0 for none.
+		focused := func() NodeID {
+			var id NodeID
+			for _, it := range h.commit().Items {
+				switch it.Kind {
+				case driver.ItemFocus:
+					id = it.ID
+					h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: it.ID})
+				case driver.ItemDismissKeyboard:
+					id = h.tree.view.id
+				}
+			}
+			return id
+		}
+		focus := func(id string) {
+			h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find(id).id})
+			h.commit()
+		}
+		name := map[bool]string{true: "confined", false: "not confined"}[confined]
+		want := func(what string, got NodeID, allowed bool, id NodeID) {
+			t.Helper()
+			if allowed && got != id || !allowed && got != 0 {
+				t.Errorf("%s, %s: focused %d, want %d", name, what, got, map[bool]NodeID{true: id}[allowed])
+			}
+		}
+
+		focus("host-field")
+		field.Focus()
+		want("Focus while the host has the focus", focused(), !confined, h.find("plugin-field").id)
+		focus("host-field")
+		plugin.DismissKeyboard()
+		want("DismissKeyboard while the host has the focus", focused(), !confined, h.tree.view.id)
+		focus("host-field")
+		// The user's press on the host's view lets the host's views move the focus, not the confined owner's.
+		h.tree.Dispatch(driver.Event{Kind: driver.EventPress, ID: h.find("host-button").id})
+		field.Focus()
+		want("Focus after a press on the host", focused(), !confined, h.find("plugin-field").id)
+
+		// A press on its button shows a field with AutoFocus, which takes the focus, as macOS and Android press without focusing.
+		focus("host-field")
+		h.tree.Dispatch(driver.Event{Kind: driver.EventPress, ID: h.find("plugin-button").id})
+		want("AutoFocus after a press on it", focused(), true, h.find("plugin-dialog").id)
+		// The press lasted until its commit.
+		focus("host-field")
+		field.Focus()
+		want("Focus a commit after its press", focused(), !confined, h.find("plugin-field").id)
+
+		// A finger lifting off its view is the user's input too, as an editor's tap focuses on its release.
+		focus("host-field")
+		at := h.tree.surfaceBounds(h.find("plugin-touch")).Origin
+		at.X, at.Y = at.X+1, at.Y+1
+		h.tree.Dispatch(finger(GestureBegan, at, 0))
+		h.commit()
+		h.tree.Dispatch(finger(GestureEnded, at, 50))
+		field.Focus()
+		want("Focus at a touch on it", focused(), true, h.find("plugin-field").id)
+
+		// With the focus in it, it moves the focus as it likes.
+		focus("plugin-field")
+		other.Focus()
+		want("Focus while it has the focus", focused(), true, h.find("plugin-other").id)
+	}
+}
+
 func TestChangesInsideRegionsRelayout(t *testing.T) {
 	var label *Signal[string]
 	var open *Signal[bool]

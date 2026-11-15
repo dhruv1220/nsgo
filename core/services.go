@@ -89,10 +89,9 @@ func (t *Tree) answer(ev driver.Event) {
 	t.within(owner, func() { w.done(ev) })
 }
 
-// DismissKeyboard takes focus away from the focused text field, hiding
-// the software keyboard.
+// DismissKeyboard takes focus away from the focused text field, hiding the software keyboard. Under a confined owner it does only as Scope.Confine allows.
 func (cx *Scope) DismissKeyboard() {
-	if t := cx.tree(); t != nil {
+	if t := cx.tree(); t != nil && t.mayMoveFocus(cx.current()) {
 		t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemDismissKeyboard})
 		t.changed = true
 	}
