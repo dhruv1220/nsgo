@@ -1,6 +1,7 @@
 package tsx_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -81,13 +82,17 @@ func TestEventsPassOneObject(t *testing.T) {
 			t.Errorf("no %q in nsgo/base's declarations", want)
 		}
 	}
-	defer func() {
-		if recover() == nil {
-			t.Error("an event of several unnamed arguments registers")
-		}
-	}()
-	tsx.Register("app/unnamed", map[string]core.Node{"Bad": badEvent{}})
+	if !strings.Contains(unnamedEvent, "needs tsx.Event") {
+		t.Errorf("an event of several unnamed arguments registers: %q", unnamedEvent)
+	}
 }
+
+// unnamedEvent is what registering badEvent panicked with, before any app started.
+var unnamedEvent = func() (msg string) {
+	defer func() { msg = fmt.Sprint(recover()) }()
+	tsx.Register("app/unnamed", map[string]core.Node{"Bad": badEvent{}})
+	return ""
+}()
 
 // badEvent has an event tsx.Event does not name.
 type badEvent struct {

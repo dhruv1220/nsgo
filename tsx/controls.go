@@ -36,7 +36,9 @@ func init() {
 	Fields[base.ScrollbarLook](map[string]string{"Label": "accessibilityLabel"})
 	Optional[base.ScrollbarTheme]("Mode", "Motion", "MinThumbLength", "Vertical", "Horizontal")
 	Fields[base.PaginationItem](map[string]string{})
-	options := func(extra ...Option) []Option { return append(append([]Option(nil), controlEnums...), extra...) }
+	options := func(extra ...Option) []Option {
+		return append(append([]Option{SandboxSafe()}, controlEnums...), extra...)
+	}
 	Register("nsgo/base", map[string]core.Node{"Toggle": base.Toggle{}}, options(Event("OnChange", "pressed"))...)
 	Register("nsgo/base", map[string]core.Node{
 		"ToggleGroup":      base.ToggleGroup{},
@@ -102,6 +104,7 @@ func init() {
 				return nil
 			}))
 		}, "scroll?: ViewRef | null"))...)
+	// A theme restyles the whole window's scroll bars, not a sandbox's alone.
 	RegisterStatics("nsgo/base", "Scrollbar", map[string]any{"setTheme": base.SetScrollbarTheme})
 	Shape("SliderValue", `export type SliderValue = number | [number, number];`, func(base.SliderValue) map[string]any { return nil }, nil)
 }

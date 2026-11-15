@@ -109,9 +109,9 @@ var enums = []tsx.Option{
 	tsx.Enum(map[string]uiflow.CardVariant{"default": uiflow.CardDefault, "accent": uiflow.CardAccent}),
 }
 
-// options are enums with what one Register adds.
+// options are enums with what one Register adds, for sandboxes too.
 func options(extra ...tsx.Option) []tsx.Option {
-	return append(append([]tsx.Option(nil), enums...), extra...)
+	return append(append([]tsx.Option{tsx.SandboxSafe()}, enums...), extra...)
 }
 
 func init() {
@@ -179,13 +179,13 @@ func init() {
 	tsx.Register(module, map[string]core.Node{"ImageCompare": ui.ImageCompare{}}, options(tsx.Event("OnChange", "position"))...)
 	tsx.Register(module, map[string]core.Node{"ScrollView": ui.ScrollView{}}, options()...)
 	tsx.Register(module, map[string]core.Node{"ResizablePanelGroup": ui.ResizablePanelGroup{}}, options(tsx.Event("OnResize", "sizes"))...)
-	tsx.Register(module, map[string]core.Node{"DockArea": ui.DockArea{}}, tsx.DockOptions()...)
+	tsx.Register(module, map[string]core.Node{"DockArea": ui.DockArea{}}, append(tsx.DockOptions(), tsx.SandboxSafe())...)
 	tsx.Register(module, map[string]core.Node{"DockTabLabel": ui.DockTabLabel{}}, options()...)
 	tsx.Register(module, map[string]core.Node{"CommitGraph": commitgraph.View{}}, options(tsx.Omit("Selection"), tsx.Event("OnActivate", "commit"))...)
 	tsx.Register(module, map[string]core.Node{"Flow": uiflow.View{}}, options(tsx.Omit("State"), tsx.Event("OnSelect", "id"), tsx.Event("OnOpen", "id"))...)
 	tsx.Register(module, map[string]core.Node{"FlowCard": uiflow.Card{}}, options()...)
-	tsx.Register(module, map[string]core.Node{"DiffView": uidiff.View{}}, tsxdiff.Options()...)
-	tsx.Register(module, map[string]core.Node{"TextView": ui.TextView{}}, append(tsxtextview.Options(), tsx.Omit("StyleOf"))...)
+	tsx.Register(module, map[string]core.Node{"DiffView": uidiff.View{}}, append(tsxdiff.Options(), tsx.SandboxSafe())...)
+	tsx.Register(module, map[string]core.Node{"TextView": ui.TextView{}}, append(tsxtextview.Options(), tsx.Omit("StyleOf"), tsx.SandboxSafe())...)
 	tsx.Register(module, map[string]core.Node{"Input": ui.Input{}, "Field": ui.Field{}}, options(tsx.Event("OnChange", "value"), tsx.Event("OnSubmit", "text"))...)
 	tsx.Register(module, map[string]core.Node{"Icon": Icon{}}, options()...)
 	tsx.Register(module, map[string]core.Node{"List": List{}}, options(tsx.Event("OnSelectedChange", "selected"), tsx.Event("OnActivate", "index"))...)

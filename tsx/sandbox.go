@@ -106,9 +106,7 @@ type Sandbox struct {
 	// reaches what the app's code does. Grant, when set, narrows them to
 	// what it also allows: what the host gives this view.
 	Capabilities, Grant *pkg.Capabilities
-	// Modules are what it may import beyond SandboxModules: a module
-	// ("myapp"), one export ("nsgo/base.Terminal"), a native component
-	// ("native:MapView"), or "*" for everything.
+	// Modules are what it may import beyond SandboxModules and what is registered SandboxSafe into them: a module ("myapp"), one export ("nsgo/base.Terminal") or static ("nsgo/base.Scrollbar.setTheme"), a native component ("native:MapView"), or "*" for everything.
 	Modules []string
 	// Host is the channel its host module reaches, for the Go app to
 	// answer its calls and send it events; nil gives it none.
@@ -118,10 +116,7 @@ type Sandbox struct {
 	Storage string
 }
 
-// SandboxModules are the modules a sandboxed bundle imports without
-// Sandbox.Modules naming them: NSGo's own, with the Go components
-// registered into them but for those registered Unsandboxed, and none of
-// the Go functions registered with RegisterFunctions.
+// SandboxModules are the modules a sandboxed bundle imports without Sandbox.Modules naming them: NSGo's own, with what is registered into them SandboxSafe, and none of the Go functions registered with RegisterFunctions.
 var SandboxModules = []string{"nsgo", "nsgo:rt", "nsgo/base", "nsgo/base/plot", "nsgo/ui", "nsgo/ui/chat", "nsgo/mobile"}
 
 // Sandboxed returns the app of a bundle, as App does, run within s.
@@ -147,6 +142,8 @@ func (s Sandbox) start(cx *core.Scope, name, src string) *runtime {
 		}
 	}
 	cx.ProvideHost(s.Host)
+	// Its key bindings and back handlers, keymap's and BackHandler's and its Go components', fire only while the focus is in what it shows.
+	cx.Confine()
 	if s.Storage != "" {
 		cx.ProvideStorage(s.Storage, limits.Storage)
 	}
@@ -208,13 +205,16 @@ func (s *sandboxed) importsModule(module string) bool {
 	})
 }
 
-// importsExport reports whether the bundle may import an export of
-// module that is not sandboxed: one Modules names, or any of a module it
-// names that is not one of SandboxModules.
+// importsExport reports whether the bundle may import an export of module, or a static, that is not SandboxSafe: one Modules names, or any of a module it names that is not one of SandboxModules.
 func (s *sandboxed) importsExport(module, name string) bool {
 	return slices.ContainsFunc(s.modules, func(m string) bool {
 		return m == "*" || m == module+"."+name || m == module && !slices.Contains(SandboxModules, module)
 	})
+}
+
+// imports reports whether the runtime may import a registered export of module, or a static of one ("TextView.parse"): all of them unless it is sandboxed, else those registered SandboxSafe and those Modules names.
+func (r *runtime) imports(module, name string) bool {
+	return r.sandbox == nil || isSandboxSafe(module, name) || r.sandbox.importsExport(module, name)
 }
 
 // importsNative reports whether the bundle may show the embedding app's

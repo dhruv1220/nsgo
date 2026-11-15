@@ -1246,6 +1246,66 @@ func TestKeyBindingsFollowOwners(t *testing.T) {
 	}
 }
 
+// A confined owner's key bindings and back handlers fire only while the focus is on a view it owns, what it shows in a host's tree; else a press goes on to the host's, and the keymap leaves them out.
+func TestConfinedKeysAndBacksFollowTheFocus(t *testing.T) {
+	var log []string
+	h := newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
+		cx.OnKey("mod+s", func() { log = append(log, "host save") })
+		cx.OnBackPress(func() bool { log = append(log, "host back"); return true })
+		inner := cx.Child()
+		var shown Node
+		inner.Run(func() {
+			inner.Confine()
+			inner.OnKeyWith("mod+s", KeyOptions{When: KeyAlways}, func() { log = append(log, "plugin save") })
+			inner.OnKeyWith("a", KeyOptions{When: KeyAlways}, func() { log = append(log, "plugin a") })
+			inner.OnBackPress(func() bool { log = append(log, "plugin back"); return true })
+			shown = NewElement(inner, Input{TestID: "plugin-field"})
+		})
+		return View{Children: []Node{Input{TestID: "host-field"}, shown}}
+	})
+	keymap := func() []driver.KeyBinding {
+		for _, it := range h.commit().Items {
+			if it.Kind == driver.ItemKeymap {
+				return it.Keys
+			}
+		}
+		return nil
+	}
+	press := func(want ...string) {
+		t.Helper()
+		log = nil
+		h.tree.Dispatch(driver.Event{Kind: driver.EventKey, Text: "mod+s"})
+		h.tree.Dispatch(driver.Event{Kind: driver.EventKey, Text: "a"})
+		h.tree.Dispatch(driver.Event{Kind: driver.EventBack})
+		if !slices.Equal(log, want) {
+			t.Errorf("log = %q, want %q", log, want)
+		}
+	}
+	focus := func(id string) {
+		h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find(id).id})
+	}
+	hostOnly := []driver.KeyBinding{{Key: "mod+s", InText: true}}
+	if got := keymap(); !slices.Equal(got, hostOnly) {
+		t.Errorf("with no focus, keymap = %+v", got)
+	}
+	press("host save", "host back")
+	focus("host-field")
+	if got := keymap(); !slices.Equal(got, hostOnly) {
+		t.Errorf("focused outside, keymap = %+v", got)
+	}
+	press("host save", "host back")
+	focus("plugin-field")
+	if got, want := keymap(), []driver.KeyBinding{{Key: "mod+s", InText: true}, {Key: "mod+s", InText: true}, {Key: "a", InText: true}}; !slices.Equal(got, want) {
+		t.Errorf("focused inside, keymap = %+v, want %+v", got, want)
+	}
+	press("plugin save", "plugin a", "plugin back")
+	focus("host-field")
+	if got := keymap(); !slices.Equal(got, hostOnly) {
+		t.Errorf("focused outside again, keymap = %+v", got)
+	}
+	press("host save", "host back")
+}
+
 func TestChangesInsideRegionsRelayout(t *testing.T) {
 	var label *Signal[string]
 	var open *Signal[bool]

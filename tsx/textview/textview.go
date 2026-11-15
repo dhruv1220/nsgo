@@ -36,7 +36,7 @@ func Options() []tsx.Option {
 func init() {
 	// TSX apps read documents in NSH's typography, under their own classes
 	// and styles; Go's TextView takes the app's.
-	tsx.Register("nsgo/base", map[string]core.Node{"TextView": textview.TextView{}}, append(Options(), tsx.Preset("StyleOf", typography))...)
+	tsx.Register("nsgo/base", map[string]core.Node{"TextView": textview.TextView{}}, append(Options(), tsx.Preset("StyleOf", typography), tsx.SandboxSafe())...)
 	// NSH's static functions of TextView: a document of Markdown or HTML,
 	// as the view would read it, and a document's text.
 	tsx.RegisterStatics("nsgo/base", "TextView", map[string]any{
@@ -47,7 +47,7 @@ func init() {
 			return textview.ParseHTML(html, extensions...)
 		},
 		"plainText": func(d textview.Document) string { return d.PlainText() },
-	})
+	}, tsx.SandboxSafe())
 	tsx.Required[textview.Image]("Src")
 	tsx.Required[textview.Math]("TeX", "Display")
 	tsx.Required[textview.CodeBlock]("Code")

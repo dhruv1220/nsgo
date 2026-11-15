@@ -143,6 +143,7 @@ func (c *continuations) Exited() {
 }
 
 func newRuntime(cx *core.Scope) *runtime {
+	started.Store(true)
 	r := &runtime{vm: js.New(), cx: cx, modules: map[string]*js.Object{}, warned: map[string]bool{}, origin: cx.Now()}
 	r.root = &node{r: r, kind: kindRegion, elem: core.NewElement(cx, nil)}
 	r.vm.SetFieldNameMapper(js.UncapFieldNameMapper())
@@ -210,22 +211,22 @@ func (r *runtime) require(name string) js.Value {
 	if m, ok := r.modules[name]; ok {
 		return m
 	}
-	exports, ok := moduleTable[name]
-	if more, has := registeredExports(name); has {
-		exports, ok = append(append([]export(nil), exports...), more...), true
-	}
-	if !ok {
+	builtin, ok := moduleTable[name]
+	more, has := registeredExports(name)
+	if !ok && !has {
 		panic(r.vm.NewTypeError("nsgo: no module %q", name))
 	}
 	if r.sandbox != nil && !r.sandbox.importsModule(name) {
 		panic(r.vm.NewTypeError("nsgo: module %q is not given to this sandbox (Sandbox.Modules)", name))
 	}
 	m := r.vm.NewObject()
-	for _, e := range exports {
-		if r.sandbox != nil && isUnsandboxed(name, e.name) && !r.sandbox.importsExport(name, e.name) {
-			continue
-		}
+	for _, e := range builtin {
 		_ = m.Set(e.name, e.make(r))
+	}
+	for _, e := range more {
+		if r.imports(name, e.name) {
+			_ = m.Set(e.name, e.make(r))
+		}
 	}
 	r.addStatics(name, m)
 	r.modules[name] = m

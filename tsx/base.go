@@ -111,7 +111,7 @@ export interface DataTableSort { key: string; direction?: DataTableSortDirection
 			}
 			return m
 		}, nil)
-	registerPart("nsgo/base", "ResizablePanel", base.ResizablePanel{}, append(enumOptions, Event("OnResize", "size"))...)
+	registerPart("nsgo/base", "ResizablePanel", base.ResizablePanel{}, append(enumOptions, Event("OnResize", "size"), SandboxSafe())...)
 	Register("nsgo/base", map[string]core.Node{
 		"Button":              base.Button{},
 		"Checkbox":            base.Checkbox{},
@@ -137,8 +137,8 @@ export interface DataTableSort { key: string; direction?: DataTableSortDirection
 		"TableCaption":        base.TableCaption{},
 		"Toast":               toast.Toast{},
 		"Tooltip":             base.Tooltip{},
-	}, append(enumOptions, baseRenames...)...)
-	Register("nsgo/base", map[string]core.Node{"DockArea": dock.Area{}}, slices.Concat(enumOptions, baseRenames, dockOptions)...)
+	}, slices.Concat(enumOptions, baseRenames, []Option{SandboxSafe()})...)
+	Register("nsgo/base", map[string]core.Node{"DockArea": dock.Area{}}, slices.Concat(enumOptions, baseRenames, dockOptions, []Option{SandboxSafe()})...)
 }
 
 // baseRenames are the props whose NSH names base's fields do not give,
