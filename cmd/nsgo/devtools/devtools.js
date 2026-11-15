@@ -20,15 +20,18 @@ function el(tag, props, ...children) {
   return e;
 }
 
+// nsgo dev's address for the page carries the run's token in the fragment, which the server takes from a header or, from an EventSource, the query.
+const token = new URLSearchParams(location.hash.slice(1)).get("nsgo-token") ?? "";
+
 function send(cmd) {
-  return fetch("/_nsgo/devtools/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ surface: state.surface, ...cmd }) });
+  return fetch("/_nsgo/devtools/command", { method: "POST", headers: { "Content-Type": "application/json", "X-NSGo-Token": token }, body: JSON.stringify({ surface: state.surface, ...cmd }) });
 }
 
 // A site names a file and a line: whole for Go, relative to the app's directory for TSX through its source maps.
 const sitePattern = /^([^():\s][^():]*\.[A-Za-z]+|[A-Za-z]:\\[^():]*):(\d+)$/;
 const isPath = (site) => !!site && sitePattern.test(site);
 let projectDir = "";
-fetch("/_nsgo/devtools/project").then((r) => r.json()).then((p) => { projectDir = p.dir || ""; }).catch(() => {});
+fetch("/_nsgo/devtools/project", { headers: { "X-NSGo-Token": token } }).then((r) => r.json()).then((p) => { projectDir = p.dir || ""; }).catch(() => {});
 const absolute = (file) => (file.startsWith("/") || /^[A-Za-z]:\\/.test(file) || !projectDir ? file : projectDir.replace(/\/$/, "") + "/" + file);
 
 // A site is a whole path and a line, or NSGo's function for what it made itself; a path opens in the editor chosen.
@@ -375,7 +378,7 @@ function showTab(name) {
 }
 
 function connect() {
-  const es = new EventSource("/_nsgo/devtools/stream");
+  const es = new EventSource("/_nsgo/devtools/stream?nsgo-token=" + encodeURIComponent(token));
   es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   es.onerror = () => setStatus(false);
 }

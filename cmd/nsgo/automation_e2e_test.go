@@ -54,7 +54,7 @@ func TestAutomationEndToEnd(t *testing.T) {
 	h := startHub(t)
 	var out lockedBuffer
 	cmd := exec.Command(filepath.Join(bundle, "Contents", "MacOS", p.Name))
-	cmd.Env = append(os.Environ(), "NSGO_DEV_SERVER="+h.srv.url(), "NSGO_DEV_TOKEN="+h.appToken)
+	cmd.Env = append(os.Environ(), "NSGO_DEV_SERVER="+h.srv.url(), "NSGO_DEV_TOKEN="+h.srv.token)
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)

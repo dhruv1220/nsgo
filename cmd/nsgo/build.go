@@ -931,8 +931,9 @@ var indexHTML = template.Must(template.New("index").Parse(`<!doctype html>
 <script type="module" src="{{.Module}}"></script>
 {{- if .Reload}}
 <script type="module">
-// nsgo dev's server: each new build loads, a failed one shows over the app.
-const events = new EventSource("/_nsgo/events");
+// nsgo dev's server: each new build loads, a failed one shows over the app. Its address for the page carries the run's token in the fragment.
+const token = new URLSearchParams(location.hash.slice(1)).get("nsgo-token") ?? "";
+const events = new EventSource("/_nsgo/events?nsgo-token=" + encodeURIComponent(token));
 let overlay;
 events.onmessage = (e) => {
   const [kind, ...rest] = e.data.split(" ");
@@ -961,7 +962,7 @@ events.onmessage = (e) => {
   buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
   buttons.append(
     button("Copy", () => navigator.clipboard.writeText(text.textContent)),
-    button("Reload", () => fetch("/_nsgo/reload", { method: "POST" })),
+    button("Reload", () => fetch("/_nsgo/reload", { method: "POST", headers: { "X-NSGo-Token": token } })),
   );
   panel.append(title, text, buttons);
   overlay.append(panel);

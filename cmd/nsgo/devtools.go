@@ -19,7 +19,7 @@ import (
 //go:embed devtools
 var devtoolsPage embed.FS
 
-// The longest line the app may post to /_nsgo/devtools/out, and with its token, as an answer to the automation may hold a screenshot; tests lower them.
+// The longest line the app may post to /_nsgo/devtools/out, and under -automation, as an answer may hold a screenshot; tests lower them.
 var (
 	maxMessage = 64 << 20
 	maxAnswer  = 256 << 20
@@ -28,11 +28,11 @@ var (
 // automationMessage starts each automation message the app posts.
 var automationMessage = []byte(`{"type":"automation"`)
 
-// serveDevTools adds DevTools to the dev server: the page at /_nsgo/devtools/, the app's messages, which it posts to /_nsgo/devtools/out and pages follow at /_nsgo/devtools/stream, and the pages' commands, which /_nsgo/devtools/command passes to the app as devtools events. The app's automation messages, its answers to nsgo dev -automation's requests, go to the automation alone, and only from a post with the app's token.
+// serveDevTools adds DevTools to the dev server: the page at /_nsgo/devtools/, the app's messages, which it posts to /_nsgo/devtools/out and pages follow at /_nsgo/devtools/stream, and the pages' commands, which /_nsgo/devtools/command passes to the app as devtools events. All but the page's own files take the run's token (handle). The app's automation messages, its answers to nsgo dev -automation's requests, go to the automation alone.
 func (s *devServer) serveDevTools() {
 	page, _ := fs.Sub(devtoolsPage, "devtools")
 	s.mux.Handle("/_nsgo/devtools/", http.StripPrefix("/_nsgo/devtools/", http.FileServer(http.FS(page))))
-	s.mux.HandleFunc("/_nsgo/devtools/out", func(w http.ResponseWriter, r *http.Request) {
+	s.handle("/_nsgo/devtools/out", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST the app's messages", http.StatusMethodNotAllowed)
 			return
@@ -43,8 +43,8 @@ func (s *devServer) serveDevTools() {
 		s.mu.Lock()
 		hub := s.hub
 		s.mu.Unlock()
-		fromApp := hub != nil && tokenIs(r.Header.Get(appTokenHeader), hub.appToken)
-		// An answer may carry a screenshot, as base64: a post with the app's token takes longer lines.
+		fromApp := hub != nil
+		// An answer may carry a screenshot, as base64: under -automation a post takes longer lines.
 		limit := maxMessage
 		if fromApp {
 			limit = maxAnswer
@@ -80,13 +80,13 @@ func (s *devServer) serveDevTools() {
 			http.Error(w, err.Error(), status)
 		}
 	})
-	s.mux.HandleFunc("/_nsgo/devtools/stream", s.pageStream)
+	s.handle("/_nsgo/devtools/stream", s.pageStream)
 	// The app's directory, for the page's links to TSX files, which source maps name relative to it.
-	s.mux.HandleFunc("/_nsgo/devtools/project", func(w http.ResponseWriter, r *http.Request) {
+	s.handle("/_nsgo/devtools/project", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"dir": s.dir})
 	})
-	s.mux.HandleFunc("/_nsgo/devtools/command", func(w http.ResponseWriter, r *http.Request) {
+	s.handle("/_nsgo/devtools/command", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST a command", http.StatusMethodNotAllowed)
 			return

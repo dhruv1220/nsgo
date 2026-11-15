@@ -256,7 +256,7 @@ func iosSession(sys *appleOS, opts devOptions) session {
 			}
 			bundle := filepath.Join(p.cache("dev", cache), p.Name+".app")
 			if opts.clip != "" {
-				stop, wait, err := startIOSClip(ctx, p, udid, bundle, opts.clip, opts.server.url())
+				stop, wait, err := startIOSClip(ctx, p, udid, bundle, opts.clip, simulatorEnv(opts))
 				if err != nil {
 					return app{}, err
 				}
@@ -272,9 +272,8 @@ func iosSession(sys *appleOS, opts devOptions) session {
 				return app{}, err
 			}
 			// The simulator shares this Mac's network.
-			env := []string{"SIMCTL_CHILD_NSGO_DEV_SERVER=" + opts.server.url()}
 			args := append([]string{"simctl", "launch", "--console-pty", "--terminate-running-process", udid, p.ID}, opts.appFlags()...)
-			stop, wait, err := startProcessEnv(env, "xcrun", args...)
+			stop, wait, err := startProcessEnv(simulatorEnv(opts), "xcrun", args...)
 			if err != nil {
 				return app{}, err
 			}
@@ -298,7 +297,7 @@ func iosDeviceSession(sys *appleOS, opts devOptions) session {
 			os.RemoveAll(dir)
 			// The device reaches the dev server over the LAN.
 			if lan := opts.server.lanURLs(); len(lan) > 0 {
-				p.devURL = lan[0]
+				p.devURL, p.devToken = lan[0], opts.server.token
 			}
 			_, err := buildIOSApp(ctx, p, sys, filepath.Join(dir, "app"), false)
 			return err

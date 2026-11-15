@@ -17,11 +17,16 @@ import (
 	"github.com/nsgo-dev/nsgo/internal/engine"
 )
 
-// Run starts DevTools before any graph, so an app's function that shows its view with SetMainView has its trees registered and its commits sent, and SetMainView, however often it is called, starts nothing again.
+// Run starts DevTools before any graph, so an app's function that shows its view with SetMainView has its trees registered and its commits sent with the run's token, and SetMainView, however often it is called, starts nothing again.
 func TestDevClientStartsDevToolsOnceBeforeTheGraph(t *testing.T) {
 	var mu sync.Mutex
 	commits := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The server takes the run's token alone, as nsgo dev's does.
+		if r.Header.Get("X-NSGo-Token") != "run-token" {
+			http.Error(w, "no token", http.StatusUnauthorized)
+			return
+		}
 		if r.URL.Path != "/_nsgo/devtools/out" {
 			return
 		}
@@ -35,9 +40,9 @@ func TestDevClientStartsDevToolsOnceBeforeTheGraph(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	devServer, devDevtools = server.URL, "1"
+	devServer, devDevtools, devtools.ServerToken = server.URL, "1", "run-token"
 	t.Cleanup(func() {
-		devServer, devDevtools = "", ""
+		devServer, devDevtools, devtools.ServerToken = "", "", ""
 		engine.Trace, driver.Applied = nil, nil
 		devtools.Enabled, driver.TraceCauses = false, false
 	})

@@ -237,7 +237,7 @@ func androidSession(opts devOptions) session {
 	return session{
 		build: func(ctx context.Context, p *project) error {
 			// The device reaches the dev server through adb reverse.
-			p.devURL = opts.server.url()
+			p.devURL, p.devToken = opts.server.url(), opts.server.token
 			d, err := adbDevice(ctx, opts.device)
 			if err != nil {
 				return err

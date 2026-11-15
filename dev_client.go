@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/devtools"
 )
 
 // devBuild is whether nsgo dev built the app.
@@ -75,7 +76,13 @@ func devApp(app App) App {
 	return func(cx *core.Scope) core.Node {
 		failure := core.NewSignal(cx, devFailure{})
 		go listenDev(server, func(f devFailure) { cx.Post(func() { failure.Set(f) }) })
-		reload := func() { go http.Post(server+"/_nsgo/reload", "text/plain", nil) }
+		reload := func() {
+			go func() {
+				if resp, err := devtools.Fetch(http.MethodPost, server+"/_nsgo/reload", "", nil); err == nil {
+					resp.Body.Close()
+				}
+			}()
+		}
 		return core.Group{
 			core.Catch{
 				Try: app,
@@ -97,7 +104,7 @@ type devFailure struct{ Title, Text string }
 // failed build's output, and its clearing.
 func listenDev(server string, report func(devFailure)) {
 	for {
-		resp, err := http.Get(server + "/_nsgo/events")
+		resp, err := devtools.Fetch(http.MethodGet, server+"/_nsgo/events", "", nil)
 		if err == nil {
 			sc := bufio.NewScanner(resp.Body)
 			sc.Buffer(make([]byte, 1<<16), 16<<20)

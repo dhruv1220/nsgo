@@ -3,9 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,16 +25,16 @@ import (
 // nsgo dev -automation: the dev server relays the requests of nsgo mcp, or any tool holding the session file's token, to the running app, whose agent answers them (package nsgotest), and answers status, logs and reload itself. The requests and answers travel over the channel the app keeps with the server for DevTools (devtools.go), so the app never listens:
 //
 //	POST /_nsgo/automation     a tool's request; loopback only, no Origin, Authorization: Bearer <session token>
-//	GET  /_nsgo/events         with X-NSGo-Token: <app token>, the app's DevTools stream, which also carries the requests as automation events; one app at a time
-//	POST /_nsgo/devtools/out   with the app's token, the app's DevTools messages, whose automation messages are the answers and reach no DevTools page
+//	GET  /_nsgo/events?devtools  with the run's token, the app's DevTools stream, which also carries the requests as automation events; one app at a time
+//	POST /_nsgo/devtools/out     with the run's token, the app's DevTools messages, whose automation messages are the answers and reach no DevTools page
 //
-// The app's token reaches it through NSGO_DEV_TOKEN, which it takes out of its environment; the tools' token is only in the session file, which only its user reads.
+// The run's token, which every dev server endpoint but this one takes (devServer.handle), reaches the app through NSGO_DEV_TOKEN, which it takes out of its environment; the tools' token is only in the session file, which only its user reads.
 
 // automationHub is nsgo dev -automation's relay between tools and the app.
 type automationHub struct {
-	srv                   *devServer
-	appToken, bridgeToken string
-	target                string
+	srv         *devServer
+	bridgeToken string
+	target      string
 	// session is the session file's path.
 	session string
 
@@ -67,37 +64,16 @@ const (
 
 // newAutomationHub starts relaying on srv's server for target.
 func newAutomationHub(srv *devServer, target string) (*automationHub, error) {
-	app, err := newToken()
-	if err != nil {
-		return nil, err
-	}
 	bridge, err := newToken()
 	if err != nil {
 		return nil, err
 	}
-	h := &automationHub{srv: srv, appToken: app, bridgeToken: bridge, target: target, changed: make(chan struct{}), pending: map[uint64]chan automation.Answer{}}
+	h := &automationHub{srv: srv, bridgeToken: bridge, target: target, changed: make(chan struct{}), pending: map[uint64]chan automation.Answer{}}
 	srv.mux.HandleFunc("/_nsgo/automation", h.bridge)
 	srv.mu.Lock()
 	srv.hub = h
 	srv.mu.Unlock()
 	return h, nil
-}
-
-// appTokenHeader carries the app's token on its DevTools stream and posts.
-const appTokenHeader = "X-NSGo-Token"
-
-// newToken returns 32 random bytes in hex.
-func newToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-// tokenIs reports whether got is want, in constant time.
-func tokenIs(got, want string) bool {
-	return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 // notify wakes what waits for an app. The caller holds h.mu.
@@ -239,11 +215,8 @@ func (h *automationHub) call(req automation.Request, wait time.Duration) automat
 	}
 }
 
-// connect makes the DevTools stream of the app holding token the one the tools' requests reach, returning the requests and what ends it as the stream ends, or the HTTP status that refuses it: a token but the app's, or a second app while one is connected.
-func (h *automationHub) connect(token string) (requests chan []byte, done func(), status int) {
-	if !tokenIs(token, h.appToken) {
-		return nil, nil, http.StatusUnauthorized
-	}
+// connect makes an app's DevTools stream the one the tools' requests reach, returning the requests and what ends it as the stream ends, or the HTTP status that refuses it: a second app's while one is connected.
+func (h *automationHub) connect() (requests chan []byte, done func(), status int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.app != nil {

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +42,23 @@ func next(t *testing.T, ch <-chan string) string {
 	}
 }
 
+// request sends s a request for path, with body as contentType when given and the token in tokenHeader when given.
+func request(t *testing.T, s *devServer, method, path, contentType, body, token string) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest(method, s.url()+path, strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	if token != "" {
+		req.Header.Set(tokenHeader, token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
 func TestDevToolsServerPassesMessagesBothWays(t *testing.T) {
 	s, err := startDevServer(0)
 	if err != nil {
@@ -59,29 +78,23 @@ func TestDevToolsServerPassesMessagesBothWays(t *testing.T) {
 	}
 
 	// The app's messages reach every page, one event a line.
-	pages := events(t, base+"/_nsgo/devtools/stream")
+	pages := events(t, base+"/_nsgo/devtools/stream?nsgo-token="+s.token)
 	if got := next(t, pages); got != `{"type":"connected"}` {
 		t.Fatalf("the page's first event = %q", got)
 	}
-	resp, err = http.Post(base+"/_nsgo/devtools/out", "application/x-ndjson", strings.NewReader("{\"type\":\"commit\"}\n\n{\"type\":\"hot\"}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp = request(t, s, "POST", "/_nsgo/devtools/out", "application/x-ndjson", "{\"type\":\"commit\"}\n\n{\"type\":\"hot\"}\n", s.token)
 	resp.Body.Close()
 	if a, b := next(t, pages), next(t, pages); a != `{"type":"commit"}` || b != `{"type":"hot"}` {
 		t.Fatalf("pages heard %q and %q", a, b)
 	}
 
 	// A page's command reaches the app as one devtools event.
-	app := events(t, base+"/_nsgo/events")
+	app := events(t, base+"/_nsgo/events?nsgo-token="+s.token)
 	// The server greets an app once it follows its events.
 	if got := next(t, app); got != "hello" {
 		t.Fatalf("the app's first event = %q", got)
 	}
-	resp, err = http.Post(base+"/_nsgo/devtools/command", "application/json", strings.NewReader("{\n  \"op\": \"elements\",\n  \"surface\": 0\n}"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	resp = request(t, s, "POST", "/_nsgo/devtools/command", "application/json", "{\n  \"op\": \"elements\",\n  \"surface\": 0\n}", s.token)
 	resp.Body.Close()
 	if got := next(t, app); got != `devtools {"op":"elements","surface":0}` {
 		t.Fatalf("the app heard %q", got)
@@ -102,6 +115,7 @@ func TestDevToolsServerPassesMessagesBothWays(t *testing.T) {
 		{"POST", "/_nsgo/devtools/out", `{"type":"step"}`, "application/x-ndjson", "null", http.StatusForbidden},
 	} {
 		req, _ := http.NewRequest(c.method, base+c.path, strings.NewReader(c.body))
+		req.Header.Set(tokenHeader, s.token)
 		if c.contentType != "" {
 			req.Header.Set("Content-Type", c.contentType)
 		}
@@ -129,5 +143,104 @@ func TestDevServerTellsPhonesTheOutboundAddressFirst(t *testing.T) {
 	urls := s.lanURLs()
 	if len(urls) == 0 || urls[0] != "http://"+out.String()+":8080" {
 		t.Fatalf("lanURLs = %v, want %s first", urls, out)
+	}
+}
+
+// Whatever reads the app's state, the build's or the project's, or changes them, answers only the run's token, from this machine as from the network, and no other site's page reads it.
+func TestDevServerTakesItsTokenOnly(t *testing.T) {
+	s, err := startDevServer(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	s.setBundles(map[string]string{"App.tsx": "export default 1"})
+	// Another token of the same length, differing in its first digit.
+	other := "1" + s.token[1:]
+	if s.token[0] == '1' {
+		other = "0" + s.token[1:]
+	}
+	for _, c := range []struct {
+		method, path, contentType, body string
+		want                            int
+		stream                          bool
+	}{
+		{"GET", "/_nsgo/events", "", "", http.StatusOK, true},
+		{"GET", "/_nsgo/bundle?entry=App.tsx", "", "", http.StatusOK, false},
+		{"POST", "/_nsgo/reload", "", "", http.StatusOK, false},
+		{"POST", "/_nsgo/trace", "text/plain", "", http.StatusOK, false},
+		{"GET", "/_nsgo/devtools/stream", "", "", http.StatusOK, true},
+		{"POST", "/_nsgo/devtools/out", "application/x-ndjson", "{\"type\":\"commit\"}\n", http.StatusOK, false},
+		{"GET", "/_nsgo/devtools/project", "", "", http.StatusOK, false},
+		{"POST", "/_nsgo/devtools/command", "application/json", `{"op":"surfaces"}`, http.StatusOK, false},
+	} {
+		for _, token := range []string{"", other, s.token[:len(s.token)-1], s.token + "0"} {
+			resp := request(t, s, c.method, c.path, c.contentType, c.body, token)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Errorf("%s %s with token %q = %d, want 401", c.method, c.path, token, resp.StatusCode)
+			}
+		}
+		resp := request(t, s, c.method, c.path, c.contentType, c.body, s.token)
+		if resp.StatusCode != c.want {
+			t.Errorf("%s %s with the token = %d, want %d", c.method, c.path, resp.StatusCode, c.want)
+		}
+		if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+			t.Errorf("%s %s lets %q read it", c.method, c.path, got)
+		}
+		resp.Body.Close()
+		// A page's EventSource sends no header: its streams take the token in the query.
+		if c.stream {
+			sep := "?"
+			if strings.Contains(c.path, "?") {
+				sep = "&"
+			}
+			if got := next(t, events(t, s.url()+c.path+sep+"nsgo-token="+s.token)); got == "" {
+				t.Errorf("%s with the token in the query sent nothing", c.path)
+			}
+		}
+	}
+	// The pages' own files need no token: they carry none of the app's.
+	if resp := request(t, s, "GET", "/_nsgo/devtools/", "", "", ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("the DevTools page without a token = %d", resp.StatusCode)
+	} else {
+		resp.Body.Close()
+	}
+}
+
+// A request naming the server by another name, as a site whose name was pointed at this machine sends from its pages, is refused, token or not; the machine's addresses and names are its own.
+func TestDevServerRefusesForeignHosts(t *testing.T) {
+	s, err := startDevServer(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	port := strconv.Itoa(s.port)
+	name, _ := os.Hostname()
+	for host, want := range map[string]int{
+		"evil.example:" + port:     http.StatusForbidden,
+		"evil.example":             http.StatusForbidden,
+		"localhost.evil.example":   http.StatusForbidden,
+		"127.0.0.1.nip.io:" + port: http.StatusForbidden,
+		"127.0.0.1:" + port:        http.StatusOK,
+		"localhost:" + port:        http.StatusOK,
+		"LOCALHOST.:" + port:       http.StatusOK,
+		"[::1]:" + port:            http.StatusOK,
+		"[fe80::1%25en0]:" + port:  http.StatusOK,
+		"192.168.1.20:" + port:     http.StatusOK,
+		name + ":" + port:          http.StatusOK,
+	} {
+		for _, path := range []string{"/_nsgo/devtools/project", "/_nsgo/devtools/"} {
+			req, _ := http.NewRequest("GET", s.url()+path, nil)
+			req.Host = host
+			req.Header.Set(tokenHeader, s.token)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != want {
+				t.Errorf("%s for Host %q = %d, want %d", path, host, resp.StatusCode, want)
+			}
+		}
 	}
 }

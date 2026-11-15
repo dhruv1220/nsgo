@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/devtools"
 	"github.com/nsgo-dev/nsgo/tsx"
 	"github.com/nsgo-dev/nsgo/tsx/pkg"
 )
@@ -88,7 +89,7 @@ func hot(code string) bool { return strings.Contains(code[:min(len(code), 64)], 
 // and gives update each new bundle of entry.
 func followBundles(server, entry string, update func(string)) {
 	for {
-		resp, err := http.Get(server + "/_nsgo/events")
+		resp, err := devtools.Fetch(http.MethodGet, server+"/_nsgo/events", "", nil)
 		if err == nil {
 			sc := bufio.NewScanner(resp.Body)
 			sc.Buffer(make([]byte, 1<<16), 16<<20)
@@ -97,7 +98,7 @@ func followBundles(server, entry string, update func(string)) {
 				if !ok || data != "bundle "+entry {
 					continue
 				}
-				if b, err := http.Get(server + "/_nsgo/bundle?entry=" + url.QueryEscape(entry)); err == nil {
+				if b, err := devtools.Fetch(http.MethodGet, server+"/_nsgo/bundle?entry="+url.QueryEscape(entry), "", nil); err == nil {
 					code, err := io.ReadAll(b.Body)
 					b.Body.Close()
 					if err == nil && b.StatusCode == http.StatusOK {

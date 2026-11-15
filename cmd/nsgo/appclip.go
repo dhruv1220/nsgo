@@ -257,13 +257,13 @@ func signIOSClip(ctx context.Context, p *project, app, identity string) error {
 // startIOSClip installs the App Clip of the app built at app on the
 // simulator udid alone, as the system installs it from a link, and
 // launches it opened from url, which Xcode's _XCAppClipURL passes it, and
-// connected to the dev server at server.
-func startIOSClip(ctx context.Context, p *project, udid, app, url, server string) (stop func(), wait func(context.Context) error, err error) {
+// connected to the dev server as env says (simulatorEnv).
+func startIOSClip(ctx context.Context, p *project, udid, app, url string, env []string) (stop func(), wait func(context.Context) error, err error) {
 	if err := run(ctx, "xcrun", "simctl", "install", udid, iosClipApp(p, app)); err != nil {
 		return nil, nil, err
 	}
 	event("open the App Clip from %s", url)
-	return startProcessEnv([]string{"SIMCTL_CHILD__XCAppClipURL=" + url, "SIMCTL_CHILD_NSGO_DEV_SERVER=" + server},
+	return startProcessEnv(append([]string{"SIMCTL_CHILD__XCAppClipURL=" + url}, env...),
 		"xcrun", "simctl", "launch", "--console-pty", "--terminate-running-process", udid, p.AppClip.ID)
 }
 

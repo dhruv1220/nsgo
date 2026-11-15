@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -104,7 +107,7 @@ func dev(ctx context.Context, p *project, opts devOptions) error {
 	defer func() { stop() }()
 	header(p.Name, p.Version, "dev "+p.Dev.Target)
 	if opts.devtools {
-		url := srv.url() + "/_nsgo/devtools/"
+		url := srv.pageURL(srv.url(), "/_nsgo/devtools/")
 		note("DevTools %s", link(url))
 		if opts.open {
 			name, args := openCommand(url)
@@ -331,15 +334,14 @@ func splitSources(dirs []string) (rest, sources []string) {
 	return rest, sources
 }
 
-// devServer is what dev's builds connect to: it streams build results to
-// the apps and pages it started, takes their reload requests and the
-// commits -trace prints, and serves the web target. It listens on every interface, so a phone on the LAN
-// reaches it.
+// devServer is what dev's builds connect to: it streams build results to the apps and pages it started, takes their reload requests and the commits -trace prints, and serves the web target. It listens on every interface, so a phone on the LAN reaches it, and answers only requests that name it by an address or this machine's name (ownHost), and, but for the pages' files, carry the run's token (handle).
 type devServer struct {
 	port    int
 	srv     *http.Server
 	mux     *http.ServeMux
 	reloads chan struct{}
+	// token is the run's, which the apps get with their dev server's address and the pages in their address's fragment (pageURL).
+	token string
 
 	mu      sync.Mutex
 	clients map[chan string]bool
@@ -363,8 +365,11 @@ func (s *devServer) setBundles(b map[string]string) {
 // startDevServer listens on port, or the next free one after it; 0 takes
 // any.
 func startDevServer(port int) (*devServer, error) {
+	token, err := newToken()
+	if err != nil {
+		return nil, err
+	}
 	var ln net.Listener
-	var err error
 	for p := port; p <= port+100; p++ {
 		if ln, err = net.Listen("tcp", fmt.Sprintf(":%d", p)); err == nil || port == 0 {
 			break
@@ -373,11 +378,11 @@ func startDevServer(port int) (*devServer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("no free port from %d: %w", port, err)
 	}
-	s := &devServer{port: ln.Addr().(*net.TCPAddr).Port, mux: http.NewServeMux(), reloads: make(chan struct{}, 1),
+	s := &devServer{port: ln.Addr().(*net.TCPAddr).Port, mux: http.NewServeMux(), reloads: make(chan struct{}, 1), token: token,
 		clients: map[chan string]bool{}, pages: map[chan string]bool{}}
-	s.mux.HandleFunc("/_nsgo/events", s.events)
+	s.handle("/_nsgo/events", s.events)
 	s.serveDevTools()
-	s.mux.HandleFunc("/_nsgo/bundle", func(w http.ResponseWriter, r *http.Request) {
+	s.handle("/_nsgo/bundle", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		code, ok := s.bundles[r.URL.Query().Get("entry")]
 		s.mu.Unlock()
@@ -386,10 +391,9 @@ func startDevServer(port int) (*devServer, error) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		io.WriteString(w, code)
 	})
-	s.mux.HandleFunc("/_nsgo/reload", func(w http.ResponseWriter, r *http.Request) {
+	s.handle("/_nsgo/reload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST to reload", http.StatusMethodNotAllowed)
 			return
@@ -397,7 +401,7 @@ func startDevServer(port int) (*devServer, error) {
 		s.reload()
 	})
 	// A traced app's commits, printed as the app's output is.
-	s.mux.HandleFunc("/_nsgo/trace", func(w http.ResponseWriter, r *http.Request) {
+	s.handle("/_nsgo/trace", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST a trace", http.StatusMethodNotAllowed)
 			return
@@ -415,9 +419,65 @@ func startDevServer(port int) (*devServer, error) {
 		w.Header().Set("Cache-Control", "no-cache")
 		http.FileServer(http.Dir(files)).ServeHTTP(w, r)
 	})
-	s.srv = &http.Server{Handler: s.mux}
+	s.srv = &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ownHost(r.Host) {
+			http.Error(w, "nsgo dev answers requests for this machine's addresses and name only", http.StatusForbidden)
+			return
+		}
+		s.mux.ServeHTTP(w, r)
+	})}
 	go s.srv.Serve(ln)
 	return s, nil
+}
+
+// tokenHeader carries the run's token on the apps' requests; pages, whose EventSource sends no header, put it in the query as nsgo-token.
+const tokenHeader = "X-NSGo-Token"
+
+// newToken returns 32 random bytes in hex.
+func newToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// tokenIs reports whether got is want, in constant time.
+func tokenIs(got, want string) bool {
+	return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+// handle serves pattern with h for requests carrying the run's token alone: whatever reads the app's state, the build's or the project's, or changes them.
+func (s *devServer) handle(pattern string, h http.HandlerFunc) {
+	s.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get(tokenHeader)
+		if token == "" {
+			token = r.URL.Query().Get("nsgo-token")
+		}
+		if !tokenIs(token, s.token) {
+			http.Error(w, "nsgo dev's token is needed: open the address nsgo dev prints", http.StatusUnauthorized)
+			return
+		}
+		h(w, r)
+	})
+}
+
+// ownHost reports whether a request's Host names this server: an IP address, which no site can point its own name at, localhost, or this machine's name, as Bonjour gives it with .local too. Any other name may be a site's whose address was pointed at this machine to reach the server from its pages.
+func ownHost(hostport string) bool {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if ip, _, _ := strings.Cut(strings.Trim(host, "[]"), "%"); net.ParseIP(ip) != nil || host == "localhost" {
+		return true
+	}
+	name, err := os.Hostname()
+	if err != nil || name == "" {
+		return false
+	}
+	name = strings.ToLower(strings.TrimSuffix(name, ".local"))
+	return host == name || host == name+".local"
 }
 
 func (s *devServer) close() { s.srv.Close() }
@@ -438,6 +498,11 @@ func (s *devServer) serve(dir string) {
 
 // url is the server's address on this machine.
 func (s *devServer) url() string { return fmt.Sprintf("http://127.0.0.1:%d", s.port) }
+
+// pageURL is the address of a page the server serves at base, as url or one of lanURLs, and path, with the run's token in its fragment, which the page reads and no request carries.
+func (s *devServer) pageURL(base, path string) string {
+	return base + path + "#nsgo-token=" + s.token
+}
 
 // lanURLs are the server's addresses on the machine's networks, the one the machine reaches other hosts through first: a phone is told the first, and a virtual network's (a VPN's, a container's) comes before the Wi-Fi's in the interfaces' order.
 func (s *devServer) lanURLs() []string {
@@ -501,20 +566,16 @@ func (s *devServer) send(kind, text string) {
 	}
 }
 
-// events streams the server's events to an app or a page. The app's DevTools stream under -automation carries the app's token, and the tools' requests as automation events too (automation.go).
+// events streams the server's events to an app or a page. The app's DevTools stream, ?devtools, carries the tools' requests as automation events too under -automation (automation.go).
 func (s *devServer) events(w http.ResponseWriter, r *http.Request) {
 	var requests chan []byte
-	if token := r.Header.Get(appTokenHeader); token != "" {
-		s.mu.Lock()
-		hub := s.hub
-		s.mu.Unlock()
-		if hub == nil {
-			http.Error(w, "nsgo dev runs without -automation", http.StatusUnauthorized)
-			return
-		}
+	s.mu.Lock()
+	hub := s.hub
+	s.mu.Unlock()
+	if hub != nil && r.URL.Query().Has("devtools") {
 		var done func()
 		var status int
-		if requests, done, status = hub.connect(token); status != 0 {
+		if requests, done, status = hub.connect(); status != 0 {
 			http.Error(w, http.StatusText(status), status)
 			return
 		}
@@ -522,7 +583,6 @@ func (s *devServer) events(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ch := make(chan string, 8)
 	s.mu.Lock()
 	s.clients[ch] = true
@@ -643,11 +703,16 @@ func scan(dirs []string) string {
 	return b.String()
 }
 
-// devEnv is the environment of a dev app this machine starts: where its dev server is, and with -automation the app's token for it.
+// devEnv is the environment of a dev app this machine starts: where its dev server is, and the run's token for it.
 func devEnv(opts devOptions) []string {
-	env := []string{"NSGO_DEV_SERVER=" + opts.server.url()}
-	if opts.hub != nil {
-		env = append(env, "NSGO_DEV_TOKEN="+opts.hub.appToken)
+	return []string{"NSGO_DEV_SERVER=" + opts.server.url(), "NSGO_DEV_TOKEN=" + opts.server.token}
+}
+
+// simulatorEnv is devEnv for an app the simulator starts, which passes it the variables named with SIMCTL_CHILD_.
+func simulatorEnv(opts devOptions) []string {
+	var env []string
+	for _, e := range devEnv(opts) {
+		env = append(env, "SIMCTL_CHILD_"+e)
 	}
 	return env
 }
@@ -736,10 +801,10 @@ func webSession(opts devOptions) session {
 			once.Do(func() {
 				opts.server.serve(p.cache("dev", "web"))
 				query := webQuery(opts.appFlags())
-				url := fmt.Sprintf("http://localhost:%d/%s", opts.server.port, query)
+				url := opts.server.pageURL(fmt.Sprintf("http://localhost:%d", opts.server.port), "/"+query)
 				note("%s", link(url))
 				for _, lan := range opts.server.lanURLs() {
-					detail("%s", link(lan+"/"+query))
+					detail("%s", link(opts.server.pageURL(lan, "/"+query)))
 				}
 				if opts.open {
 					name, args := openCommand(url)

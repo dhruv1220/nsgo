@@ -24,8 +24,8 @@ type project struct {
 	// idDefault records that nsgo.yaml gave no id, so it follows the name.
 	idDefault bool
 	// devURL is the dev server's address for targets that pass the app no
-	// environment.
-	devURL string
+	// environment, and devToken the run's token for it.
+	devURL, devToken string
 	// testBinary builds the package's tests with the nsgotest tag in
 	// place of the app, for nsgo test -target.
 	testBinary bool
@@ -418,6 +418,9 @@ func xflag(name, value string) string {
 // corePath is package core's, which holds the app's identity (core.App).
 const corePath = "github.com/nsgo-dev/nsgo/core"
 
+// devtoolsPath is package internal/devtools', which holds the dev client's token for the dev server (devtools.ServerToken).
+const devtoolsPath = "github.com/nsgo-dev/nsgo/internal/devtools"
+
 // ldflags builds nsgo.yaml's name, ID, version and build number into
 // core.App, and passes the rest of what nsgo.Run takes from it.
 func (p *project) ldflags(extra ...string) string {
@@ -429,6 +432,9 @@ func (p *project) ldflags(extra ...string) string {
 	}
 	if p.devURL != "" {
 		flags += fmt.Sprintf(" -X '%s.devServer=%s' -X '%s.devServer=%s'", pkg, p.devURL, compilerPath, p.devURL)
+	}
+	if p.devToken != "" {
+		flags += fmt.Sprintf(" -X %s.ServerToken=%s", devtoolsPath, p.devToken)
 	}
 	if p.Dev.Client && p.Dev.Trace {
 		flags += fmt.Sprintf(" -X %s.devTrace=1", pkg)

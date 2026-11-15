@@ -69,7 +69,7 @@ func postOut(t *testing.T, h *automationHub, token string, lines ...string) {
 	post, _ := http.NewRequest(http.MethodPost, h.srv.url()+"/_nsgo/devtools/out", strings.NewReader(strings.Join(lines, "\n")+"\n"))
 	post.Header.Set("Content-Type", "application/x-ndjson")
 	if token != "" {
-		post.Header.Set(appTokenHeader, token)
+		post.Header.Set(tokenHeader, token)
 	}
 	resp, err := http.DefaultClient.Do(post)
 	if err != nil {
@@ -79,11 +79,11 @@ func postOut(t *testing.T, h *automationHub, token string, lines ...string) {
 	resp.Body.Close()
 }
 
-// fakeApp follows h's server's events with the app's token as an app's DevTools stream does, and answers each automation request with answer over /_nsgo/devtools/out, until ctx ends; it reports once it is connected.
+// fakeApp follows h's server's events with the run's token as an app's DevTools stream does, and answers each automation request with answer over /_nsgo/devtools/out, until ctx ends; it reports once it is connected.
 func fakeApp(ctx context.Context, t *testing.T, h *automationHub, answer func(automation.Request) automation.Answer) (connected chan int) {
 	connected = make(chan int, 1)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, h.srv.url()+"/_nsgo/events", nil)
-	req.Header.Set(appTokenHeader, h.appToken)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, h.srv.url()+"/_nsgo/events?devtools", nil)
+	req.Header.Set(tokenHeader, h.srv.token)
 	go func() {
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -101,7 +101,7 @@ func fakeApp(ctx context.Context, t *testing.T, h *automationHub, answer func(au
 			var r automation.Request
 			json.Unmarshal([]byte(data), &r)
 			body, _ := json.Marshal(answer(r))
-			postOut(t, h, h.appToken, `{"type":"automation","surface":0,"data":`+string(body)+`}`)
+			postOut(t, h, h.srv.token, `{"type":"automation","surface":0,"data":`+string(body)+`}`)
 		}
 	}()
 	return connected
@@ -112,8 +112,8 @@ func TestAutomationBridgeRefusesStrangers(t *testing.T) {
 	if resp := ask(t, h, "", nil, automation.Status); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("no token: %s", resp.Status)
 	}
-	if resp := ask(t, h, h.appToken, nil, automation.Status); resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("the app's token on the bridge: %s", resp.Status)
+	if resp := ask(t, h, h.srv.token, nil, automation.Status); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("the run's token on the bridge: %s", resp.Status)
 	}
 	if resp := ask(t, h, h.bridgeToken, map[string]string{"Origin": "http://localhost"}, automation.Status); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("a web page's request: %s", resp.Status)
@@ -127,7 +127,7 @@ func TestAutomationBridgeRefusesStrangers(t *testing.T) {
 		t.Errorf("a request from the network: %d", rec.Code)
 	}
 	app, _ := http.NewRequest(http.MethodGet, h.srv.url()+"/_nsgo/events", nil)
-	app.Header.Set(appTokenHeader, h.bridgeToken)
+	app.Header.Set(tokenHeader, h.bridgeToken)
 	if resp, err := http.DefaultClient.Do(app); err != nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("an app with the tools' token: %v %v", resp, err)
 	} else {
@@ -156,10 +156,11 @@ func TestAutomationRelaysToTheApp(t *testing.T) {
 	if second := fakeApp(ctx, t, h, nil); <-second != http.StatusConflict {
 		t.Error("a second app was let in while one is connected")
 	}
-	// Events without a token, as a page or the app's other listeners follow them, carry no request.
+	// Events but the DevTools stream, as a page or the app's other listeners follow them, carry no request.
 	plain, _ := http.NewRequestWithContext(ctx, http.MethodGet, h.srv.url()+"/_nsgo/events", nil)
+	plain.Header.Set(tokenHeader, h.srv.token)
 	if resp, err := http.DefaultClient.Do(plain); err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("events without a token: %v %v", resp, err)
+		t.Fatalf("other events: %v %v", resp, err)
 	} else {
 		resp.Body.Close()
 	}
@@ -170,7 +171,7 @@ func TestAutomationRelaysToTheApp(t *testing.T) {
 	}
 }
 
-// TestAutomationAnswersReachTheAutomationAlone posts answers beside DevTools' messages: DevTools pages get theirs and never an answer, and an answer counts only from a post with the app's token.
+// TestAutomationAnswersReachTheAutomationAlone posts answers beside DevTools' messages: DevTools pages get theirs and never an answer, and an answer counts only from a post with the run's token.
 func TestAutomationAnswersReachTheAutomationAlone(t *testing.T) {
 	h := startHub(t)
 	page := make(chan string, 16)
@@ -189,9 +190,9 @@ func TestAutomationAnswersReachTheAutomationAlone(t *testing.T) {
 	go func() { done <- h.call(automation.Request{ID: 7, Method: automation.Windows}, time.Second) }()
 	asked := <-requests
 	forged, _ := json.Marshal(automation.Reply(asked.ID, automation.WindowsResult{Windows: []automation.Window{{Title: "forged"}}}, nil))
-	postOut(t, h, "", `{"type":"automation","data":`+string(forged)+`}`, `{"type":"elements","surface":0}`)
+	postOut(t, h, "", `{"type":"automation","data":`+string(forged)+`}`)
 	real, _ := json.Marshal(automation.Reply(asked.ID, automation.WindowsResult{Windows: []automation.Window{{Title: "real"}}}, nil))
-	postOut(t, h, h.appToken, `{"type":"automation","data":`+string(real)+`}`)
+	postOut(t, h, h.srv.token, `{"type":"automation","data":`+string(real)+`}`, `{"type":"elements","surface":0}`)
 	a := <-done
 	var r automation.WindowsResult
 	if a.ID != 7 || json.Unmarshal(a.Result, &r) != nil || len(r.Windows) != 1 || r.Windows[0].Title != "real" {
