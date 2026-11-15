@@ -223,7 +223,7 @@ type runtime struct {
 	// whether any scope has forced one.
 	theme             *Theme
 	subtreeAppearance bool
-	// confined is set once a scope is confined (Scope.Confine), as apps without one skip finding its frames.
+	// confined is set once a scope is confined (Scope.Confine), as apps without one skip finding its frames and its owners (confinement).
 	confined bool
 }
 

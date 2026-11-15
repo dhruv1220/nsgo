@@ -87,8 +87,11 @@ func (cx *Scope) Confine() {
 	o.rt.confined = true
 }
 
-// confinement is the owner nearest o that Confine marked, nil for none.
+// confinement is the owner nearest o that Confine marked, nil for none. Apps that never confine a scope skip the walk, which every hoisted view, back press and gated request takes.
 func confinement(o *Scope) *Scope {
+	if o == nil || !o.rt.confined {
+		return nil
+	}
 	for s := o; s != nil; s = s.parent {
 		if _, ok := s.values[confineKey{}]; ok {
 			return s
