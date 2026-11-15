@@ -205,6 +205,7 @@ const (
 	webkitAtEnd            = 1 // WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END
 	webkitUserStyle        = 0 // WEBKIT_USER_STYLE_LEVEL_USER
 	webkitLoadStarted      = 0
+	webkitLoadCommitted    = 2
 	webkitLoadFinished     = 3
 	webkitNetworkCancelled = 302 // WEBKIT_NETWORK_ERROR_CANCELLED
 	webkitNetworkUnknown   = 301 // WEBKIT_NETWORK_ERROR_UNKNOWN_PROTOCOL
@@ -237,6 +238,7 @@ type web struct {
 	session    uintptr // the ephemeral network session an Incognito page owns, released with it; 0 for the app's
 	content    uintptr // its WebKitUserContentManager
 	token      string  // what its top frame's messages start with (webBridge)
+	page       string  // the URI of the page last committed, which its messages report
 	config     driver.WebConfig
 	made       bool
 	failed     bool         // the navigation failed; WebKit still finishes it
@@ -397,7 +399,7 @@ func (w *window) makeWeb(v *view) {
 	wv.content = webkitWebViewGetUserContentManager(wv.widget)
 	var token [16]byte
 	_, _ = rand.Read(token[:])
-	wv.token = hex.EncodeToString(token[:]) + ":"
+	wv.token, wv.page = hex.EncodeToString(token[:])+":", ""
 	webPages[wv.widget] = webPage{window: w, view: v}
 	registerWebSchemes(wv)
 	webkitContentRegisterHandler(wv.content, cstr(webHandler), nil)
@@ -777,6 +779,9 @@ func webLoadChangedCallback(page uintptr, event uint32, data uintptr) {
 	case webkitLoadStarted:
 		v.web.failed = false
 		w.navigated(v, true, driver.EventLoadStart)
+	case webkitLoadCommitted:
+		// From here the view's URI is the page that posts; until a load commits, the page before it still does.
+		v.web.page = goString(webkitWebViewGetURI(page))
 	case webkitLoadFinished:
 		// A failed navigation finishes too; it was reported as an error.
 		if !v.web.failed {
@@ -866,9 +871,8 @@ func webMessageCallback(content, value uintptr, data uintptr) {
 	if !ok {
 		return
 	}
-	// The page's top frame posted it: the page the view shows as the message comes.
-	origin := driver.WebOrigin(goString(webkitWebViewGetURI(v.web.widget)))
-	w.report(v, driver.Event{Kind: driver.EventMessage, ID: v.id, Text: text, Origin: origin, MainFrame: true})
+	// The page's top frame posted it: the page last committed, not one the view only started to load.
+	w.report(v, driver.Event{Kind: driver.EventMessage, ID: v.id, Text: text, Origin: driver.WebOrigin(v.web.page), URL: v.web.page, MainFrame: true})
 }
 
 func webMapCallback(page uintptr, data uintptr) {
