@@ -220,6 +220,45 @@ func TestOwnersDisposeAndCleanUp(t *testing.T) {
 	}
 }
 
+func TestDisposalBatchesCleanupWrites(t *testing.T) {
+	theme := NewKey("theme during dispose", "none")
+	root := NewRoot(RootOptions{})
+	theme.Provide(root, "dark")
+	page := root.Child()
+	flag := NewSignal(page, true)
+	var seen []string
+	page.Effect(func() {
+		flag.Get()
+		seen = append(seen, theme.Use(page))
+	})
+	card := page.Child()
+	card.Cleanup(func() { flag.Set(false) })
+
+	root.Dispose()
+	if want := []string{"dark"}; !slices.Equal(seen, want) {
+		t.Fatalf("effect ran during disposal: seen = %q, want %q", seen, want)
+	}
+}
+
+func TestDisposalFlushesOutsideEffectsAfterCleanup(t *testing.T) {
+	root := NewRoot(RootOptions{})
+	page := root.Child()
+	flag := NewSignal(page, true)
+	runs := 0
+	page.Effect(func() {
+		flag.Get()
+		runs++
+	})
+	child := page.Child()
+	child.Cleanup(func() { flag.Set(false) })
+
+	child.Dispose()
+	if runs != 2 {
+		t.Fatalf("outside effect ran %d times, want 2", runs)
+	}
+	root.Dispose()
+}
+
 func TestEffectRerunsOnOwnWrite(t *testing.T) {
 	cx := NewRoot(RootOptions{})
 	n := NewSignal(cx, 0)

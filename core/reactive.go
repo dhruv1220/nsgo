@@ -276,13 +276,21 @@ func (cx *Scope) Dispose() {
 	if cx.disposed {
 		return
 	}
+	rt := cx.rt
+	rt.batch++
+	defer func() {
+		rt.batch--
+		if rt.batch == 0 && !rt.flushing {
+			rt.flush()
+		}
+	}()
 	cx.disposeOwned()
 	cx.disposed = true
-	if cx.rt.dev != nil {
-		cx.rt.dev.forget(cx)
+	if rt.dev != nil {
+		rt.dev.forget(cx)
 	}
-	if cx == cx.rt.root {
-		cx.rt.detachHost()
+	if cx == rt.root {
+		rt.detachHost()
 	}
 	if cx.comp != nil {
 		cx.comp.unlink()
