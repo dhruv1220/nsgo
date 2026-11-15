@@ -125,3 +125,45 @@ func TestListFocus(t *testing.T) {
 		t.Fatal("the ring stays after the focus left")
 	}
 }
+
+// TestListStyleFuncRestylesInPlace has ListStyleFunc merge over ui's padding and the app's ListStyle as what it reads changes, keeping the scroll view and its offset.
+func TestListStyleFuncRestylesInPlace(t *testing.T) {
+	each(t, func(t *testing.T, e core.Environment) {
+		rows := fruits(40)
+		tint := core.RGB(0x123456)
+		var inset *core.Signal[core.Points]
+		app, _ := start(t, e, func(cx *core.Scope) core.Node {
+			inset = core.NewSignal(cx, core.Points(6))
+			return List{TestID: "list", Count: func() int { return len(rows) }, RowLabel: func(i int) string { return rows[i] },
+				Row: func(cx *core.Scope, r core.ListRow) core.Node {
+					return core.Text{ContentFunc: func() string { return rows[r.Index()] }}
+				}, Style: core.Style{Height: core.Pt(200)}, ListStyle: core.Style{Background: tint},
+				ListStyleFunc: func() core.Style { return core.Style{Padding: core.All(inset.Get())} }}
+		})
+		app.Scroll("id:list", 200)
+		scroll := app.Find("id:list").Children[0]
+		offset := scroll.Offset.Y
+		left := func() core.Points {
+			var x core.Points
+			for v := app.Find("label:Fruit 10"); v != nil && v.ID != scroll.ID; v = v.Parent {
+				x += v.Frame.Origin.X
+			}
+			return x
+		}
+		if got := left(); got != 6 {
+			t.Fatalf("a row starts at %v, want ListStyleFunc's padding 6", got)
+		}
+		inset.Set(12)
+		app.Settle()
+		after := app.Find("id:list").Children[0]
+		if after.ID != scroll.ID || after.Offset.Y != offset {
+			t.Fatalf("restyling remounted or moved the rows: view %d at %v, then %d at %v", scroll.ID, offset, after.ID, after.Offset.Y)
+		}
+		if got := left(); got != 12 {
+			t.Fatalf("a row starts at %v, want ListStyleFunc's padding 12", got)
+		}
+		if after.Style.Background != tint {
+			t.Fatalf("the rows' background is %v, want ListStyle's %v", after.Style.Background, tint)
+		}
+	})
+}

@@ -296,11 +296,13 @@ type Tree struct {
 	// and collapses, as Collapsible's Reveal does.
 	Reveal bool
 	// Label is what assistive technology calls the tree.
-	Label     string
-	ListClass string
-	ListStyle core.Style
-	ItemClass string
-	ItemStyle core.Style
+	Label string
+	// ListClass and ListStyle are the scrolled rows', whose padding is the content's. ListStyleFunc merges over ListStyle whenever what it reads changes, restyling the rows in place: their scroll offset, the keyboard focus and keys stay.
+	ListClass     string
+	ListStyle     core.Style
+	ListStyleFunc func() core.Style
+	ItemClass     string
+	ItemStyle     core.Style
 	// ItemStyleFunc is each row's style following what it reads.
 	ItemStyleFunc func() core.Style
 	// RenderItem draws an item's row, for the rows in view; Row does with
@@ -758,5 +760,5 @@ func (t Tree) Render(cx *core.Scope) core.Node {
 			focused.Set(false)
 			held.Set(0)
 		},
-		Children: []core.Node{core.Scroll{Class: t.ListClass, Style: listStyle, Children: []core.Node{rows}}, keys, typed}}
+		Children: []core.Node{core.Scroll{Class: t.ListClass, Style: listStyle, StyleFunc: t.ListStyleFunc, Children: []core.Node{rows}}, keys, typed}}
 }

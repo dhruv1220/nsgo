@@ -40,10 +40,9 @@ type List struct {
 	Ref    *core.Ref
 	TestID string
 	Style  core.Style
-	// ListStyle merges over the scrolled list of rows', whose padding is
-	// the content's: give padding here, so the scroll bar keeps to the
-	// list's edge.
-	ListStyle core.Style
+	// ListStyle merges over the scrolled list of rows', whose padding is the content's: give padding here, so the scroll bar keeps to the list's edge. ListStyleFunc merges over that whenever what it reads changes, without remounting the list.
+	ListStyle     core.Style
+	ListStyleFunc func() core.Style
 	// RowStyle merges over each row's, and RowStyleFunc, read as the row's
 	// colors are, over that.
 	RowStyle     core.Style
@@ -87,6 +86,7 @@ func (l List) Render(cx *core.Scope) core.Node {
 		Style:         core.Style{CornerRadius: RadiusControl}.Merge(l.Style),
 		StyleFunc:     func() core.Style { return core.Style{FocusVisible: FocusRing(cx, 2)} },
 		ListStyle:     core.Style{Padding: core.All(4)}.Merge(l.ListStyle),
+		ListStyleFunc: l.ListStyleFunc,
 		ItemStyle:     row,
 		ItemStyleFunc: rowLook(cx, interactive, l.RowStyle, l.RowStyleFunc)}
 }

@@ -23,7 +23,7 @@ func baseListFace(p *props) core.Node {
 		Label: p.str("accessibilityLabel"), Ref: p.n.ref, TestID: p.str("testID"), Class: p.class(), StyleFunc: p.style,
 		ListClass: p.str("listClass"), ItemClass: p.str("itemClass")}
 	if p.has("listStyle") {
-		l.ListStyle = r.style(p.get("listStyle"))
+		l.ListStyleFunc = func() core.Style { return r.style(p.get("listStyle")) }
 	}
 	if p.has("itemStyle") {
 		l.ItemStyleFunc = func() core.Style { return r.style(p.get("itemStyle")) }

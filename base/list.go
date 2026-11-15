@@ -61,12 +61,12 @@ type List struct {
 	Class     string
 	Style     core.Style
 	StyleFunc func() core.Style
-	// ListClass and ListStyle are the list of rows', whose padding is the
-	// content's.
-	ListClass string
-	ListStyle core.Style
-	ItemClass string
-	ItemStyle core.Style
+	// ListClass and ListStyle are the list of rows', whose padding is the content's. ListStyleFunc merges over ListStyle whenever what it reads changes, restyling the list in place: its scroll offset, cells, keyboard focus and keys stay.
+	ListClass     string
+	ListStyle     core.Style
+	ListStyleFunc func() core.Style
+	ItemClass     string
+	ItemStyle     core.Style
 	// ItemStyleFunc is each row's style following what it reads.
 	ItemStyleFunc func() core.Style
 }
@@ -401,7 +401,7 @@ func (l List) Render(cx *core.Scope) core.Node {
 				k.last = max(k.last, tok.Index)
 			}
 		},
-		Class: l.ListClass, Style: core.Style{FlexGrow: 1, MinHeight: core.Pt(0)}.Merge(l.ListStyle)}
+		Class: l.ListClass, Style: core.Style{FlexGrow: 1, MinHeight: core.Pt(0)}.Merge(l.ListStyle), StyleFunc: l.ListStyleFunc}
 	outer := core.View{Class: l.Class, TestID: l.TestID, Label: l.Label, Style: core.Style{MinHeight: core.Pt(0)}.Merge(l.Style),
 		StyleFunc: l.StyleFunc, Children: []core.Node{list}}
 	if !selectable {

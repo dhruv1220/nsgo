@@ -138,14 +138,16 @@ func TestPublicAPINamesNoInternalType(t *testing.T) {
 	}
 }
 
-// TestFuncFieldsBindTheirValue checks the components' rule for fields that
-// change: a field named XFunc is a func() T beside a field X of type T, so
-// a value is written plainly and bound by the same name with Func added.
+// twinned are the fields that must have an XFunc twin: part styles that live as long as their component, such as a list of rows' padding, which follows the window's layout and would otherwise remount the list as it changes (#294). The other part styles are read once per presentation, such as a popup's or a backdrop's, and may stay fixed.
+var twinned = []string{"base.List.ListStyle", "base.Tree.ListStyle"}
+
+// TestFuncFieldsBindTheirValue checks the components' rule for fields that change: a field named XFunc is a func() T beside a field X of type T, so a value is written plainly and bound by the same name with Func added; and the fields in twinned have one.
 func TestFuncFieldsBindTheirValue(t *testing.T) {
 	if testing.Short() {
 		t.Skip("type-checks the component packages from source")
 	}
 	imp := importer.ForCompiler(token.NewFileSet(), "source", nil)
+	bound := map[string]bool{}
 	for _, rel := range []string{"core", "base", "base/textview", "base/editor", "base/diff", "mobile", "desktop"} {
 		pkg, err := imp.Import(modulePath + "/" + rel)
 		if err != nil {
@@ -175,8 +177,15 @@ func TestFuncFieldsBindTheirValue(t *testing.T) {
 				if !isFunc || sig.Params().Len() != 0 || sig.Results().Len() != 1 || !twin ||
 					!types.Identical(sig.Results().At(0).Type(), value) {
 					t.Errorf("%s.%s.%s is not a func() of %s's type beside it", pkg.Name(), name, f.Name(), base)
+					continue
 				}
+				bound[pkg.Name()+"."+name+"."+base] = true
 			}
+		}
+	}
+	for _, field := range twinned {
+		if !bound[field] {
+			t.Errorf("%s has no %sFunc twin: it changes while its component is shown", field, field[strings.LastIndex(field, ".")+1:])
 		}
 	}
 }

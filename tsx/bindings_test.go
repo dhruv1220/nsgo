@@ -3,6 +3,8 @@ package tsx_test
 import (
 	"testing"
 	"time"
+
+	"github.com/nsgo-dev/nsgo/core"
 )
 
 // Each binding of nsgo/base in an app: what TSX passes reaches the Go
@@ -258,6 +260,39 @@ mount(App);`)
 	}
 	app.Key("enter")
 	app.WaitFor("text:active Pear 1", time.Second)
+}
+
+// TestBaseListRestylesItsRowsInPlace has a listStyle that changes restyle the rows without remounting the list, which would scroll it back to the top.
+func TestBaseListRestylesItsRowsInPlace(t *testing.T) {
+	app := run(t, `import { mount, signal, Text } from "nsgo";
+import { List } from "nsgo/base";
+const inset = signal(4);
+mount(() => <List testID="list" each={Array.from({ length: 40 }, (_, i) => "row " + i)} style={{ height: 120 }}
+	listStyle={{ padding: inset() }} itemStyle={{ height: 24 }} rowLabel={(item) => item}>
+	{(item) => <Text onPress={() => inset.set(16)}>{item}</Text>}
+</List>);`)
+	app.Scroll("id:list", 200)
+	scroll := app.Find("id:list").Children[0]
+	offset := scroll.Offset.Y
+	left := func() core.Points {
+		var x core.Points
+		for v := app.Find("text:row 10"); v != nil && v.ID != scroll.ID; v = v.Parent {
+			x += v.Frame.Origin.X
+		}
+		return x
+	}
+	if got := left(); got != 4 {
+		t.Fatalf("row 10 starts at %v, want listStyle's padding 4", got)
+	}
+	app.Press("text:row 10")
+	app.Settle()
+	after := app.Find("id:list").Children[0]
+	if after.ID != scroll.ID || after.Offset.Y != offset {
+		t.Fatalf("restyling remounted or moved the rows: view %d at %v, then %d at %v", scroll.ID, offset, after.ID, after.Offset.Y)
+	}
+	if got := left(); got != 16 {
+		t.Fatalf("row 10 starts at %v, want listStyle's new padding 16", got)
+	}
 }
 
 func TestBaseListKeepsAControlledSelection(t *testing.T) {
