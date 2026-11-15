@@ -23,7 +23,7 @@ var (
 	ErrRuntime     = errors.New("pkg: the package needs a newer runtime")
 	ErrIntegrity   = errors.New("pkg: a file does not match its hash")
 	ErrStale       = errors.New("pkg: the revocation list is not newer than the one held")
-	ErrExpired     = errors.New("pkg: a trusted root's revocation list has expired")
+	ErrExpired     = errors.New("pkg: a trusted root's revocation list has expired or is missing")
 	ErrState       = errors.New("pkg: the trust state")
 )
 

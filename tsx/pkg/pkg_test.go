@@ -438,6 +438,37 @@ func TestRevocationsExpire(t *testing.T) {
 	}
 }
 
+// TestFreshRevocationsNeedAList checks that a Trust requiring fresh lists refuses while it holds no list of a trusted root, as a feed that never arrived looks the same as one never published.
+func TestFreshRevocationsNeedAList(t *testing.T) {
+	a, b := newKeys(t), newKeys(t)
+	trust := a.trust()
+	trust.AddRoot(b.root.Public().(ed25519.PublicKey))
+	data := a.build(t, 1)
+	if _, err := trust.Verify(data); err != nil {
+		t.Fatalf("without requiring fresh lists: %v", err)
+	}
+	trust.RequireFreshRevocations(true)
+	for _, k := range []keys{a, b} {
+		if _, err := trust.Verify(data); !errors.Is(err, ErrExpired) {
+			t.Fatalf("without a list of every root: got %v", err)
+		}
+		list, err := Revoke(k.root, 1, time.Now().Add(time.Hour), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := trust.UpdateRevocations(list); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := trust.Verify(data)
+	if err != nil {
+		t.Fatalf("with a fresh list of every root: %v", err)
+	}
+	if err := trust.Accept(p); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestTrustStateMigrates opens a trust.json written when a Trust held one list for all roots.
 func TestTrustStateMigrates(t *testing.T) {
 	a, b := newKeys(t), newKeys(t)

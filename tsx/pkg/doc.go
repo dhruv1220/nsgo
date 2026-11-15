@@ -19,7 +19,7 @@
 //
 // A root also signs revocation lists (Revoke): release keys and packages, by their SHA-256, that must not load any more. A Trust holds each trusted root's newest list and refuses what any of them revokes. A root's lists are cumulative and numbered by a sequence of its own: a Trust takes only a list newer than the one of the same root it holds, so an old list cannot be replayed, and while several roots are trusted, none replaces another's.
 //
-// A list may expire (NotAfter), so a host whose lists stop arriving can tell. Verify names the roots whose newest list has expired in Package.ExpiredRevocations, and refuses every package with ErrExpired instead once the host asks for fresh lists (Trust.RequireFreshRevocations), until a newer list comes. A list without NotAfter never expires.
+// A list may expire (NotAfter), so a host whose lists stop arriving can tell. Verify names the roots whose newest list has expired in Package.ExpiredRevocations, and refuses every package with ErrExpired instead once the host asks for fresh lists (Trust.RequireFreshRevocations), until a newer list comes; a host that asks for them also needs a list of every root it trusts. A list without NotAfter never expires.
 //
 // A Trust also keeps the highest build it accepted of each app and refuses older ones. With a directory (OpenTrust) both survive restarts.
 //

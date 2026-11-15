@@ -71,7 +71,7 @@ func (t *Trust) AddRoot(root ed25519.PublicKey) {
 	}
 }
 
-// RequireFreshRevocations has Verify and Accept refuse every package, with ErrExpired, while a trusted root's newest revocation list has passed its NotAfter, until UpdateRevocations takes a newer one. A root the Trust holds no list of yet is not refused, so a host that requires fresh lists takes each root's list before it verifies. Without it, Verify reports such roots in Package.ExpiredRevocations.
+// RequireFreshRevocations has Verify and Accept refuse every package, with ErrExpired, while a trusted root's newest revocation list has passed its NotAfter, or the Trust holds no list of that root at all, until UpdateRevocations takes a current one: a host that requires fresh lists cannot tell a root that never published one from a feed that never arrived, so it requires a list of every root it trusts. Without it, Verify reports the roots whose list expired in Package.ExpiredRevocations, and a root without a list revokes nothing.
 func (t *Trust) RequireFreshRevocations(require bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -99,8 +99,8 @@ func (t *Trust) UpdateRevocations(list *Revocations) error {
 // revoked is what the lists of the roots still trusted revoke together.
 type revoked struct {
 	keys, packages []string
-	// expired names the roots whose list has passed its NotAfter.
-	expired []string
+	// expired names the roots whose list has passed its NotAfter, and missing those the Trust holds no list of.
+	expired, missing []string
 }
 
 func (t *Trust) revoked() revoked {
@@ -109,10 +109,12 @@ func (t *Trust) revoked() revoked {
 		id := KeyID(root)
 		list, ok := t.state.Lists[id]
 		if !ok {
+			r.missing = append(r.missing, id)
 			continue
 		}
 		info, err := list.open([]ed25519.PublicKey{root})
 		if err != nil {
+			r.missing = append(r.missing, id)
 			continue
 		}
 		r.keys = append(r.keys, info.Keys...)
@@ -124,10 +126,13 @@ func (t *Trust) revoked() revoked {
 	return r
 }
 
-// check refuses a package r revokes, and every package while a list expired if fresh ones are required.
+// check refuses a package r revokes, and every package while a root's list expired or is missing if fresh ones are required.
 func (r revoked) check(requireFresh bool, p *Package) error {
 	if requireFresh && len(r.expired) > 0 {
 		return fmt.Errorf("%w: root %s", ErrExpired, r.expired[0])
+	}
+	if requireFresh && len(r.missing) > 0 {
+		return fmt.Errorf("%w: root %s has no revocation list", ErrExpired, r.missing[0])
 	}
 	if slices.Contains(r.keys, p.KeyID) {
 		return fmt.Errorf("%w: release key %s", ErrRevoked, p.KeyID)
