@@ -18,14 +18,17 @@ type webFrame struct {
 	config driver.WebConfig
 	loaded bool // configured at least once
 	token  string
-	port   js.Value // the page's end of the bridge, once it loaded
+	port   js.Value // the app's end of the bridge of the source's page, while that page shows
 	portFn js.Func
-	url    string
-	title  string
-	warned bool // that commands do not reach the page
+	// bridging is set while the source's page loads, which hands its port; queued are the commands for it until then.
+	bridging bool
+	queued   []map[string]any
+	url      string
+	title    string
+	warned   bool // that commands do not reach the page
 }
 
-// webBridge is the script an HTML source starts with: the port it hands the app queues what the page posts until the app takes it.
+// webBridge is the script an HTML source starts with: the port it hands the app queues what the page posts until the app takes it. As the page leaves, for a link or a script setting location, it posts null, which postMessage never does, so the app drops the port, whose other end goes with the page.
 func webBridge(token string) string {
 	return `(() => {
   const channel = new MessageChannel(), port = channel.port1;
@@ -35,6 +38,7 @@ func webBridge(token string) string {
     if (d && d.eval != null) { try { (0, eval)(String(d.eval)); } catch (err) { console.error(err); } }
     else if (d && d.go) history.go(d.go);
   };
+  addEventListener("pagehide", (e) => { if (!e.persisted) port.postMessage(null); });
   parent.postMessage(` + strconv.Quote(token) + `, "*", [channel.port2]);
 })();`
 }
@@ -66,10 +70,22 @@ func (s *surface) webBridged(v *view, e js.Value) {
 	// The page is the srcdoc, at its base URL when it has one.
 	origin, page := w.config.Source.Origin(), cmp.Or(w.config.Source.BaseURL, "about:srcdoc")
 	w.portFn = js.FuncOf(func(_ js.Value, args []js.Value) any {
-		s.send(v, driver.Event{Kind: driver.EventMessage, Text: args[0].Get("data").String(), Origin: origin, URL: page, MainFrame: true})
+		data := args[0].Get("data")
+		if data.Type() != js.TypeString {
+			// The page left (webBridge): what the app sends it now would be lost.
+			w.closePort()
+			s.webNavigation(v, driver.EventLoadStart, true)
+			return nil
+		}
+		s.send(v, driver.Event{Kind: driver.EventMessage, Text: data.String(), Origin: origin, URL: page, MainFrame: true})
 		return nil
 	})
 	w.port.Set("onmessage", w.portFn)
+	w.bridging = false
+	for _, msg := range w.queued {
+		w.port.Call("postMessage", msg)
+	}
+	w.queued = nil
 }
 
 // sameFrame reports whether a and b load the same frame, comparing what
@@ -87,12 +103,12 @@ func (s *surface) setWeb(v *view, c *driver.WebConfig) {
 		return
 	}
 	w.loaded, w.config = true, *c
-	w.closePort()
 	w.token = ""
 	src := c.Source
 	if src.HTML != "" && !c.NoJavaScript {
 		w.token = strconv.FormatUint(rand.Uint64(), 36)
 	}
+	w.awaitBridge()
 	sandbox := []string{"allow-forms", "allow-popups", "allow-popups-to-escape-sandbox", "allow-modals", "allow-downloads"}
 	if !c.NoJavaScript {
 		sandbox = append(sandbox, "allow-scripts")
@@ -223,21 +239,38 @@ func (w *webFrame) closePort() {
 	}
 }
 
+// awaitBridge drops the bridge of the page the frame shows, which is going, and waits for the next page's when the source has one.
+func (w *webFrame) awaitBridge() {
+	w.closePort()
+	w.bridging, w.queued = w.token != "", nil
+}
+
 func (s *surface) webCommand(v *view, c driver.WebCommand, value string) {
 	w := v.web
-	viaPort := func(name string, msg map[string]any) {
-		if w.port.Truthy() {
+	// viaPort hands msg to the source's page, once it handed its port, and reports false when no such page shows: the source is a URL, or its page went to another.
+	viaPort := func(msg map[string]any) bool {
+		switch {
+		case w.port.Truthy():
 			w.port.Call("postMessage", msg)
-		} else if !w.warned {
+		case w.bridging:
+			w.queued = append(w.queued, msg)
+		default:
+			return false
+		}
+		return true
+	}
+	warn := func(name string) {
+		if !w.warned {
 			w.warned = true
 			js.Global().Get("console").Call("warn", "nsgo: web view: "+name+
-				" only reaches HTML sources (a page of another site is the browser's own)")
+				" only reaches the page of an HTML source (a URL's page, or one the source's went to, is the browser's own)")
 		}
 	}
 	switch c {
 	case driver.WebReload:
 		// The frame is another origin: it loads again rather than is told to.
 		if w.frame.Call("hasAttribute", "srcdoc").Bool() {
+			w.awaitBridge()
 			w.frame.Set("srcdoc", w.frame.Get("srcdoc"))
 		} else if src := w.frame.Call("getAttribute", "src"); src.Truthy() {
 			w.frame.Set("src", src)
@@ -248,11 +281,32 @@ func (s *surface) webCommand(v *view, c driver.WebCommand, value string) {
 			win.Call("postMessage", value, "*")
 		}
 	case driver.WebInjectJavaScript:
-		viaPort("InjectJavaScript", map[string]any{"eval": value})
+		if viaPort(map[string]any{"eval": value}) {
+			break
+		}
+		marker, ok := driver.WebEvaluateMarker(value)
+		if !ok {
+			warn("InjectJavaScript")
+			break
+		}
+		// No page answers an Evaluate: the view does, after the batch, as a page whose script threw.
+		answer := driver.Event{Kind: driver.EventMessage, Text: driver.WebEvaluateFailure(marker,
+			"nsgo: the web view shows no page of an HTML source, which alone runs scripts on the web")}
+		var fail js.Func
+		fail = js.FuncOf(func(js.Value, []js.Value) any {
+			fail.Release()
+			s.send(v, answer)
+			return nil
+		})
+		js.Global().Call("queueMicrotask", fail)
 	case driver.WebGoBack:
-		viaPort("GoBack", map[string]any{"go": -1})
+		if !viaPort(map[string]any{"go": -1}) {
+			warn("GoBack")
+		}
 	case driver.WebGoForward:
-		viaPort("GoForward", map[string]any{"go": 1})
+		if !viaPort(map[string]any{"go": 1}) {
+			warn("GoForward")
+		}
 	}
 	// StopLoading does nothing, as in NSH: the frame is another origin.
 }

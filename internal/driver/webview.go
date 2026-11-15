@@ -289,10 +289,7 @@ func WebBridge(post string) string {
 // result as JSON, a promise's once settled, or what it threw (decoded by
 // WebEvaluateAnswer).
 func WebEvaluateScript(script, marker string) string {
-	return `(function () {
-  var bridge = window.nsgo, post = bridge && bridge.postMessage;
-  if (!post) return;
-  var send = function (answer) { post.call(bridge, ` + JSString(marker) + ` + JSON.stringify(answer)); };
+	return webEvaluateHead + JSString(marker) + ` + JSON.stringify(answer)); };
   var fail = function (e) { send({ error: String(e && e.message !== undefined ? e.message : e) }); };
   try {
     Promise.resolve((0, eval)(` + JSString(script) + `)).then(function (v) {
@@ -303,6 +300,40 @@ func WebEvaluateScript(script, marker string) string {
     }, fail);
   } catch (e) { fail(e); }
 })();`
+}
+
+// webEvaluateHead starts every WebEvaluateScript, up to its marker.
+const webEvaluateHead = `(function () {
+  var bridge = window.nsgo, post = bridge && bridge.postMessage;
+  if (!post) return;
+  var send = function (answer) { post.call(bridge, `
+
+// WebEvaluateMarker returns the marker of a script WebEvaluateScript made, for a backend that has no page to run it in and answers it with WebEvaluateFailure instead.
+func WebEvaluateMarker(script string) (string, bool) {
+	rest, ok := strings.CutPrefix(script, webEvaluateHead)
+	if !ok || !strings.HasPrefix(rest, `"`) {
+		return "", false
+	}
+	for i := 1; i < len(rest); i++ {
+		switch rest[i] {
+		case '\\':
+			i++
+		case '"':
+			// JSString's literals are JSON's.
+			var marker string
+			if json.Unmarshal([]byte(rest[:i+1]), &marker) != nil {
+				return "", false
+			}
+			return marker, true
+		}
+	}
+	return "", false
+}
+
+// WebEvaluateFailure is what a page posts when the script after marker threw message, as WebEvaluateAnswer decodes it.
+func WebEvaluateFailure(marker, message string) string {
+	answer, _ := json.Marshal(map[string]string{"error": message})
+	return marker + string(answer)
 }
 
 // WebEvaluateAnswer decodes what WebEvaluateScript posted after its

@@ -48,3 +48,21 @@ func TestWebSourceShows(t *testing.T) {
 		}
 	}
 }
+
+// A backend that has no page to run an Evaluate in answers it itself, from the script's marker.
+func TestWebEvaluateMarker(t *testing.T) {
+	for _, marker := range []string{"nsgo-evaluate:0123abcd:", `odd "quoted\" marker`} {
+		got, ok := WebEvaluateMarker(WebEvaluateScript(`"nsgo-evaluate:ffff:" + 1`, marker))
+		if !ok || got != marker {
+			t.Errorf("the marker of a script after %q is %q, %v", marker, got, ok)
+		}
+		if _, err := WebEvaluateAnswer(WebEvaluateFailure(marker, "no page")[len(marker):]); err == nil || err.Error() != "no page" {
+			t.Errorf("a failure answers %v", err)
+		}
+	}
+	for _, script := range []string{`window.nsgo.postMessage("nsgo-evaluate:ffff:")`, "", WebMessageScript("x")} {
+		if marker, ok := WebEvaluateMarker(script); ok {
+			t.Errorf("%q has a marker, %q", script, marker)
+		}
+	}
+}
