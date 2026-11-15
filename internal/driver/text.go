@@ -32,6 +32,9 @@ type AttributedText struct {
 type TextSpan struct {
 	Start, End int
 	Style      TextStyle
+	// Cursor is the pointer's look over the span's characters. Auto leaves
+	// the view's cursor unchanged.
+	Cursor Cursor
 	// Link marks a span with a press handler: a press on it reports
 	// EventPress with Index set to a byte offset inside it.
 	Link bool
@@ -48,6 +51,16 @@ type TextSpan struct {
 	Background TextBackground
 	// Copy is what a copy takes in place of the attachment the span styles, as a formula copies as its TeX; empty leaves the attachment out. Screen readers read the attachment's label instead (ShownText).
 	Copy string
+}
+
+// SpanCursor returns an explicit cursor covering byte offset i.
+func SpanCursor(spans []TextSpan, i int) (Cursor, bool) {
+	for _, sp := range spans {
+		if !sp.Hidden && sp.Cursor != CursorAuto && i >= sp.Start && i < sp.End {
+			return sp.Cursor, true
+		}
+	}
+	return CursorAuto, false
 }
 
 // PressesAt reports whether a pressable text takes a press on byte

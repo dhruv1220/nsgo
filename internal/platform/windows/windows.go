@@ -1295,9 +1295,12 @@ func (w *window) apply(b *driver.MountBatch) {
 			}
 			v.text, _ = it.Text.Layout.(drawnText)
 			v.content = it.Text.Content
-			if v.plain != it.Text.Text {
+			if v.plain != it.Text.Text || !slices.Equal(v.spans, it.Text.Spans) {
 				v.plain, v.spans = it.Text.Text, it.Text.Spans
 				w.accessChanged(v, true)
+			}
+			if w.pointerIn {
+				w.viewCursor()
 			}
 		case driver.ItemInput:
 			if v.field != nil && it.Input != nil {

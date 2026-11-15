@@ -168,6 +168,7 @@ type window struct {
 	drop       fileDrop
 
 	lastPointer  driver.Point
+	cursorText   *view         // text view whose span cursor is set on its widget
 	down         driver.Event  // the last press: modifiers and click count
 	mouse        finger.Mouse  // finger 0 of the views' touches
 	paste        *pasting      // the paste whose clipboard is being read
@@ -340,7 +341,7 @@ func (w *window) startEngine(app engine.App, opts Options, size driver.Size) {
 		Host:        opts.Host,
 		// The app's own window takes its global shortcuts; a host's widget leaves them to the host.
 		HotKeys: !w.embedded,
-		Tray:        !w.embedded,
+		Tray:    !w.embedded,
 	}
 	if opts.Hidden {
 		eopts.Windows = &engine.WindowOptions{Title: opts.Title, Width: opts.Width, Height: opts.Height,
@@ -1000,6 +1001,9 @@ func (w *window) apply(b *driver.MountBatch) {
 			v.plain, v.spans = it.Text.Text, it.Text.Spans
 			w.accessChanged(v)
 			w.changed(v)
+			if w.pointerIn {
+				w.updatePointerCursor()
+			}
 		case driver.ItemInput:
 			w.configure(v, it.Input)
 		case driver.ItemInputValue:

@@ -212,6 +212,10 @@ func leaveCallback(controller uintptr, data uintptr) {
 		return
 	}
 	w.pointerIn = false
+	if w.cursorText != nil {
+		w.setCursor(w.cursorText)
+		w.cursorText = nil
+	}
 	w.hoverViews()
 	if w.barDrag == nil {
 		w.hoverBars(driver.Point{X: -1, Y: -1})

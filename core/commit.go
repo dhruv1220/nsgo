@@ -428,7 +428,7 @@ func (t *Tree) resolve(n *node, inherited textFields, force bool) {
 						b.WriteRune(driver.AttachmentRune)
 						at.Attachments = append(at.Attachments, driver.TextAttachment{Offset: start,
 							Size: w.attach.size, Align: w.attach.align, Descent: w.attach.descent})
-						at.Spans = append(at.Spans, driver.TextSpan{Start: start, End: b.Len(), Style: ts, Copy: sp.content})
+						at.Spans = append(at.Spans, driver.TextSpan{Start: start, End: b.Len(), Style: ts, Cursor: sp.style.Cursor, Copy: sp.content})
 						continue
 					}
 					own := sp.style.inherit(inherited)
@@ -436,7 +436,7 @@ func (t *Tree) resolve(n *node, inherited textFields, force bool) {
 					spanStyle := scaleText(own.textStyle(), scale)
 					spanStyle.RTL = ts.RTL
 					spanStyle.Align = sidedAlign(spanStyle.Align, ts.RTL)
-					span := driver.TextSpan{Start: start, End: b.Len(), Style: spanStyle, Link: sp.press != nil,
+					span := driver.TextSpan{Start: start, End: b.Len(), Style: spanStyle, Cursor: sp.style.Cursor, Link: sp.press != nil,
 						Background: driver.TextBackground{Color: currentIn(sp.style.Background, spanStyle.Color), Radius: sp.style.CornerRadius}}
 					if sp.style.Visibility == VisibilityHidden {
 						// In place: laid out, drawn as nothing, no link.

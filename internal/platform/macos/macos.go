@@ -2361,7 +2361,7 @@ func (s *surface) pick(loc apple.CGPoint, always bool) {
 		}
 		v.over = !v.over
 	}
-	s.updateCursor(hit, up, always)
+	s.updateCursor(hit, up, loc, always)
 }
 
 // repickDelay is how long after a scroll's last step the views hovered
@@ -2453,7 +2453,7 @@ func covers(v *view, hit objc.ID) bool {
 // shows another, as -[NSCursor set] costs milliseconds with a customized
 // pointer, and not while a button is down: a drag keeps the cursor it
 // began with.
-func (s *surface) updateCursor(hit, up objc.ID, always bool) {
+func (s *surface) updateCursor(hit, up objc.ID, loc apple.CGPoint, always bool) {
 	if !always {
 		app := objc.ID(apple.Class("NSApplication")).Send(sel("sharedApplication"))
 		if !objc.Send[bool](app, sel("isActive")) ||
@@ -2461,7 +2461,7 @@ func (s *surface) updateCursor(hit, up objc.ID, always bool) {
 			return
 		}
 	}
-	cursor, own := cursorAt(hit, up)
+	cursor, own := cursorAt(hit, up, loc)
 	if !own {
 		return
 	}
@@ -2475,7 +2475,7 @@ func (s *surface) updateCursor(hit, up objc.ID, always bool) {
 // from hit up that names one, or the I-beam over a text a press selects
 // or an input's text. own is false off the surface and over the views that
 // show their own: web views, players and native components.
-func cursorAt(hit, up objc.ID) (cursor driver.Cursor, own bool) {
+func cursorAt(hit, up objc.ID, loc apple.CGPoint) (cursor driver.Cursor, own bool) {
 	if hit == 0 {
 		return driver.CursorAuto, false
 	}
@@ -2483,6 +2483,11 @@ func cursorAt(hit, up objc.ID) (cursor driver.Cursor, own bool) {
 		v := views[n]
 		switch {
 		case v == nil:
+		case v.kind == driver.KindText:
+			p := objc.Send[apple.CGPoint](n, sel("convertPoint:fromView:"), loc, objc.ID(0))
+			if c, ok := driver.SpanCursor(v.spans, v.indexAt(p)); ok {
+				return c, true
+			}
 		case v.kind == driver.KindInput && hit != v.native && v.input.showsIBeam(hit):
 			return driver.CursorText, true
 		case v.native != n:

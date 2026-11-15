@@ -49,6 +49,17 @@ func TestTextTransformShadowAndDecoration(t *testing.T) {
 	}
 }
 
+func TestSpanCursorReachesTextSpan(t *testing.T) {
+	h := newHost(t, Size{Width: 400, Height: 100}, func(cx *Scope) Node {
+		return Text{TestID: "text", Spans: []Span{{Content: "plain"}, {Content: "link", Style: Style{Cursor: CursorPointer}}}}
+	})
+	h.commit()
+	spans := h.find("text").text.text.Spans
+	if len(spans) != 2 || spans[0].Cursor != CursorAuto || spans[1].Cursor != CursorPointer {
+		t.Fatalf("span cursors = %+v, want auto and pointer", spans)
+	}
+}
+
 func TestFontVariantAndDecorationLines(t *testing.T) {
 	h := newHost(t, Size{Width: 400, Height: 100}, func(cx *Scope) Node {
 		return View{Style: Style{FontVariant: FontSmallCaps, FontSize: 20, TextUnderlineOffset: Pct(10)}, Children: []Node{

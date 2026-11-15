@@ -360,6 +360,8 @@ type Span struct {
 	ContentFunc func() string
 	// Style's text fields merge over the Text's. Its Background and
 	// CornerRadius draw behind the span's characters, a box per line.
+	// Cursor overrides the containing Text's cursor over these characters
+	// when it is not Auto.
 	Style     Style
 	StyleFunc func() Style
 	// OnPress and OnLongPress take the presses on the span's characters,

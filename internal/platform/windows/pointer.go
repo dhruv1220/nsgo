@@ -302,6 +302,19 @@ func (w *window) viewCursor() bool {
 	}
 	screenToClient.Call(w.hwnd, uintptr(unsafe.Pointer(&at)))
 	v := w.pickAt(at.X, at.Y)
+	if v != nil && v.kind == driver.KindText {
+		if l, ok := v.text.(*textLayout); ok {
+			b, shown := w.surfaceBounds(v)
+			if shown {
+				x := float32(at.X) - float32(b.Origin.X+v.content.Origin.X)
+				y := float32(at.Y) - float32(b.Origin.Y+v.content.Origin.Y)
+				if c, ok := driver.SpanCursor(v.spans, l.indexAt(x, y)); ok {
+					setCursor.Call(systemCursor(c))
+					return true
+				}
+			}
+		}
+	}
 	for ; v != nil; v = v.parent {
 		if c := v.style.Cursor; c != driver.CursorAuto {
 			setCursor.Call(systemCursor(c))

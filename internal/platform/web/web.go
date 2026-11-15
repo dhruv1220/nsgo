@@ -649,6 +649,7 @@ type span struct {
 	start, end int
 	style      map[string]string
 	link       bool
+	cursor     driver.Cursor
 	// hidden marks a hidden span's element with data-hidden, which copySelection leaves out as the browser's copy does.
 	hidden bool
 }
@@ -833,7 +834,7 @@ func (s *surface) Prepare(t *driver.AttributedText) driver.PreparedText {
 			// and screen readers too.
 			css["visibility"] = "hidden"
 		}
-		spans = append(spans, span{start, end, css, sp.Link, sp.Hidden})
+		spans = append(spans, span{start: start, end: end, style: css, link: sp.Link, cursor: sp.Cursor, hidden: sp.Hidden})
 		at = end
 	}
 	var copies []string
@@ -1032,6 +1033,9 @@ func (r *richText) fill(s *surface, el js.Value, interactive bool) {
 		link := sp.link && interactive
 		if c := s.spanClass(sp.style); c != "" {
 			e.Set("className", c)
+		}
+		if sp.cursor != driver.CursorAuto {
+			setStyle(e, map[string]string{"cursor": sp.cursor.Name()})
 		}
 		r.appendText(doc, e, sp.start, sp.end)
 		e.Call("setAttribute", "data-start", sp.start)

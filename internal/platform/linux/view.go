@@ -271,10 +271,46 @@ func viewsAt(v *view, p driver.Point, match func(*view) bool, out []*view) ([]*v
 func (w *window) movePointer(at driver.Point, state uint32) {
 	w.lastPointer, w.pointerIn, w.pointerState = at, true, state
 	w.hoverViews()
+	w.updatePointerCursor()
 	w.mouseMoved(state)
 	if state&gdkButton1 != 0 {
 		w.touch(w.mouse.Move(at))
 	}
+}
+
+// updatePointerCursor applies an explicit cursor on the text span under the
+// pointer, while leaving the view and ancestor cursor rules intact elsewhere.
+func (w *window) updatePointerCursor() {
+	root := w.view(w.root)
+	var text *view
+	if root != nil && w.pointerIn {
+		text = hit(root, w.lastPointer, func(v *view) bool { return v.kind == driver.KindText })
+	}
+	if w.cursorText != nil && w.cursorText != text {
+		w.setCursor(w.cursorText)
+		w.cursorText = nil
+	}
+	if text == nil {
+		return
+	}
+	b, shown := w.surfaceBounds(text)
+	if !shown {
+		return
+	}
+	l, ok := text.text.(*textLayout)
+	if !ok {
+		w.setCursor(text)
+		return
+	}
+	i := l.indexAt(w.lastPointer.X-b.Origin.X-text.content.Origin.X,
+		w.lastPointer.Y-b.Origin.Y-text.content.Origin.Y)
+	if c, ok := driver.SpanCursor(text.spans, i); ok {
+		text.cursor, text.cursorSet = c, true
+		gtkWidgetSetCursorFromName(text.widget, cstr(c.Name()))
+		w.cursorText = text
+		return
+	}
+	w.setCursor(text)
 }
 
 // touch reports the mouse as a finger, when ok.
