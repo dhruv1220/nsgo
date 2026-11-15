@@ -224,6 +224,7 @@ greeting: "Hallo, {name}!"
 github.com/nsgo-dev/nsgo/base/locales:
   sortBy: "Nach {column} sortieren"
   diffExpandAll: "Alle aufklappen"
+  calendarMonth: "{d, date, ::yMMMM}"
 `,
 		"locales/en-GB.yaml":  `greeting: "Hiya, {name}!"`,
 		"locales/ar.yaml":     `due: "{d, date, medium}"`,
@@ -271,6 +272,7 @@ func TestMessages(t *testing.T) {
 		{en.Month(day), "January 2026"},
 		{en.Sent(day), "Sent 1/5/26, 1:07 PM"},
 		{en.Fixed(1234.5), "1,234.50 or 1234.5"},
+		{baselocales.In("de").CalendarMonth(day), "Januar 2026"},
 		{locales.In("en-XA").Greeting("Ada"), "[Ĥéĺĺó, Ada! ~~~]"},
 		{locales.In("en-XA").Quoted(), "[Úśé {ƀŕáćéś} áńď ďóń'ť ~~~~~~~~]"},
 		{locales.In("ar-XB").Positional("1", "2"), "\u200f1\u200f \u200f\u202eof\u202c\u200f \u200f2\u200f"},
@@ -304,7 +306,13 @@ func TestMessages(t *testing.T) {
 		t.Errorf("check after writing: %v", err)
 	}
 	code, _ := os.ReadFile(filepath.Join(dir, "locales", genFile))
-	for _, want := range []string{"i18n.SetApp(Catalog)", `baselocales.Supply("de"`, "func Type(cx *core.Scope, type_ string, string_ string) string"} {
+	for _, want := range []string{
+		"i18n.SetApp(Catalog)",
+		`baselocales.Supply("de"`,
+		"func Type(cx *core.Scope, type_ string, string_ string) string",
+		"CalendarMonth: func(hc string, d time.Time) string",
+		`i18n.FormatDate(dated("de", hc)`,
+	} {
 		if !strings.Contains(string(code), want) {
 			t.Errorf("generated code lacks %q", want)
 		}

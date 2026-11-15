@@ -83,7 +83,8 @@ func (c *catalog) generate() ([]byte, error) {
 	g.p("\tTexts map[string]string")
 	for _, key := range c.keys {
 		if len(c.params[key]) > 0 {
-			g.p("\t%s func(%s) string", exportName(key), signature(c.params[key]))
+			params := c.params[key]
+			g.p("\t%s func(%s) string", exportName(key), translationSignature(params))
 		}
 	}
 	g.p("}")
@@ -269,7 +270,11 @@ func (c *catalog) generate() ([]byte, error) {
 		g.p("\t}")
 		g.p("\tfor lang := msgs.lang; ; lang = i18n.Parent(lang) {")
 		g.p("\t\tif f := supplied[lang].%s; f != nil {", name)
-		g.p("\t\t\treturn f(%s)", arguments(params))
+		args := arguments(params)
+		if hasDateTime(params) {
+			args = joinArguments("msgs.hc", args)
+		}
+		g.p("\t\t\treturn f(%s)", args)
 		g.p("\t\t}")
 		g.p("\t\tswitch lang {")
 		for _, lang := range langs {
@@ -344,6 +349,28 @@ func (c *catalog) writeSupplies(g *goWriter) error {
 		return nil
 	}
 	slices.SortStableFunc(all, func(a, b entry) int { return strings.Compare(a.s.importPath, b.s.importPath) })
+	needsDate := false
+	for _, e := range all {
+		if e.s.target == nil {
+			return fmt.Errorf("%s: %s is not resolved", c.dir, e.s.importPath)
+		}
+		for _, key := range e.s.keys {
+			if hasDateTime(e.s.target.params[key]) {
+				needsDate = true
+				break
+			}
+		}
+	}
+	if needsDate {
+		g.p("// dated is lang with the hour cycle supplied by the target package.")
+		g.p("func dated(lang, hc string) string {")
+		g.p("\tif hc == \"\" {")
+		g.p("\t\treturn lang")
+		g.p("\t}")
+		g.p("\treturn lang + \"-u-hc-\" + hc")
+		g.p("}")
+		g.p("")
+	}
 	g.p("// The messages this package supplies to others.")
 	g.p("func init() {")
 	for _, e := range all {
@@ -370,8 +397,16 @@ func (c *catalog) writeSupplies(g *goWriter) error {
 		}
 		for _, key := range funcs {
 			params := t.params[key]
-			g.p("\t\t%s: func(%s) string {", exportName(key), signature(params))
+			if hasDateTime(params) {
+				g.p("\t\t%s: func(%s) string {", exportName(key), translationSignature(params))
+			} else {
+				g.p("\t\t%s: func(%s) string {", exportName(key), signature(params))
+			}
+			if hasDateTime(params) {
+				g.supplyHourCycle = true
+			}
 			g.say(e.s.msgs[key].parts, e.lang, params, "\t\t\t")
+			g.supplyHourCycle = false
 			g.p("\t\t},")
 		}
 		g.p("\t})")
@@ -385,6 +420,9 @@ func (c *catalog) writeSupplies(g *goWriter) error {
 type goWriter struct {
 	out     *bytes.Buffer
 	imports map[string]string // import path → name
+	// supplyHourCycle makes date and time arguments use the hour cycle passed
+	// to a supplied Translation function.
+	supplyHourCycle bool
 	// mark wraps what arguments write in msgs.arg, in the source's
 	// messages, which pseudo locales transform.
 	mark bool
@@ -558,7 +596,11 @@ func (g *goWriter) argTerm(part msgPart, lang string, params []param, pound *cou
 		}
 		switch {
 		case p.typ == "time.Time":
-			return fmt.Sprintf("i18n.FormatDate(msgs.dated(%q), %s, %s)", lang, v, dateOptions(part))
+			locale := fmt.Sprintf("msgs.dated(%q)", lang)
+			if g.supplyHourCycle {
+				locale = fmt.Sprintf("dated(%q, hc)", lang)
+			}
+			return fmt.Sprintf("i18n.FormatDate(%s, %s, %s)", locale, v, dateOptions(part))
 		case part.style == "integer":
 			return fmt.Sprintf("i18n.FormatInteger(%q, %s)", lang, num)
 		case part.style == "percent":
@@ -674,6 +716,24 @@ func signature(params []param) string {
 		parts = append(parts, goName(p.name)+" "+p.typ)
 	}
 	return strings.Join(parts, ", ")
+}
+
+func translationSignature(params []param) string {
+	if !hasDateTime(params) {
+		return signature(params)
+	}
+	return joinArguments("hc string", signature(params))
+}
+
+func hasDateTime(params []param) bool {
+	return slices.ContainsFunc(params, func(p param) bool { return p.typ == "time.Time" })
+}
+
+func joinArguments(first, rest string) string {
+	if rest == "" {
+		return first
+	}
+	return first + ", " + rest
 }
 
 // names are the parameters' names in Go.
