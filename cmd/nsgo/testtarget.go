@@ -60,6 +60,18 @@ func runTargetTests(ctx context.Context, p *project, opts testOptions) error {
 		plain("no tests match")
 		return nil
 	}
+	// Android's Java host reads the Go process's stdout as its protocol.
+	// A test binary that does not link NSGo's root package never enters the
+	// test host and writes go test's text there instead, which the host can
+	// mistake for a huge frame length. Refuse before building or installing
+	// such a package so the user sees the cause rather than a reader crash.
+	hosted, err := linksPlatform(ctx, p, seen)
+	if err != nil {
+		return err
+	}
+	if err := requireTargetHost(opts.target, hosted); err != nil {
+		return fmt.Errorf("%s: %w", p.Dir, err)
+	}
 	p.testBinary = true
 	progress := begin("building the tests for %s", opts.target)
 	runner, err := targetFor(ctx, p, opts)
@@ -83,9 +95,7 @@ func runTargetTests(ctx context.Context, p *project, opts testOptions) error {
 	// A package that links no platform, as a library's, runs headless in
 	// the target's runtime: the web's engine, say.
 	env := slices.Clone(opts.env)
-	if hosted, err := linksPlatform(ctx, p, seen); err != nil {
-		return err
-	} else if hosted {
+	if hosted {
 		env = append(env, "NSGO_TEST_TARGET="+opts.target)
 	}
 	if opts.trace {
@@ -116,6 +126,17 @@ func runTargetTests(ctx context.Context, p *project, opts testOptions) error {
 		}
 	}
 	return r.finish(opts, nil)
+}
+
+// requireTargetHost reports the one target whose process cannot safely run a
+// plain go test binary. Its Java activity consumes stdout as a framed
+// protocol, so Android tests must link the root package and enter nsgotest's
+// platform host.
+func requireTargetHost(target string, hosted bool) error {
+	if target == "android" && !hosted {
+		return errors.New("-target android requires the package tests to link github.com/nsgo-dev/nsgo; without its test host, go test output would corrupt Android's protocol pipe (run the tests headless or add a root-package import)")
+	}
+	return nil
 }
 
 // traceWriter passes a test's trace lines on as they come: the batches

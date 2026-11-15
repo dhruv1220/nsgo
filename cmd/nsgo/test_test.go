@@ -30,6 +30,29 @@ func TestTreeOf(t *testing.T) {
 	}
 }
 
+func TestRequireTargetHost(t *testing.T) {
+	for _, test := range []struct {
+		target, want string
+		hosted       bool
+	}{
+		{target: "android", want: "requires the package tests to link"},
+		{target: "android", hosted: true},
+		{target: "ios_simulator"},
+		{target: "web"},
+	} {
+		err := requireTargetHost(test.target, test.hosted)
+		if test.want == "" {
+			if err != nil {
+				t.Errorf("requireTargetHost(%q, %t) = %v, want nil", test.target, test.hosted, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("requireTargetHost(%q, %t) = %v, want an error containing %q", test.target, test.hosted, err, test.want)
+		}
+	}
+}
+
 func TestLoadForTestTakesBareTrees(t *testing.T) {
 	dir := t.TempDir()
 	p, err := loadForTest(filepath.Join(dir, "..."), nil)
