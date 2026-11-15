@@ -1398,6 +1398,18 @@ func TestConfinedFocusFollowsTheUser(t *testing.T) {
 		focus("plugin-field")
 		other.Focus()
 		want("Focus while it has the focus", focused(), true, h.find("plugin-other").id)
+
+		// A context menu it showed closing as another replaces it is not the user's input; the user closing it is.
+		h.tree.SetEnvironment(Environment{OS: OSMacOS, Idiom: IdiomDesktop})
+		focus("host-field")
+		plugin.PopupMenu([]MenuItem{{Label: "A"}}, Point{}, func() { field.Focus() })
+		plugin.PopupMenu([]MenuItem{{Label: "B"}}, Point{}, func() { field.Focus() })
+		b := h.commit()
+		menu := command(b, driver.ItemPopupMenu)
+		want("Focus as a menu replaces the one it showed", focusedIn(b), !confined, h.find("plugin-field").id)
+		focus("host-field")
+		h.tree.Dispatch(driver.Event{Kind: driver.EventMenuClosed, Count: menu.Count})
+		want("Focus as the user closes the menu it showed", focused(), true, h.find("plugin-field").id)
 	}
 }
 

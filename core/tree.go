@@ -2101,7 +2101,7 @@ func (t *Tree) Dispatch(ev driver.Event) {
 		t.answer(ev)
 		return
 	case driver.EventMenuClosed:
-		t.popupClosed(ev.Count)
+		t.popupClosed(ev.Count, true)
 		return
 	case driver.EventSpeech:
 		t.rt.speechEvent(ev)

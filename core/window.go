@@ -550,7 +550,7 @@ func (tr *Tray) showMenu() {
 	t := tr.rt.tree
 	var items []MenuItem
 	t.within(tr.owner, func() { items = tr.opts.Menu() })
-	t.popupClosed(t.popup.id)
+	t.popupClosed(t.popup.id, false)
 	t.alertID++
 	t.popup = popupMenu{id: t.alertID, actions: map[uint32]menuAction{}, owner: tr.owner}
 	entries := t.menuEntries(items, tr.owner, t.popup.actions)
