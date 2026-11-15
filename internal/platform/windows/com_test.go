@@ -3,12 +3,23 @@
 package windows
 
 import (
+	"bytes"
+	"log"
 	"runtime"
+	"strings"
 	"testing"
 	"unsafe"
 )
 
 var clsidFromString = ole32.NewProc("CLSIDFromString")
+
+// apartmentThread keeps the test on one thread, a single-threaded COM apartment as the main thread is, until the function it returns is called.
+func apartmentThread() func() {
+	runtime.LockOSThread()
+	const coinitApartmentThreaded = 2
+	coInitializeEx.Call(0, coinitApartmentThreaded)
+	return runtime.UnlockOSThread
+}
 
 // TestTaskbarListIDs holds the taskbar list's class and interface IDs to the ones shobjidl_core.h documents, as Windows parses them: with a wrong IID, CoCreateInstance answers E_NOINTERFACE and taskbar buttons show no badge or progress.
 func TestTaskbarListIDs(t *testing.T) {
@@ -32,14 +43,42 @@ func TestTaskbarListIDs(t *testing.T) {
 
 // TestTaskbarListIsMade checks that the shell makes its taskbar list as the taskbar asks for it, the class with that interface.
 func TestTaskbarListIsMade(t *testing.T) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	const coinitApartmentThreaded = 2
-	coInitializeEx.Call(0, coinitApartmentThreaded)
+	defer apartmentThread()()
 	var list *comObject
 	if hr, _, _ := coCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInprocServer,
 		uintptr(unsafe.Pointer(&iidTaskbarList3)), uintptr(unsafe.Pointer(&list))); failed(hr) {
 		t.Fatalf("CoCreateInstance(TaskbarList, ITaskbarList3): HRESULT %#x", uint32(hr))
 	}
 	list.release()
+}
+
+// TestTaskbarIsMadeAgainAfterAFailure checks that a failure to make the taskbar list is logged with its HRESULT and not kept: the next call makes the list.
+func TestTaskbarIsMadeAgainAfterAFailure(t *testing.T) {
+	defer apartmentThread()()
+	var logged bytes.Buffer
+	defer log.SetOutput(log.Writer())
+	log.SetOutput(&logged)
+	documented := iidTaskbarList3
+	defer func() { iidTaskbarList3 = documented }()
+	// The taskbar list is no drop target.
+	iidTaskbarList3 = iidDropTarget
+	const eNoInterface = 0x80004002
+	if list := taskbar(); list != nil {
+		t.Fatal("the taskbar list was made with an interface it does not have")
+	}
+	if !strings.Contains(logged.String(), "HRESULT 0x80004002") {
+		t.Fatalf("the failure logged %q, not E_NOINTERFACE", logged.String())
+	}
+	iidTaskbarList3 = documented
+	list := taskbar()
+	defer func() { taskbarList, taskbarFailure = nil, 0 }()
+	switch {
+	case list != nil:
+		list.release()
+	case taskbarFailure == eNoInterface:
+		t.Fatalf("the taskbar list was not made again after a failure: %s", logged.String())
+	default:
+		// HrInit answers E_NOTIMPL in a session without a taskbar, such as a service's.
+		t.Logf("the taskbar list was made again, and failed further on: %s", logged.String())
+	}
 }

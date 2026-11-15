@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"image"
 	"image/png"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -443,19 +444,34 @@ func (w *window) closeToast(id string) {
 	deleteHString(aumid)
 }
 
-// taskbar is the shell's taskbar list, made once on the main thread.
-var taskbar = sync.OnceValue(func() *comObject {
+// taskbarList is the shell's taskbar list once made, and taskbarFailure the HRESULT the last attempt to make it failed with; the main thread keeps both.
+var (
+	taskbarList    *comObject
+	taskbarFailure uintptr
+)
+
+// taskbar returns the shell's taskbar list, made on the main thread, or nil while it cannot be made. A failure is not kept, as its cause may pass, and is logged once for each HRESULT.
+func taskbar() *comObject {
+	if taskbarList != nil {
+		return taskbarList
+	}
+	comApartment()
 	var list *comObject
-	if hr, _, _ := coCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInprocServer,
-		uintptr(unsafe.Pointer(&iidTaskbarList3)), uintptr(unsafe.Pointer(&list))); failed(hr) {
-		return nil
-	}
-	if failed(list.call(taskbarHrInit)) {
+	hr, _, _ := coCreateInstance.Call(uintptr(unsafe.Pointer(&clsidTaskbarList)), 0, clsctxInprocServer,
+		uintptr(unsafe.Pointer(&iidTaskbarList3)), uintptr(unsafe.Pointer(&list)))
+	if !failed(hr) {
+		if hr = list.call(taskbarHrInit); !failed(hr) {
+			taskbarList = list
+			return list
+		}
 		list.release()
-		return nil
 	}
-	return list
-})
+	if hr != taskbarFailure {
+		taskbarFailure = hr
+		log.Print(hresultError("nsgo: the shell's taskbar list cannot be made for the app's taskbar buttons", hr))
+	}
+	return nil
+}
 
 // setOverlayBadge shows count on the window's taskbar button, a red disc
 // drawn at the small icon's size, or clears it for 0.
