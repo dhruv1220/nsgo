@@ -130,6 +130,10 @@ func Maximized(cx *core.Scope) bool { return cx.Env().Maximized() }
 // FullScreen reports whether the window is in full screen.
 func FullScreen(cx *core.Scope) bool { return cx.Env().FullScreen() }
 
+// Minimized reports whether the window is minimized, so an app can stop work
+// the user cannot see and resume it once the window is restored.
+func Minimized(cx *core.Scope) bool { return cx.Env().Minimized() }
+
 // Frame returns where the window is and how large, as SetWindowFrame and
 // nsgo.WindowFrame take them, changing as it moves and resizes. While
 // the window is maximized or in full screen it is that frame, so an app

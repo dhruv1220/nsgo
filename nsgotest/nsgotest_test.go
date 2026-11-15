@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/desktop"
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
 
@@ -36,6 +37,18 @@ func TestFramesFollowTheClock(t *testing.T) {
 	}
 	if !times[2].Equal(app.Clock.Now()) {
 		t.Fatalf("the last frame's time = %v, want the clock's %v", times[2], app.Clock.Now())
+	}
+}
+
+func TestEnvironmentReportsMinimized(t *testing.T) {
+	var states []bool
+	app := Start(t, func(cx *core.Scope) core.Node {
+		cx.Effect(func() { states = append(states, desktop.Minimized(cx)) })
+		return core.View{}
+	})
+	app.SetEnvironment(core.Environment{Minimized: true})
+	if len(states) != 2 || states[0] || !states[1] {
+		t.Fatalf("minimized states %v", states)
 	}
 }
 

@@ -59,6 +59,12 @@ func (w *window) environment() driver.Environment {
 		gtkWindowGetDefaultSize(w.win, &width, &height)
 		frame.Width, frame.Height = driver.Points(width), driver.Points(height)
 	}
+	minimized := false
+	if w.surface != 0 {
+		if top := gtkNativeGetSurface(gtkWidgetGetNative(w.surface)); top != 0 {
+			minimized = gdkToplevelGetState(top)&toplevelMinimized != 0
+		}
+	}
 	return driver.Environment{
 		Dark:           dark,
 		FontScale:      fontScale,
@@ -75,6 +81,7 @@ func (w *window) environment() driver.Environment {
 		TitleBar:       w.titleBarArea(),
 		Maximized:      w.win != 0 && gtkWindowIsMaximized(w.win) != 0,
 		FullScreen:     w.chrome.fullScreen,
+		Minimized:      minimized,
 		WindowFrame:    frame,
 		Lifecycle:      w.lifecycle(),
 	}

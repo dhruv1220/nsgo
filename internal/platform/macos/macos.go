@@ -964,9 +964,30 @@ func (s *surface) environment() driver.Environment {
 		WindowMaterial: s.material,
 		Maximized:      !s.embedded && objc.Send[bool](s.window, sel("isZoomed")),
 		FullScreen:     !s.embedded && s.window != 0 && objc.Send[uint](s.window, selStyleMask)&maskFullScreen != 0,
+		Minimized:      s.window != 0 && objc.Send[bool](s.window, sel("isMiniaturized")),
 		WindowFrame:    s.windowFrame(),
-		Lifecycle:      appLifecycle(),
+		Lifecycle:      s.lifecycle(),
 	}
+}
+
+// lifecycle returns the app-wide lifecycle for the hidden root surface and
+// the state of this surface's window for desktop and embedded views.
+func (s *surface) lifecycle() driver.Lifecycle {
+	if s.window == 0 || s.kind == driver.SurfaceTrayIcon {
+		return appLifecycle()
+	}
+	const occlusionVisible = 1 << 1
+	app := objc.ID(apple.Class("NSApplication")).Send(sel("sharedApplication"))
+	if objc.Send[bool](app, sel("isHidden")) ||
+		!objc.Send[bool](s.window, sel("isVisible")) ||
+		objc.Send[bool](s.window, sel("isMiniaturized")) ||
+		objc.Send[uint](s.window, sel("occlusionState"))&occlusionVisible == 0 {
+		return driver.LifecycleBackground
+	}
+	if objc.Send[bool](app, sel("isActive")) {
+		return driver.LifecycleActive
+	}
+	return driver.LifecycleInactive
 }
 
 // appLifecycle is whether the app is in use, the embedding app's for an
@@ -1020,7 +1041,9 @@ func (s *surface) observe() {
 	observeApp()
 	center := objc.ID(apple.Class("NSNotificationCenter")).Send(sel("defaultCenter"))
 	for _, name := range []string{"NSWindowDidResizeNotification", "NSWindowDidMoveNotification",
-		"NSWindowDidEnterFullScreenNotification", "NSWindowDidExitFullScreenNotification"} {
+		"NSWindowDidEnterFullScreenNotification", "NSWindowDidExitFullScreenNotification",
+		"NSWindowDidMiniaturizeNotification", "NSWindowDidDeminiaturizeNotification",
+		"NSWindowDidChangeOcclusionStateNotification"} {
 		s.stops = append(s.stops, apple.Observe(center, apple.Global(appKitPath, name), func(note objc.ID) {
 			if note.Send(sel("object")) != s.window {
 				return

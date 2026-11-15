@@ -16,6 +16,7 @@ type Env struct {
 	safe, titleBar       *Signal[Edges]
 	maximized            *Signal[bool]
 	fullScreen           *Signal[bool]
+	minimized            *Signal[bool]
 	windowFrame          *Signal[WindowFrame]
 	keyboard             *Signal[Points]
 	keyboardDuration     *Signal[time.Duration]
@@ -67,6 +68,7 @@ func newEnv(cx *Scope, app *Env) *Env {
 		titleBar:         NewSignal(cx, Edges{}),
 		maximized:        NewSignal(cx, false),
 		fullScreen:       NewSignal(cx, false),
+		minimized:        NewSignal(cx, false),
 		windowFrame:      NewSignal(cx, WindowFrame{}),
 		keyboard:         NewSignal(cx, Points(0)),
 		keyboardDuration: NewSignal(cx, 250*time.Millisecond),
@@ -164,6 +166,7 @@ func (e *Env) set(v Environment) {
 	e.titleBar.Set(v.TitleBar)
 	e.maximized.Set(v.Maximized)
 	e.fullScreen.Set(v.FullScreen)
+	e.minimized.Set(v.Minimized)
 	e.windowFrame.Set(v.WindowFrame)
 	e.keyboard.Set(v.KeyboardHeight)
 	e.keyboardDuration.Set(v.KeyboardDuration)
@@ -234,6 +237,10 @@ func (e *Env) Maximized() bool { return e.maximized.Get() }
 // FullScreen reports whether the window is in full screen: the core's
 // part of desktop.FullScreen, which apps use.
 func (e *Env) FullScreen() bool { return e.fullScreen.Get() }
+
+// Minimized reports whether the window is minimized: the core's part of
+// desktop.Minimized, which apps use.
+func (e *Env) Minimized() bool { return e.minimized.Get() }
 
 // WindowFrame returns where the window is and how large: the core's part
 // of desktop.Frame, which apps use.

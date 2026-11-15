@@ -776,11 +776,13 @@ func TestEnvironment(t *testing.T) {
 	var darks []bool
 	var materials []WindowMaterial
 	var states []Lifecycle
+	var minimized []bool
 	h := newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
 		cx.Effect(func() { states = append(states, cx.Env().Lifecycle()) })
 		cx.Effect(func() { widths = append(widths, cx.Env().Window().Width) })
 		cx.Effect(func() { darks = append(darks, cx.Env().Dark()) })
 		cx.Effect(func() { materials = append(materials, cx.Env().WindowMaterial()) })
+		cx.Effect(func() { minimized = append(minimized, cx.Env().Minimized()) })
 		return Text{Content: "Aa", Style: Style{FontSize: 10}, TestID: "text"}
 	})
 	h.commit()
@@ -795,10 +797,13 @@ func TestEnvironment(t *testing.T) {
 	if got := h.find("text").text.style.Font.Size; got != 20 {
 		t.Fatalf("font size = %v, want scaled to 20", got)
 	}
-	h.tree.SetEnvironment(Environment{Dark: true, FontScale: 2, WindowMaterial: WindowMaterialSidebar, Lifecycle: LifecycleBackground})
+	h.tree.SetEnvironment(Environment{Dark: true, FontScale: 2, WindowMaterial: WindowMaterialSidebar, Lifecycle: LifecycleBackground, Minimized: true})
 	h.commit()
 	if !slices.Equal(states, []Lifecycle{LifecycleActive, LifecycleBackground}) {
 		t.Fatalf("lifecycle %v", states)
+	}
+	if !slices.Equal(minimized, []bool{false, true}) {
+		t.Fatalf("minimized %v", minimized)
 	}
 }
 
