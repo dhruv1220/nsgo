@@ -327,7 +327,12 @@ func resolveItemBaselines(axis AbstractAxis, items []gridItem, innerNodeSize Siz
 			if !it.participatesInBaselineAlignment() {
 				continue
 			}
-			out := performChildLayout(it.node, noneSize, innerNodeSize, minContentSpaces, inherentSize, Line[bool]{})
+			// Baselines are taken from the first line of the item. Measure at
+			// max-content width so a text that can wrap at min-content does not
+			// turn its full intrinsic height into the baseline fallback. The
+			// item's resolved grid area may be narrower later, but its first-line
+			// baseline remains the same.
+			out := performChildLayout(it.node, noneSize, innerNodeSize, maxContentSpaces, inherentSize, Line[bool]{})
 			height := out.size.Height
 			// A scroll container's baseline comes from its content as if
 			// scrolled to the start, clamped to its border box
