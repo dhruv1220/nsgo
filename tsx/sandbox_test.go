@@ -244,7 +244,7 @@ func TestRegistryIsNSGosAndSetBeforeApps(t *testing.T) {
 	}
 }
 
-// What a default Sandbox imports, every export of SandboxModules and the statics of those that are functions, with all of NSGo's packages that register into them linked, is testdata/sandbox-surface.txt, so whatever widens it is a reviewed change; NSGO_UPDATE_SANDBOX_SURFACE writes it anew.
+// What a default Sandbox imports, every export of SandboxModules and the members of those that are functions (statics) or objects (services), with all of NSGo's packages that register into them linked, is testdata/sandbox-surface.txt, so whatever widens it is a reviewed change; NSGO_UPDATE_SANDBOX_SURFACE writes it anew.
 func TestSandboxSurface(t *testing.T) {
 	modules, _ := json.Marshal(tsx.SandboxModules)
 	p := verified(t, `const modules = `+string(modules)+`;
@@ -254,7 +254,8 @@ export function surface() {
 		const m = require(name);
 		for (const k of Object.keys(m).sort()) {
 			out.push(name + "." + k);
-			if (typeof m[k] === "function") for (const s of Object.keys(m[k]).sort()) out.push(name + "." + k + "." + s);
+			const v = m[k];
+			if (typeof v === "function" || typeof v === "object" && v !== null) for (const s of Object.keys(v).sort()) out.push(name + "." + k + "." + s);
 		}
 	}
 	return out.join("\n") + "\n";
