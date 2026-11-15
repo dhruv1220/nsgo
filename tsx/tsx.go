@@ -221,7 +221,9 @@ func (r *runtime) require(name string) js.Value {
 	}
 	m := r.vm.NewObject()
 	for _, e := range builtin {
-		_ = m.Set(e.name, e.make(r))
+		if !r.withholds(name, e.name) {
+			_ = m.Set(e.name, e.make(r))
+		}
 	}
 	for _, e := range more {
 		if r.imports(name, e.name) {

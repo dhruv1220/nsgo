@@ -66,9 +66,7 @@ func tabBarFace(p *props) core.Node {
 	}
 }
 
-// backHandler is BackHandler: onBackPress(listener) adds a listener of
-// Android's back button, removed by what it returns or with the owner it
-// was added under; exitApp ends the app.
+// backHandler is BackHandler: onBackPress(listener) adds a listener of Android's back button, removed by what it returns or with the owner it was added under; exitApp ends the app, and is withheld from sandboxes (appWide).
 func (r *runtime) backHandler() js.Value {
 	o := r.vm.NewObject()
 	_ = o.Set("onBackPress", r.function(func(call js.FunctionCall) js.Value {
@@ -85,10 +83,12 @@ func (r *runtime) backHandler() js.Value {
 			return js.Undefined()
 		})
 	}))
-	_ = o.Set("exitApp", r.function(func(js.FunctionCall) js.Value {
-		mobile.ExitApp(r.cx)
-		return js.Undefined()
-	}))
+	if !r.withholds("nsgo/mobile", "BackHandler.exitApp") {
+		_ = o.Set("exitApp", r.function(func(js.FunctionCall) js.Value {
+			mobile.ExitApp(r.cx)
+			return js.Undefined()
+		}))
+	}
 	return o
 }
 
