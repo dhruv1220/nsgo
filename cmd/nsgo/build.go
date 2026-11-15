@@ -224,6 +224,38 @@ func openCommand(url string) (string, []string) {
 	return "xdg-open", []string{url}
 }
 
+// openPage returns the command that shows url, the address of a page nsgo dev serves with the run's token in it (devServer.pageURL), in the user's browser, keeping it off every command line, which every user of the machine may read, the browser's included: macOS's osascript reads open location from its standard input, and elsewhere the browser opens file, a page in dir only this user reads that sends it on to url.
+func openPage(url, dir string) (cmd *exec.Cmd, file string, err error) {
+	if runtime.GOOS == "darwin" {
+		cmd = exec.Command("osascript")
+		quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(url)
+		cmd.Stdin = strings.NewReader(`open location "` + quoted + `"` + "\n")
+		return cmd, "", nil
+	}
+	if dir, err = filepath.Abs(dir); err != nil {
+		return nil, "", err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, "", err
+	}
+	f, err := os.CreateTemp(dir, "open-*.html")
+	if err != nil {
+		return nil, "", err
+	}
+	// JSON escapes <, > and &, so the address cannot end the script.
+	target, _ := json.Marshal(url)
+	_, err = f.WriteString(`<!doctype html><meta charset="utf-8"><title>nsgo dev</title><script>location.replace(` + string(target) + `)</script>` + "\n")
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return nil, "", err
+	}
+	name, args := openCommand(f.Name())
+	return exec.Command(name, args...), f.Name(), nil
+}
+
 // targets are the names nsgo.yaml and -target accept, each one package.
 var targets = []string{
 	"macos_arm64", "macos_x64",
@@ -446,6 +478,24 @@ type buildExtra struct {
 // bundles, compiled ahead, go in through the overlay too, and it builds
 // without the compiler.
 func goBuildWith(ctx context.Context, p *project, out string, env []string, extra buildExtra, ldflags ...string) error {
+	cmd, done, err := goBuildCommand(ctx, p, out, env, extra, ldflags...)
+	if err != nil {
+		return err
+	}
+	defer done()
+	// The tool's chatter only matters when it fails: the step's line says
+	// what it did, and a failure shows the whole output under its error.
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go %s failed\n%s", cmd.Args[1], strings.TrimSpace(output.String()))
+	}
+	return nil
+}
+
+// goBuildCommand is the go command goBuildWith runs, and done removes the files it needs no longer than that.
+func goBuildCommand(ctx context.Context, p *project, out string, env []string, extra buildExtra, ldflags ...string) (cmd *exec.Cmd, done func(), err error) {
+	done = func() {}
 	args := append([]string{"build"}, extra.flags...)
 	args = append(args, "-ldflags", p.ldflags(append(append([]string(nil), ldflags...), p.updateLdflags(env)...)...), "-o", out)
 	tags := extra.tags
@@ -460,7 +510,7 @@ func goBuildWith(ctx context.Context, p *project, out string, env []string, extr
 		tags = append(tags, "nsgotest")
 		tsxTest, err := p.tsxTestFile()
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if tsxTest != "" {
 			files["zz_nsgo_tsx_test.go"] = tsxTest
@@ -472,7 +522,7 @@ func goBuildWith(ctx context.Context, p *project, out string, env []string, extr
 		stage(ctx, "compiling TSX")
 		bundle, err := p.bundleFile()
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if bundle != "" {
 			files["zz_nsgo_bundle.go"] = bundle
@@ -481,7 +531,7 @@ func goBuildWith(ctx context.Context, p *project, out string, env []string, extr
 		stage(ctx, "compiling TSX")
 		bundle, err := p.bundleFile()
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if bundle != "" {
 			files["zz_nsgo_bundle.go"] = bundle
@@ -500,29 +550,51 @@ func goBuildWith(ctx context.Context, p *project, out string, env []string, extr
 	if len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
-	env, err := smallJSON(ctx, p, env, tags)
+	env, err = smallJSON(ctx, p, env, tags)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	stage(ctx, "compiling Go")
+	if p.devToken != "" {
+		token, err := p.devTokenFile()
+		if err != nil {
+			return nil, nil, err
+		}
+		done = func() { os.Remove(token) }
+		files["zz_nsgo_devtoken.go"] = token
+	}
 	if len(files) > 0 {
 		ov, err := p.overlay(files)
 		if err != nil {
-			return err
+			done()
+			return nil, nil, err
 		}
 		args = append(args, "-overlay", ov)
 	}
-	cmd := exec.CommandContext(ctx, "go", append(args, ".")...)
+	cmd = exec.CommandContext(ctx, "go", append(args, ".")...)
 	cmd.Dir = p.Dir
 	cmd.Env = append(os.Environ(), env...)
-	// The tool's chatter only matters when it fails: the step's line says
-	// what it did, and a failure shows the whole output under its error.
-	var output bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &output, &output
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("go %s failed\n%s", args[0], strings.TrimSpace(output.String()))
+	return cmd, done, nil
+}
+
+// devTokenFile writes the file a build for a target that passes the app no environment adds to its main package: it gives the app the run's token in NSGO_DEV_TOKEN as main initializes (devtools.Token). With -ldflags -X, the token would be on go build's command line and the linker's, which every user of the machine may read, and in the binary's build information; this file only its user reads, and goBuildCommand's done removes it.
+func (p *project) devTokenFile() (string, error) {
+	if err := os.MkdirAll(p.cache(), 0o755); err != nil {
+		return "", err
 	}
-	return nil
+	f, err := os.CreateTemp(p.cache(), "devtoken-*.go")
+	if err != nil {
+		return "", err
+	}
+	_, err = fmt.Fprintf(f, "// Written by nsgo: nsgo dev's token for this run's server.\n\npackage main\n\nimport \"os\"\n\nfunc init() { os.Setenv(\"NSGO_DEV_TOKEN\", %q) }\n", p.devToken)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }
 
 // smallJSON returns env with GOEXPERIMENT=nojsonv2 added: encoding/json's first implementation, which from Go 1.27, where Go builds encoding/json on encoding/json/v2 by default, links into a page about 1 MB smaller, into an Android app about 450 KB and into a desktop one 100 to 450 KB; Go 1.26 builds the first implementation already, and the experiment changes nothing. An app whose packages or dependencies import encoding/json/v2 or jsontext keeps them, as does one whose GOEXPERIMENT, in the environment or set with go env -w, names the experiment either way.

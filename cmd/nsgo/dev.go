@@ -110,8 +110,7 @@ func dev(ctx context.Context, p *project, opts devOptions) error {
 		url := srv.pageURL(srv.url(), "/_nsgo/devtools/")
 		note("DevTools %s", link(url))
 		if opts.open {
-			name, args := openCommand(url)
-			exec.Command(name, args...).Start()
+			srv.open(url, p.cache("dev"))
 		}
 	}
 	var exited chan error
@@ -353,6 +352,8 @@ type devServer struct {
 	bundles map[string]string // the latest TSX bundles, by entry
 	// hub relays nsgo dev -automation's requests over the app's DevTools stream, nil without -automation.
 	hub *automationHub
+	// opened are the files open wrote, which close removes.
+	opened []string
 }
 
 // setBundles keeps the latest TSX bundles, which /_nsgo/bundle serves.
@@ -480,7 +481,32 @@ func ownHost(hostport string) bool {
 	return host == name || host == name+".local"
 }
 
-func (s *devServer) close() { s.srv.Close() }
+func (s *devServer) close() {
+	s.srv.Close()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range s.opened {
+		os.Remove(f)
+	}
+}
+
+// open shows the page at url, one of pageURL's, in the user's browser (openPage), writing what it may need to in dir.
+func (s *devServer) open(url, dir string) {
+	cmd, file, err := openPage(url, dir)
+	if err == nil {
+		if file != "" {
+			s.mu.Lock()
+			s.opened = append(s.opened, file)
+			s.mu.Unlock()
+		}
+		err = cmd.Start()
+	}
+	if err != nil {
+		warn("could not open the browser: %v", err)
+		return
+	}
+	go cmd.Wait()
+}
 
 func (s *devServer) reload() {
 	select {
@@ -807,8 +833,7 @@ func webSession(opts devOptions) session {
 					detail("%s", link(opts.server.pageURL(lan, "/"+query)))
 				}
 				if opts.open {
-					name, args := openCommand(url)
-					exec.Command(name, args...).Start()
+					opts.server.open(url, p.cache("dev"))
 				}
 			})
 			return app{stop: func() {}}, nil

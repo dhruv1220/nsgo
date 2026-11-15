@@ -2,9 +2,14 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -242,5 +247,85 @@ func TestDevServerRefusesForeignHosts(t *testing.T) {
 				t.Errorf("%s for Host %q = %d, want %d", path, host, resp.StatusCode, want)
 			}
 		}
+	}
+}
+
+// TestDevTokenStaysOffCommandLines: no command nsgo dev runs carries the run's token, as every user of the machine may read commands' arguments. A target that passes the app no environment gets it from a file the build adds to the app's main package rather than from go build's -ldflags, which the linker's arguments repeat, and a page opens in the browser without its address on a command line.
+func TestDevTokenStaysOffCommandLines(t *testing.T) {
+	srv, err := startDevServer(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.close()
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"go.mod":  "module tokentest\n\ngo 1.26\n",
+		"main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() { fmt.Print(os.Getenv(\"NSGO_DEV_TOKEN\")) }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &project{Dir: dir, Name: "Token", ID: "com.example.token", Version: "1.0.0", devURL: srv.url(), devToken: srv.token}
+	bin := filepath.Join(dir, "app")
+	cmd, done, err := goBuildCommand(context.Background(), p, bin, nil, buildExtra{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range cmd.Args {
+		if strings.Contains(arg, srv.token) {
+			t.Errorf("go build's argument %q carries the run's token", arg)
+		}
+	}
+	files, _ := filepath.Glob(filepath.Join(p.cache(), "devtoken-*.go"))
+	if len(files) != 1 {
+		t.Fatalf("the build's token files: %q", files)
+	}
+	if info, err := os.Stat(files[0]); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("the token file's mode: %v, %v", info.Mode(), err)
+	}
+	// -x prints the commands go build runs, the compiler's and the linker's among them.
+	cmd.Args = slices.Insert(cmd.Args, 2, "-x")
+	var output strings.Builder
+	cmd.Stdout, cmd.Stderr = &output, &output
+	err = cmd.Run()
+	done()
+	if err != nil {
+		t.Fatalf("go build: %v\n%s", err, output.String())
+	}
+	if strings.Contains(output.String(), srv.token) {
+		t.Errorf("a command go build ran carries the run's token:\n%s", output.String())
+	}
+	if left, _ := filepath.Glob(filepath.Join(p.cache(), "devtoken-*.go")); len(left) != 0 {
+		t.Errorf("the build left %q", left)
+	}
+	got, err := exec.Command(bin).Output()
+	if err != nil || string(got) != srv.token {
+		t.Errorf("the app's NSGO_DEV_TOKEN = %q, %v; want the run's token", got, err)
+	}
+
+	url := srv.pageURL(srv.url(), "/_nsgo/devtools/")
+	open, file, err := openPage(url, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range open.Args {
+		if strings.Contains(arg, srv.token) {
+			t.Errorf("opening the page, argument %q carries the run's token", arg)
+		}
+	}
+	var gives string
+	if file == "" && open.Stdin != nil {
+		b, _ := io.ReadAll(open.Stdin)
+		gives = string(b)
+	} else if file != "" {
+		b, _ := os.ReadFile(file)
+		gives = string(b)
+		if info, err := os.Stat(file); err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+			t.Errorf("the opening page's mode: %v, %v", info.Mode(), err)
+		}
+	}
+	if !strings.Contains(gives, url) {
+		t.Errorf("opening the page gives the browser %q, not %s", gives, url)
 	}
 }

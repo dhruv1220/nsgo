@@ -6,28 +6,45 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 )
 
-// ServerToken is the run's token for nsgo dev's server, which the dev client sends with every request (Fetch): the tool gives each run of the app its own in NSGO_DEV_TOKEN, which is taken out of the environment so the programs the app starts never inherit it, or through -ldflags -X for targets that pass the app no environment; a web page reads it from its address's fragment.
+// ServerToken is the run's token for nsgo dev's server, which the dev client sends with every request (Fetch). Token fills it.
 var ServerToken = ""
 
+// tokenEnv carries the run's token to the app: the tool sets it for the apps it starts, the simulator's through SIMCTL_CHILD_, and for targets that pass the app no environment, Android's and iPhones', the build adds a file to the app's main package that sets it as main initializes, after this package has, so that no command line, which every user of the machine may read, carries it.
+const tokenEnv = "NSGO_DEV_TOKEN"
+
+var takeToken sync.Once
+
 func init() {
-	if t := os.Getenv("NSGO_DEV_TOKEN"); t != "" {
-		ServerToken = t
-	}
-	os.Unsetenv("NSGO_DEV_TOKEN")
-	if ServerToken == "" {
-		ServerToken = pageToken()
+	// An app started with the token takes it out of its environment at once, so the programs it starts never inherit it.
+	if _, ok := os.LookupEnv(tokenEnv); ok {
+		Token()
 	}
 }
 
-// Fetch sends nsgo dev's server a request with ServerToken, and body as contentType when it has one.
+// Token returns ServerToken, which it takes the first time from NSGO_DEV_TOKEN, removing it from the environment, or in a web page from the page (pageToken).
+func Token() string {
+	takeToken.Do(func() {
+		if t := os.Getenv(tokenEnv); t != "" {
+			ServerToken = t
+		}
+		os.Unsetenv(tokenEnv)
+		if ServerToken == "" {
+			ServerToken = pageToken()
+		}
+	})
+	return ServerToken
+}
+
+// Fetch sends nsgo dev's server a request with the run's token (Token), and body as contentType when it has one.
 func Fetch(method, url, contentType string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-NSGo-Token", ServerToken)
+	req.Header.Set("X-NSGo-Token", Token())
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
