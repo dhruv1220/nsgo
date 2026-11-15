@@ -151,6 +151,8 @@ const (
 	serviceClipboard     service = "clipboard"
 	servicePicker        service = "picker"
 	serviceSpeech        service = "speech"
+	serviceOverlay       service = "overlay"
+	serviceAudio         service = "audio"
 )
 
 // serviceRule is how core holds a kind of service to Access.
@@ -175,6 +177,8 @@ var services = map[service]serviceRule{
 	serviceClipboard:     {permission: AccessClipboard, runtimeOnly: true},
 	servicePicker:        {permission: AccessPicker, runtimeOnly: true},
 	serviceSpeech:        {permission: AccessSpeech, runtimeOnly: true},
+	serviceOverlay:       {permission: AccessOverlay},
+	serviceAudio:         {permission: AccessAudio},
 }
 
 // gate is the refusal of a service of kind for resource by the current owner's Access, as services holds it; a kind services lacks is refused.

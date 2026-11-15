@@ -166,11 +166,13 @@ func (t *Tree) restrictWeb(n *node, c *driver.WebConfig) {
 	for _, m := range webMediaNames {
 		if c.Media&m.media != 0 && !a.Allows(AccessRequest{Permission: AccessWebView, Resource: m.name, Method: AccessMedia}) {
 			c.Media &^= m.media
-			if !t.rt.refusals[AccessMedia+m.name] {
+			// The refusal is logged once per device, under a key of its own beside the services'.
+			key := service(AccessMedia + m.name)
+			if !t.rt.refusals[key] {
 				if t.rt.refusals == nil {
-					t.rt.refusals = map[string]bool{}
+					t.rt.refusals = map[service]bool{}
 				}
-				t.rt.refusals[AccessMedia+m.name] = true
+				t.rt.refusals[key] = true
 				log.Printf("nsgo: a web view's %s needs the %q capability's media", m.name, AccessWebView)
 			}
 		}

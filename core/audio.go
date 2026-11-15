@@ -172,7 +172,7 @@ func (t *Tree) sendAudio(id uint32, r driver.AudioRequest) {
 // audioRefusal is AudioNotAllowed when the current owner's Access refuses audio, or src's URI when it is no bytes the app holds, wrapping the refusal.
 func audioRefusal(cx *Scope, src AudioSource) error {
 	var err error
-	if cx.denied(AccessRequest{Permission: AccessAudio}) {
+	if cx.denied(serviceAudio, "") {
 		err = AccessDenied(AccessAudio, "")
 	} else if len(src.Data) == 0 {
 		err = sourceRefusal(cx.current(), AccessNetwork, src.URI)
