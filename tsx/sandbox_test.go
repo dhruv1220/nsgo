@@ -18,6 +18,7 @@ import (
 
 	baselocales "github.com/nsgo-dev/nsgo/base/locales"
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/driver"
 	"github.com/nsgo-dev/nsgo/nsgotest"
 	"github.com/nsgo-dev/nsgo/tsx"
 	"github.com/nsgo-dev/nsgo/tsx/bundler"
@@ -436,6 +437,42 @@ mount(() => <View testID="plugin-root">
 		app.Press("id:open")
 		if !app.Exists("id:dialog-text") {
 			t.Errorf("%s: a dialog its press opened does not show", name)
+		}
+	}
+}
+
+// A plugin taller than the view its host gives it is held to that view, so it cannot grow over the host's views below; an app not sandboxed overflows it.
+func TestSandboxStaysInTheRoomItIsGiven(t *testing.T) {
+	const source = `import { mount, View } from "nsgo";
+mount(() => <View testID="plugin-root" onPress={() => {}} style={{ height: 300 }} />);`
+	for _, sandboxed := range []bool{true, false} {
+		name := map[bool]string{true: "sandboxed", false: "not sandboxed"}[sandboxed]
+		var plugin func(cx *core.Scope) core.Node
+		if sandboxed {
+			plugin = tsx.View{Package: verified(t, source, pkg.Capabilities{})}.Render
+		} else {
+			code, err := bundler.Compile(fstest.MapFS{"App.tsx": {Data: []byte(source)}}, "App.tsx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			plugin = tsx.App("App.js", string(code))
+		}
+		pressed := false
+		app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+			return core.View{Style: core.Style{Width: core.Pt(100), Height: core.Pt(200)}, Children: []core.Node{
+				// Below the plugin's view, and under it in the order views stack in.
+				core.View{TestID: "host-button", OnPress: func(core.PressEvent) { pressed = true },
+					Style: core.Style{Position: core.Absolute, Top: core.Pt(60), Width: core.Pt(100), Height: core.Pt(40)}},
+				core.View{TestID: "host-slot", Style: core.Style{Height: core.Pt(60)}, Children: []core.Node{core.Dynamic(plugin)}},
+			}}
+		})
+		frame := app.Find("id:plugin-root").Parent
+		app.PressAt("id:host-button", driver.Point{X: 50, Y: 20})
+		if sandboxed && (frame.Frame.Size.Height != 60 || !pressed) {
+			t.Errorf("%s: the plugin's view is %v tall and a press on the host's button reached it %v", name, frame.Frame.Size.Height, pressed)
+		}
+		if !sandboxed && pressed {
+			t.Errorf("%s: a press on the host's button reached it, not the app's view over it", name)
 		}
 	}
 }
