@@ -68,6 +68,38 @@ func TestFocusWithinFollowsTheFocusIntoOverlaysAndOut(t *testing.T) {
 	}
 }
 
+func TestBlurRunsWhenTheFocusedViewIsRemoved(t *testing.T) {
+	var shown *Signal[bool]
+	blurs := 0
+	h := newHost(t, Size{Width: 390, Height: 844}, func(cx *Scope) Node {
+		shown = NewSignal(cx, true)
+		return Show{When: shown.Get, Then: func(*Scope) Node {
+			return View{TestID: "field", OnPress: press, OnBlur: func() { blurs++ }}
+		}}
+	})
+	h.commit()
+	field := h.find("field")
+	h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: field.id})
+	h.commit()
+	h.drain()
+	shown.Set(false)
+	h.commit()
+	h.drain()
+	if field.states&stateFocused != 0 {
+		t.Fatal("removed view retained the focused state")
+	}
+	if blurs != 1 {
+		t.Fatalf("OnBlur ran %d times when the focused view was removed, want once", blurs)
+	}
+	// A late native blur for the deleted ID is ignored and cannot run it again.
+	h.tree.Dispatch(driver.Event{Kind: driver.EventBlur, ID: field.id})
+	h.commit()
+	h.drain()
+	if blurs != 1 {
+		t.Fatalf("late EventBlur ran OnBlur %d times, want once", blurs)
+	}
+}
+
 func TestFocusVisibleShowsOnlyAKeyboardsFocus(t *testing.T) {
 	var cursor *Signal[bool]
 	h := newHost(t, Size{Width: 390, Height: 844}, func(cx *Scope) Node {

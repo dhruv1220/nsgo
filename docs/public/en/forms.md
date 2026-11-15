@@ -29,6 +29,8 @@ ui.Input{
 
 `Ref` focuses a field and blurs it, and `cx.DismissKeyboard()` closes the software keyboard. `OnFocus` and `OnBlur` follow the focus, and `View.OnFocus`/`OnBlur` do the same for any focusable view.
 
+When a focused view leaves the tree, its `OnBlur` runs once after removal. A surviving ancestor still receives `OnFocusOut`; a late platform blur for the removed view is ignored.
+
 ```go
 email := &core.Ref{}
 ui.Input{Ref: email, Placeholder: "you@example.com"}

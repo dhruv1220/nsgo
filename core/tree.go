@@ -1359,10 +1359,27 @@ func (t *Tree) shownInteraction(n *node) uint8 {
 // portal.
 func (t *Tree) updateFocusWithin() {
 	t.focusMoved = false
+	var removed *node
 	if t.focus != nil && t.focus.deleted {
+		removed = t.focus
 		t.focus = nil
+		removed.states &^= stateFocused
 		if t.confinedKeys() {
 			t.keysChanged = true
+		}
+	}
+	if removed != nil && removed.h.blur != nil {
+		// The platform cannot send EventBlur after the native view has been
+		// removed: node() deliberately drops deleted IDs. Keep the view's
+		// OnBlur contract by delivering it through the nearest live owner after
+		// this commit has removed the node. The deleted owner itself is often a
+		// Show branch that was disposed before its nodes were discarded.
+		for p := removed; p != nil; p = p.parent {
+			if p.owner != nil && !p.owner.disposed {
+				owner, blur := p.owner, removed.h.blur
+				owner.Post(func() { blur() })
+				break
+			}
 		}
 	}
 	old := t.focusChain
