@@ -77,13 +77,14 @@ type backHandler struct {
 // confineKey is where Confine marks an owner.
 type confineKey struct{}
 
-// Confine has the key bindings (OnKey) and back handlers (OnBackPress) made under the current owner, whoever makes them, fire only while the keyboard focus is on a view it owns, itself or through the owners below it: never while the focus is elsewhere or nowhere, so what it shows cannot take the keys or back presses of the views around it. A press a confined binding or handler leaves goes on to the others, as if it were not there. Nor may its views take the focus on their own: a Ref's Focus and SetAccessibilityFocus, an input's AutoFocus and DismissKeyboard move it only while the focus is already in them or the user's input just landed on one (mayMoveFocus). tsx's sandbox confines a bundle's scope.
+// Confine holds what the current owner shows, whoever makes it, to its place in the window, as a browser holds a cross-origin frame. Its key bindings (OnKey) and back handlers (OnBackPress) fire only while the keyboard focus is on a view it owns, itself or through the owners below it: never while the focus is elsewhere or nowhere, so what it shows cannot take the keys or back presses of the views around it; a press they leave goes on to the others, as if they were not there. Its views draw and take input only within its frame, the nearest view around them it does not own, which clips them: its overlays and Fixed views are hosted, sized and placed there rather than in the root view or a modal, and its overlays take back only under the focus rule above. Give it a view of its own, as tsx's sandbox does, or the views beside it in that frame stay within its reach. What a frame cannot hold, and the focus, wait for the user: a Ref's Focus and SetAccessibilityFocus, an input's AutoFocus, DismissKeyboard, a Modal, ShowAlert, PopupMenu and Announce act only while the focus is already in its views or the user's input just landed on one (confinedMay), else they are refused, and the first refusal of each kind logs; a modal so shown stays and takes back as any modal does. Confine it before it renders. tsx's sandbox confines a bundle's scope.
 func (cx *Scope) Confine() {
 	o := cx.current()
 	if o.values == nil {
 		o.values = map[any]any{}
 	}
 	o.values[confineKey{}] = true
+	o.rt.confined = true
 }
 
 // confinement is the owner nearest o that Confine marked, nil for none.
@@ -114,18 +115,32 @@ func owns(s, o *Scope) bool {
 	return false
 }
 
-// focusRefusedKey is where a confined owner notes that a focus request of its was refused, which logs once.
-type focusRefusedKey struct{}
+// confinedRefusal is where a confined owner notes that a request of a kind was refused, which logs once.
+type confinedRefusal uint8
 
-// mayMoveFocus reports whether a focus request of owner o, a Ref's Focus or SetAccessibilityFocus or an input's AutoFocus on a view it owns or its DismissKeyboard, may move the keyboard focus. One of an owner Confine confined may only while the focus is already in a view it owns, or until the commit after the user's own input (activated) landed on one, as a browser lets a cross-origin frame take the focus only on the user's activation: else its views could take the focus, and with it the keys, from the views around them whenever they like. Any other owner always may. The first refusal of each confined owner logs.
+const (
+	refusedFocus confinedRefusal = iota
+	refusedPresent
+	refusedAnnounce
+)
+
+// askedToPresent is what a refused presentation logs: a Modal, ShowAlert or PopupMenu, which the platform shows over the window, where no frame clips it.
+const askedToPresent = "asked to present a modal, an alert or a context menu"
+
+// mayMoveFocus reports whether a focus request of owner o, a Ref's Focus or SetAccessibilityFocus or an input's AutoFocus on a view it owns or its DismissKeyboard, may move the keyboard focus (confinedMay): else a confined owner's views could take the focus, and with it the keys, from the views around them whenever they like.
 func (t *Tree) mayMoveFocus(o *Scope) bool {
+	return t.confinedMay(o, refusedFocus, "asked for the keyboard focus")
+}
+
+// confinedMay reports whether owner o may act as the user's own input would let it. One Confine confined may only while the keyboard focus is already in a view it owns, or until the commit after the user's own input (activated) landed on one, as a browser lets a cross-origin frame take the focus or open a popup only on the user's activation. Any other owner always may. The first refusal of each kind of each confined owner logs what it asked.
+func (t *Tree) confinedMay(o *Scope, kind confinedRefusal, what string) bool {
 	c := confinement(o)
 	if c == nil || t.focusWithin(c) || owns(c, t.activated) {
 		return true
 	}
-	if _, ok := c.values[focusRefusedKey{}]; !ok {
-		c.values[focusRefusedKey{}] = true
-		log.Printf("nsgo: a confined view asked for the keyboard focus while it was elsewhere and the user's input had not landed on the view; refused")
+	if _, ok := c.values[kind]; !ok {
+		c.values[kind] = true
+		log.Printf("nsgo: a confined view %s while the keyboard focus was elsewhere and the user's input had not landed on the view; refused", what)
 	}
 	return false
 }

@@ -284,7 +284,7 @@ func (t *Tree) screenHeader(n *node, h Points) {
 
 // topOverlap is how far into n the top inset of its host reaches.
 func (t *Tree) topOverlap(n *node) Points {
-	host := t.hostOf(n.parent)
+	host := t.modalHost(n.parent)
 	top := t.root.Env().safe.GetUntracked().Top
 	y := t.surfaceBounds(n).Origin.Y
 	if host.kind == driver.KindModal {

@@ -223,6 +223,8 @@ type runtime struct {
 	// whether any scope has forced one.
 	theme             *Theme
 	subtreeAppearance bool
+	// confined is set once a scope is confined (Scope.Confine), as apps without one skip finding its frames.
+	confined bool
 }
 
 // tree is the tree of the surface cx is in: its window's, or the

@@ -137,8 +137,8 @@ type modalSize struct {
 	insets Edges
 }
 
-// hostOf returns the root view or the nearest modal around parent.
-func (t *Tree) hostOf(parent *node) *node {
+// modalHost returns the root view or the nearest modal around parent.
+func (t *Tree) modalHost(parent *node) *node {
 	for p := parent; p != nil; p = p.parent {
 		if p.kind == driver.KindModal {
 			return p
@@ -147,10 +147,65 @@ func (t *Tree) hostOf(parent *node) *node {
 	return t.view
 }
 
+// hostOf returns the host of hoisted node n: the nearest modal around it, or for an overlay or fixed view of an owner Confine confined, its frame if that is nearer, else the root view. A modal is the platform's to present, so it goes where any other would.
+func (t *Tree) hostOf(n *node) *node {
+	c := confinement(n.owner)
+	if c == nil || n.kind == driver.KindModal {
+		return t.modalHost(n.parent)
+	}
+	for p := n.parent; p != nil; p = p.parent {
+		if p.kind == driver.KindModal || p.kind != 0 && !owns(c, p.owner) {
+			return p
+		}
+	}
+	return t.view
+}
+
+// confines reports whether n holds a view, or hosts an overlay, of an owner Confine confined that does not own n, whose frame it is then. A modal is the platform's to present and no frame's to clip.
+func confines(n *node) bool {
+	for _, k := range n.nativeChildren() {
+		if k.kind == driver.KindModal {
+			continue
+		}
+		if c := confinement(k.owner); c != nil && !owns(c, n.owner) {
+			return true
+		}
+	}
+	return false
+}
+
+// addFrame records host among the frames when it is neither the root view nor a modal.
+func (t *Tree) addFrame(host *node) {
+	if host != t.view && host.kind != driver.KindModal && !slices.Contains(t.frames, host) {
+		t.frames = append(t.frames, host)
+	}
+}
+
+// placeFrames lays out and places what the frames host, once the root's layout and what it hosts placed them, the outer frames first; it lets go of frames gone or hosting nothing.
+func (t *Tree) placeFrames() {
+	t.frames = slices.DeleteFunc(t.frames, func(f *node) bool {
+		return f.deleted || !slices.ContainsFunc(f.hosted, func(n *node) bool { return !n.deleted })
+	})
+	if len(t.frames) > 1 {
+		depth := func(n *node) int {
+			d := 0
+			for p := n.parent; p != nil; p = p.parent {
+				d++
+			}
+			return d
+		}
+		slices.SortStableFunc(t.frames, func(a, b *node) int { return depth(a) - depth(b) })
+	}
+	for _, f := range t.frames {
+		t.placeHoisted(f)
+	}
+}
+
 func (t *Tree) hoist(n *node, h *hoistNode) {
-	h.host = t.hostOf(n.parent)
+	h.host = t.hostOf(n)
 	n.hoist = h
 	addHosted(h.host, n)
+	t.addFrame(h.host)
 	t.reorder(h.host)
 	if p := n.parent; p != nil {
 		t.childrenChanged(p)
@@ -205,6 +260,10 @@ func (t *Tree) mountOverlay(cx *Scope, parent *node, o Overlay) {
 }
 
 func (t *Tree) mountModal(cx *Scope, parent *node, m Modal) {
+	// The platform presents it over the window, which no frame clips.
+	if !t.confinedMay(cx.current(), refusedPresent, askedToPresent) {
+		return
+	}
 	n := t.newNode(driver.KindModal, parent, cx)
 	t.hoist(n, &hoistNode{modal: &m, reported: NewSignal[*modalSize](cx, nil)})
 	t.setClasses(n, m.Class)
@@ -385,8 +444,15 @@ func (t *Tree) placeOverlay(n *node, host *node, hostSize Size) {
 		origin = t.onPixel(insetOrigin(&s, size, hostSize, n.rtl))
 	} else {
 		safe := t.root.Env().safe.GetUntracked()
-		if host.kind == driver.KindModal {
+		switch {
+		case host.kind == driver.KindModal || host != t.view && t.modalHost(host).kind == driver.KindModal:
 			safe = Edges{}
+		case host != t.view:
+			// A frame keeps clear of the part of the safe area it covers.
+			hb := t.surfaceBounds(host)
+			safe = Edges{Top: max(safe.Top-hb.Origin.Y, 0), Left: max(safe.Left-hb.Origin.X, 0),
+				Bottom: max(safe.Bottom-(t.size.Height-hb.Origin.Y-hb.Size.Height), 0),
+				Right:  max(safe.Right-(t.size.Width-hb.Origin.X-hb.Size.Width), 0)}
 		}
 		area := Bounds{
 			Origin: Point{X: safe.Left + o.Margin, Y: safe.Top + o.Margin},
@@ -663,9 +729,9 @@ func place(anchor Bounds, size Size, area Bounds, side Placement, align Align, o
 	return p, side, room
 }
 
-// back routes Escape or back: the root view's Topmost overlay listening for cancel, else the topmost overlay listening for cancel, else the topmost modal, else the innermost stack that can pop.
+// back routes Escape or back: the root view's Topmost overlay listening for cancel, else the topmost overlay listening for cancel, in the topmost modal or the root view and then in the frames there, else the topmost modal, else the innermost stack that can pop. A confined owner's overlay listens only while the focus is within that owner (Scope.Confine).
 func (t *Tree) back() {
-	if o := topmostCancel(t.view); o != nil {
+	if o := t.topmostCancel(t.view); o != nil {
 		t.within(o.owner, o.h.cancel)
 		return
 	}
@@ -677,7 +743,11 @@ func (t *Tree) back() {
 		}
 		host = top
 	}
-	if o := topOverlay(host); o != nil {
+	if o := t.topOverlay(host); o != nil {
+		t.within(o.owner, o.h.cancel)
+		return
+	}
+	if o := t.framedCancel(host); o != nil {
 		t.within(o.owner, o.h.cancel)
 		return
 	}
@@ -712,14 +782,14 @@ func (t *Tree) back() {
 // nothing takes it first: no overlay listening for cancel, no modal's
 // OnRequestClose, no Scope.OnBackPress handler and no NoPopOnBack.
 func (t *Tree) backPreview() driver.NodeID {
-	if topmostCancel(t.view) != nil {
+	if t.topmostCancel(t.view) != nil {
 		return 0
 	}
 	host := t.view
 	for top := topModal(host); top != nil; top = topModal(host) {
 		host = top
 	}
-	if topOverlay(host) != nil {
+	if t.topOverlay(host) != nil || t.framedCancel(host) != nil {
 		return 0
 	}
 	if host.kind != driver.KindModal {
@@ -768,22 +838,51 @@ func topModal(host *node) *node {
 }
 
 // topmostCancel returns the last of host's Topmost overlays that listens for cancel, which hears back before host's modals do.
-func topmostCancel(host *node) *node {
+func (t *Tree) topmostCancel(host *node) *node {
 	for i := len(host.hosted) - 1; i >= 0 && host.hosted[i].hoist.topmost(); i-- {
-		if n := host.hosted[i]; !n.deleted && n.h.cancel != nil && !hiddenIn(n) {
+		if n := host.hosted[i]; t.listensForCancel(n) {
 			return n
 		}
 	}
 	return nil
 }
 
-func topOverlay(host *node) *node {
+// topOverlay returns the last overlay host hosts that listens for cancel.
+func (t *Tree) topOverlay(host *node) *node {
 	for i := len(host.hosted) - 1; i >= 0; i-- {
-		if n := host.hosted[i]; !n.deleted && n.kind != driver.KindModal && n.h.cancel != nil && !hiddenIn(n) {
+		if n := host.hosted[i]; n.kind != driver.KindModal && t.listensForCancel(n) {
 			return n
 		}
 	}
 	return nil
+}
+
+// framedCancel returns the last overlay that listens for cancel in the outermost frame shown in host, the root view or a modal, that has one, as a frame's overlays show above those of the frames inside it (placeFrames keeps them outer first).
+func (t *Tree) framedCancel(host *node) *node {
+	for _, f := range t.frames {
+		if f.deleted || hiddenIn(f) || t.shownIn(f) != host {
+			continue
+		}
+		if o := t.topOverlay(f); o != nil {
+			return o
+		}
+	}
+	return nil
+}
+
+// shownIn is the root view or modal whose views n's are among.
+func (t *Tree) shownIn(n *node) *node {
+	for p := n.nativeParent(); p != nil; p = p.nativeParent() {
+		if p == t.view || p.kind == driver.KindModal {
+			return p
+		}
+	}
+	return nil
+}
+
+// listensForCancel reports whether overlay n hears back: it is shown and listens, and the focus is within its owner if Confine confined it.
+func (t *Tree) listensForCancel(n *node) bool {
+	return !n.deleted && n.h.cancel != nil && !hiddenIn(n) && t.focusWithin(confinement(n.owner))
 }
 
 // pressOutside reports a press outside overlay n unless it landed on its anchor or on what takes presses in an overlay above it.
@@ -795,9 +894,9 @@ func (t *Tree) pressOutside(n *node, at Point) {
 	if a, ok := t.anchorRect(&Overlay{Anchor: n.hoist.overlay.Anchor}, t.view); ok && a.Contains(at) {
 		return
 	}
-	// Above n are the overlays and modals after it in its host, and those after each modal around it in that modal's host, as the root view's Topmost overlays are above every modal, up to a sheet the platform presents, which shows above all its host holds.
-	for below, host := n, n.hoist.host; ; below, host = host, host.hoist.host {
-		above := false
+	// Above n are the overlays and modals after it in its host, and in each view around it that hosts some, those after the one it is in, or all of them around a frame's views, as the root view's Topmost overlays are above every modal, up to a sheet the platform presents, which shows above all its host holds.
+	for below, host := n, n.hoist.host; host != nil; below, host = host, host.nativeParent() {
+		above := below.hoist == nil
 		for _, o := range host.hosted {
 			if o == below {
 				above = true
@@ -807,7 +906,7 @@ func (t *Tree) pressOutside(n *node, at Point) {
 				return
 			}
 		}
-		if host == t.view || host.hoist == nil || host.hoist.reported.GetUntracked() != nil {
+		if host.kind == driver.KindModal && host.hoist.reported.GetUntracked() != nil {
 			break
 		}
 	}
@@ -817,6 +916,10 @@ func (t *Tree) pressOutside(n *node, at Point) {
 // takes reports whether overlay o takes a press at the surface point at: its box does, unless its PointerEvents let presses through it, as a tooltip's or a developer's layer's do (UpdateHighlights), and then only a view inside it that takes them.
 func (t *Tree) takes(o *node, at Point) bool {
 	b := t.surfaceBounds(o)
+	// A frame clips what it hosts.
+	if h := o.hoist.host; h.confines && !t.surfaceBounds(h).Contains(at) {
+		return false
+	}
 	switch o.props.PointerEvents {
 	case PointerEventsNone:
 		return false

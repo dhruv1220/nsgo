@@ -1311,8 +1311,9 @@ func TestConfinedFocusFollowsTheUser(t *testing.T) {
 	for _, confined := range []bool{true, false} {
 		var field, other Ref
 		var open *Signal[bool]
-		var plugin *Scope
+		var plugin, hostScope *Scope
 		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			hostScope = cx
 			shown := Dynamic(func(cx *Scope) Node {
 				plugin = cx
 				if confined {
@@ -1399,17 +1400,218 @@ func TestConfinedFocusFollowsTheUser(t *testing.T) {
 		other.Focus()
 		want("Focus while it has the focus", focused(), true, h.find("plugin-other").id)
 
-		// A context menu it showed closing as another replaces it is not the user's input; the user closing it is.
+		// A context menu it showed on a press closing as the host's replaces it is not the user's input; the user closing it is.
 		h.tree.SetEnvironment(Environment{OS: OSMacOS, Idiom: IdiomDesktop})
 		focus("host-field")
-		plugin.PopupMenu([]MenuItem{{Label: "A"}}, Point{}, func() { field.Focus() })
-		plugin.PopupMenu([]MenuItem{{Label: "B"}}, Point{}, func() { field.Focus() })
-		b := h.commit()
-		menu := command(b, driver.ItemPopupMenu)
-		want("Focus as a menu replaces the one it showed", focusedIn(b), !confined, h.find("plugin-field").id)
+		menuOnPress := func() *driver.MountItem {
+			h.tree.Dispatch(driver.Event{Kind: driver.EventPress, ID: h.find("plugin-button").id})
+			plugin.PopupMenu([]MenuItem{{Label: "A"}}, Point{}, func() { field.Focus() })
+			return command(h.commit(), driver.ItemPopupMenu)
+		}
+		menuOnPress()
+		hostScope.PopupMenu([]MenuItem{{Label: "B"}}, Point{}, nil)
+		want("Focus as a menu replaces the one it showed", focused(), !confined, h.find("plugin-field").id)
 		focus("host-field")
+		menu := menuOnPress()
 		h.tree.Dispatch(driver.Event{Kind: driver.EventMenuClosed, Count: menu.Count})
 		want("Focus as the user closes the menu it showed", focused(), true, h.find("plugin-field").id)
+	}
+}
+
+// A confined owner's views draw and take presses only within its frame, the view around them it does not own, which clips them; its overlays and fixed views are hosted, sized and placed there. An owner not confined reaches past it, as any view does.
+func TestConfinedViewsStayInTheirFrame(t *testing.T) {
+	for _, confined := range []bool{true, false} {
+		name := map[bool]string{true: "confined", false: "not confined"}[confined]
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			shown := Dynamic(func(cx *Scope) Node {
+				if confined {
+					cx.Confine()
+				}
+				return Group{
+					// Drawn over the host's button above its frame.
+					View{TestID: "plugin-cover", OnPress: func(PressEvent) {},
+						Style: Style{Position: Absolute, Top: Pt(-40), Left: Pt(0), Width: Pt(100), Height: Pt(100)}},
+					Overlay{TestID: "plugin-overlay", PointerEvents: PointerEventsNone, Style: Style{Width: Pct(100), Height: Pct(100)}},
+					View{TestID: "plugin-fixed", Style: Style{Position: Fixed, Bottom: Pt(0), Width: Pt(10), Height: Pt(10)}},
+				}
+			})
+			return View{Children: []Node{
+				View{TestID: "host-button", OnPress: func(PressEvent) {}, Style: Style{Height: Pt(40)}},
+				View{TestID: "frame", Style: Style{Height: Pt(60)}, Children: []Node{shown}},
+			}}
+		})
+		b := h.commit()
+		frame, overlay, fixed := h.find("frame"), h.find("plugin-overlay"), h.find("plugin-fixed")
+		clipped, area := false, false
+		parents := map[NodeID]NodeID{}
+		for _, it := range b.Items {
+			switch {
+			case it.Kind == driver.ItemViewStyle && it.ID == frame.id:
+				clipped = it.ViewStyle.Clip
+			case it.Kind == driver.ItemOverflow && it.ID == frame.id:
+				area = it.Frame.Size.Width > 0
+			case it.Kind == driver.ItemInsert:
+				parents[it.ID] = it.Parent
+			}
+		}
+		if clipped != confined || area == confined {
+			t.Errorf("%s: the frame clips %v with an overflow area %v", name, clipped, area)
+		}
+		want, wantSize, wantY := h.tree.view, Size{Width: 100, Height: 200}, Points(190)
+		if confined {
+			want, wantSize, wantY = frame, Size{Width: 100, Height: 60}, 50
+		}
+		if parents[overlay.id] != want.id || overlay.hoist.host != want || overlay.frame.Size != wantSize {
+			t.Errorf("%s: the overlay is in %d at %+v, want in %d at %+v", name, parents[overlay.id], overlay.frame.Size, want.id, wantSize)
+		}
+		if parents[fixed.id] != want.id || fixed.frame.Origin.Y != wantY {
+			t.Errorf("%s: the fixed view is in %d at y %v, want in %d at %v", name, parents[fixed.id], fixed.frame.Origin.Y, want.id, wantY)
+		}
+		// A press over the host's button reaches the button, not the view drawn over it from the frame.
+		got, wantHit := h.tree.HitTest(Point{X: 50, Y: 20}), h.find("plugin-cover").id
+		if confined {
+			wantHit = h.find("host-button").id
+		}
+		if got != wantHit {
+			t.Errorf("%s: a press over the host's button hit %d, want %d", name, got, wantHit)
+		}
+		if got := h.tree.HitTest(Point{X: 50, Y: 70}); got != h.find("plugin-cover").id {
+			t.Errorf("%s: a press in the frame hit %d", name, got)
+		}
+	}
+}
+
+// What a frame cannot clip, a confined owner's modal, alert and context menu, it shows only while the focus is in its views or as the user's input on them is handled; a modal so shown stays and hears back wherever the focus is. An owner not confined shows them whenever it likes.
+func TestConfinedPresentationsWaitForTheUser(t *testing.T) {
+	for _, confined := range []bool{true, false} {
+		name := map[bool]string{true: "confined", false: "not confined"}[confined]
+		var open *Signal[bool]
+		var plugin *Scope
+		var closes []string
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			shown := Dynamic(func(cx *Scope) Node {
+				plugin = cx
+				if confined {
+					cx.Confine()
+				}
+				open = NewSignal(cx, false)
+				return View{Children: []Node{
+					View{TestID: "plugin-button", OnPress: func(PressEvent) { open.Set(true) }, Style: Style{Height: Pt(20)}},
+					Show{When: open.Get, Then: func(*Scope) Node {
+						return Modal{TestID: "plugin-modal", OnRequestClose: func(reason string) { closes = append(closes, reason) }}
+					}},
+				}}
+			})
+			return View{Children: []Node{Input{TestID: "host-field"}, View{TestID: "frame", Children: []Node{shown}}}}
+		})
+		h.tree.SetEnvironment(Environment{OS: OSMacOS, Idiom: IdiomDesktop})
+		h.commit()
+		h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("host-field").id})
+		modalShown := func() bool {
+			for _, n := range h.tree.nodes {
+				if n != nil && !n.deleted && n.props.TestID == "plugin-modal" {
+					return true
+				}
+			}
+			return false
+		}
+		alerted, closed := -2, false
+		open.Set(true)
+		plugin.ShowAlert(AlertConfig{Title: "A"}, func(i int) { alerted = i })
+		plugin.PopupMenu([]MenuItem{{Label: "A"}}, Point{}, func() { closed = true })
+		b := h.commit()
+		if modalShown() == confined || (command(b, driver.ItemAlert) != nil) == confined || (command(b, driver.ItemPopupMenu) != nil) == confined {
+			t.Errorf("%s, on its own: modal %v, alert %v, menu %v", name, modalShown(), command(b, driver.ItemAlert) != nil, command(b, driver.ItemPopupMenu) != nil)
+		}
+		if confined && (alerted != -1 || !closed) {
+			t.Errorf("%s, on its own: the alert answered %d and the menu closed %v, want -1 and true", name, alerted, closed)
+		}
+
+		open.Set(false)
+		h.commit()
+		h.tree.Dispatch(driver.Event{Kind: driver.EventPress, ID: h.find("plugin-button").id})
+		plugin.ShowAlert(AlertConfig{Title: "A"}, nil)
+		plugin.PopupMenu([]MenuItem{{Label: "A"}}, Point{}, nil)
+		b = h.commit()
+		if !modalShown() || command(b, driver.ItemAlert) == nil || command(b, driver.ItemPopupMenu) == nil {
+			t.Errorf("%s, on a press: modal %v, alert %v, menu %v", name, modalShown(), command(b, driver.ItemAlert) != nil, command(b, driver.ItemPopupMenu) != nil)
+		}
+		// Shown, it stays, and back closes it with the focus outside its owner.
+		h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("host-field").id})
+		h.commit()
+		h.tree.Dispatch(driver.Event{Kind: driver.EventBack})
+		if !modalShown() || !slices.Equal(closes, []string{"cancel"}) {
+			t.Errorf("%s: after a back the modal is shown %v and asked to close %q", name, modalShown(), closes)
+		}
+	}
+}
+
+// A confined owner's overlay hears back only while the focus is within that owner; else back goes on to the host.
+func TestConfinedOverlaysHearBackWithTheFocus(t *testing.T) {
+	for _, confined := range []bool{true, false} {
+		name := map[bool]string{true: "confined", false: "not confined"}[confined]
+		var log []string
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			cx.OnBackPress(func() bool { log = append(log, "host"); return true })
+			shown := Dynamic(func(cx *Scope) Node {
+				if confined {
+					cx.Confine()
+				}
+				return View{Children: []Node{
+					Input{TestID: "plugin-field"},
+					Overlay{OnCancel: func() { log = append(log, "plugin overlay") }, Children: []Node{Input{TestID: "plugin-overlay-field"}}},
+				}}
+			})
+			return View{Children: []Node{Input{TestID: "host-field"}, View{Children: []Node{shown}}}}
+		})
+		h.commit()
+		for _, c := range []struct {
+			focus string
+			want  string
+		}{{"host-field", map[bool]string{true: "host", false: "plugin overlay"}[confined]}, {"plugin-field", "plugin overlay"}, {"plugin-overlay-field", "plugin overlay"}} {
+			log = nil
+			h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find(c.focus).id})
+			h.commit()
+			h.tree.Dispatch(driver.Event{Kind: driver.EventBack})
+			if !slices.Equal(log, []string{c.want}) {
+				t.Errorf("%s, focus on %s: back went to %q, want %q", name, c.focus, log, c.want)
+			}
+		}
+	}
+}
+
+// A confined owner has the screen reader speak only while the focus is in its views or as the user's input on them is handled.
+func TestConfinedAnnouncementsWaitForTheUser(t *testing.T) {
+	for _, confined := range []bool{true, false} {
+		name := map[bool]string{true: "confined", false: "not confined"}[confined]
+		var plugin *Scope
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			shown := Dynamic(func(cx *Scope) Node {
+				plugin = cx
+				if confined {
+					cx.Confine()
+				}
+				return View{Children: []Node{Input{TestID: "plugin-field"}, View{TestID: "plugin-button", OnPress: func(PressEvent) {}, Style: Style{Height: Pt(20)}}}}
+			})
+			return View{Children: []Node{Input{TestID: "host-field"}, shown}}
+		})
+		h.commit()
+		said := func(what string, allowed bool) {
+			t.Helper()
+			plugin.Announce("hello")
+			if got := command(h.commit(), driver.ItemAnnounce) != nil; got != allowed {
+				t.Errorf("%s, %s: announced %v, want %v", name, what, got, allowed)
+			}
+		}
+		h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("host-field").id})
+		h.commit()
+		said("with the focus outside", !confined)
+		h.tree.Dispatch(driver.Event{Kind: driver.EventPress, ID: h.find("plugin-button").id})
+		said("on a press on its view", true)
+		said("a commit after the press", !confined)
+		h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("plugin-field").id})
+		h.commit()
+		said("with the focus in its view", true)
 	}
 }
 

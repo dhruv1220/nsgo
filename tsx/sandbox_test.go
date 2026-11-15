@@ -386,6 +386,60 @@ mount(() => <View>
 	}
 }
 
+// A plugin shows in a view of its own that clips it: its views and overlays stay in it, sized to it, and a dialog it opens on a timer is refused while one its press opens shows; an app not sandboxed shows them over the host's views.
+func TestSandboxShowsOnlyWithinItsView(t *testing.T) {
+	const source = `import { mount, signal, View, Text, Overlay } from "nsgo";
+import { Dialog } from "nsgo/base";
+const open = signal(false);
+setTimeout(() => open.set(true), 100);
+mount(() => <View testID="plugin-root">
+	<View testID="plugin-cover" style={{ position: "absolute", top: -40, left: 0, width: 100, height: 100 }} />
+	<Overlay testID="plugin-overlay" pointerEvents="none" style={{ width: "100%", height: "100%" }} />
+	<Text testID="close" onPress={() => open.set(false)}>Close</Text>
+	<Text testID="open" onPress={() => open.set(true)}>Open</Text>
+	<Dialog open={open()}><Text testID="dialog-text">Hi</Text></Dialog>
+</View>);`
+	for _, sandboxed := range []bool{true, false} {
+		name := map[bool]string{true: "sandboxed", false: "not sandboxed"}[sandboxed]
+		var plugin func(cx *core.Scope) core.Node
+		if sandboxed {
+			plugin = tsx.View{Package: verified(t, source, pkg.Capabilities{})}.Render
+		} else {
+			code, err := bundler.Compile(fstest.MapFS{"App.tsx": {Data: []byte(source)}}, "App.tsx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			plugin = tsx.App("App.js", string(code))
+		}
+		app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+			return core.View{Style: core.Style{Width: core.Pt(100), Height: core.Pt(200)}, Children: []core.Node{
+				core.View{TestID: "host-button", OnPress: func(core.PressEvent) {}, Style: core.Style{Height: core.Pt(40)}},
+				core.View{TestID: "host-slot", Style: core.Style{Height: core.Pt(60)}, Children: []core.Node{core.Dynamic(plugin)}},
+			}}
+		})
+		frame, overlay := app.Find("id:plugin-root").Parent, app.Find("id:plugin-overlay")
+		if sandboxed {
+			if frame == app.Find("id:host-slot") || !frame.Style.Clip || frame.Frame.Size != (core.Size{Width: 100, Height: 60}) {
+				t.Errorf("%s: the plugin's view is the host's %v, clips %v, at %+v", name, frame == app.Find("id:host-slot"), frame.Style.Clip, frame.Frame.Size)
+			}
+			if overlay.Parent != frame || overlay.Frame.Size != frame.Frame.Size {
+				t.Errorf("%s: the overlay is in its view %v at %+v", name, overlay.Parent == frame, overlay.Frame.Size)
+			}
+		} else if overlay.Frame.Size.Height <= 60 || app.Find("id:host-slot").Style.Clip {
+			t.Errorf("%s: the overlay is %+v and the host's slot clips %v", name, overlay.Frame.Size, app.Find("id:host-slot").Style.Clip)
+		}
+		app.Advance(150 * time.Millisecond)
+		if shown := app.Exists("id:dialog-text"); shown == sandboxed {
+			t.Errorf("%s: a dialog a timer opened shows %v", name, shown)
+		}
+		app.Press("id:close")
+		app.Press("id:open")
+		if !app.Exists("id:dialog-text") {
+			t.Errorf("%s: a dialog its press opened does not show", name)
+		}
+	}
+}
+
 func TestStopsAtTheNodeQuota(t *testing.T) {
 	p := verified(t, `import { mount, signal, View, Text } from "nsgo";
 const n = signal(1);

@@ -69,7 +69,7 @@ func mouseOf(e driver.Event) MouseEvent {
 // of a view with an area too. Their own areas count, transforms do not.
 func (n *node) overflowArea(kids []*node) Bounds {
 	x, y := n.style.overflow()
-	if n.scroll != nil || x == Hidden || y == Hidden || x == OverflowScroll || y == OverflowScroll || len(kids) == 0 {
+	if n.scroll != nil || n.confines || x == Hidden || y == Hidden || x == OverflowScroll || y == OverflowScroll || len(kids) == 0 {
 		return Bounds{}
 	}
 	w, h := n.frame.Size.Width, n.frame.Size.Height

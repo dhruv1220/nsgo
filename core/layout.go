@@ -532,10 +532,15 @@ func (j Justify) layout() layout.AlignContent {
 }
 
 // layout lays the root view out at the surface size, then the overlays
-// and modals it hosts.
+// and modals it hosts, then those its frames host.
 func (t *Tree) layout() {
-	if t.relayoutBoundaries() && !t.view.layoutDirty && anchored(t.view) {
-		t.placeHoisted(t.view) // anchors may have moved
+	if relaid := t.relayoutBoundaries(); relaid && !t.view.layoutDirty {
+		if anchored(t.view) {
+			t.placeHoisted(t.view) // anchors may have moved
+		}
+		if len(t.frames) > 0 {
+			t.placeFrames() // so may frames
+		}
 	}
 	if !t.view.layoutDirty {
 		t.placeFollowers(false)
@@ -548,6 +553,9 @@ func (t *Tree) layout() {
 	t.syncFrames(t.view)
 	t.placeFollowers(true)
 	t.placeHoisted(t.view)
+	if len(t.frames) > 0 {
+		t.placeFrames()
+	}
 	t.layoutAccessories()
 	t.layoutHeaderViews()
 }

@@ -883,7 +883,7 @@ func (t *Tree) heldRows(ln *listNode, count int) []int {
 			held = append(held, j)
 		}
 	}
-	hosts := []*node{t.view}
+	hosts := append([]*node{t.view}, t.frames...)
 	for k := 0; k < len(hosts); k++ {
 		for _, o := range hosts[k].hosted {
 			if o.deleted {

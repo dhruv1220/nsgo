@@ -16,14 +16,17 @@ import (
 // Services the platform performs for the app, asked for with command
 // items and answered with events.
 
-// ShowAlert is the core's part of base.ShowAlertDialog, which apps use:
-// it shows a native alert and calls done with the index of the button
-// chosen, or -1 when it was dismissed without one. done runs even
-// when the owner that showed the alert is gone, such as a closed menu.
+// ShowAlert is the core's part of base.ShowAlertDialog, which apps use: it shows a native alert and calls done with the index of the button chosen, or -1 when it was dismissed without one. done runs even when the owner that showed the alert is gone, such as a closed menu. A confined owner shows one only as Scope.Confine allows, else done gets -1 at once.
 func (cx *Scope) ShowAlert(a AlertConfig, done func(index int)) {
 	t := cx.tree()
 	if t == nil {
 		panic("core: ShowAlert needs a mounted tree")
+	}
+	if !t.confinedMay(cx.current(), refusedPresent, askedToPresent) {
+		if done != nil {
+			done(-1)
+		}
+		return
 	}
 	t.alertID++
 	a.ID = t.alertID
@@ -170,9 +173,9 @@ func (cx *Scope) ReadClipboardFiles(done func(uris []string)) {
 	cx.readClipboard(driver.ClipboardReadFiles, func(ev driver.Event) { done(ev.URIs) })
 }
 
-// Announce has the screen reader say text.
+// Announce has the screen reader say text. A confined owner's is said only as Scope.Confine allows, else dropped.
 func (cx *Scope) Announce(text string) {
-	if t := cx.tree(); t != nil {
+	if t := cx.tree(); t != nil && t.confinedMay(cx.current(), refusedAnnounce, "asked the screen reader to speak") {
 		t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemAnnounce, Value: text})
 		t.changed = true
 	}

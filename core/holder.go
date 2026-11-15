@@ -126,13 +126,14 @@ func (h *Holder) discard() {
 func (t *Tree) rehost(n *node) {
 	for _, c := range n.children {
 		if hn := c.hoist; hn != nil && hn.host != nil && c.parent != nil {
-			if host := t.hostOf(c.parent); host != hn.host && !t.detached(c) {
+			if host := t.hostOf(c); host != hn.host && !t.detached(c) {
 				old := hn.host
 				old.hosted = slices.DeleteFunc(old.hosted, func(x *node) bool { return x == c })
 				t.reorder(old)
 				t.markLayout(old)
 				hn.host = host
 				addHosted(host, c)
+				t.addFrame(host)
 				t.reorder(host)
 				t.markLayout(host)
 			}

@@ -119,15 +119,18 @@ type Sandbox struct {
 // SandboxModules are the modules a sandboxed bundle imports without Sandbox.Modules naming them: NSGo's own, with what is registered into them SandboxSafe, none of the Go functions registered with RegisterFunctions, and none of their exports that act on the whole app (setColorScheme, BackHandler.exitApp).
 var SandboxModules = []string{"nsgo", "nsgo:rt", "nsgo/base", "nsgo/base/plot", "nsgo/ui", "nsgo/ui/chat", "nsgo/mobile"}
 
-// Sandboxed returns the app of a bundle, as App does, run within s.
+// Sandboxed returns the app of a bundle, as App does, run within s, in a view of its own: its frame, which fills the room its parent gives it and clips what the bundle shows, overlays included (core.Scope.Confine).
 func Sandboxed(name, src string, s Sandbox) func(cx *core.Scope) core.Node {
 	return func(cx *core.Scope) core.Node {
 		inner := cx.Child()
 		var root core.Node
 		inner.Run(func() { root = s.start(inner, name, src).root.elem })
-		return root
+		return core.View{Style: sandboxFrame, Children: []core.Node{root}}
 	}
 }
+
+// sandboxFrame is the style of the view a sandboxed bundle shows in, which the host's scope owns and the bundle cannot restyle.
+var sandboxFrame = core.Style{FlexGrow: 1, FlexShrink: 1, Overflow: core.Hidden}
 
 // start runs src in a new runtime under cx, panicking with what it
 // throws as it loads.
@@ -142,7 +145,7 @@ func (s Sandbox) start(cx *core.Scope, name, src string) *runtime {
 		}
 	}
 	cx.ProvideHost(s.Host)
-	// Its key bindings and back handlers, keymap's and BackHandler's and its Go components', fire only while the focus is in what it shows.
+	// Its key bindings and back handlers, keymap's and BackHandler's and its Go components', fire only while the focus is in what it shows, and what it shows stays in its frame.
 	cx.Confine()
 	if s.Storage != "" {
 		cx.ProvideStorage(s.Storage, limits.Storage)

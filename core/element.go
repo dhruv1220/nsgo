@@ -784,10 +784,7 @@ func (i Image) mountIn(t *Tree, cx *Scope, parent *node) { t.mountImage(cx, pare
 // Src returns a source for uri.
 func Src(uri string) ImageSource { return ImageSource{URI: uri} }
 
-// Overlay floats its children above everything in the nearest Modal or
-// the surface, outside the flow: placed beside Anchor on Placement, or by
-// its style's Top, Right, Bottom and Left without one. It never closes
-// itself; the app removes it.
+// Overlay floats its children above everything in the nearest Modal or the surface, or a confined owner's in its frame when that is nearer (Scope.Confine), outside the flow: placed beside Anchor on Placement, or by its style's Top, Right, Bottom and Left without one. It never closes itself; the app removes it.
 type Overlay struct {
 	Anchor *Ref
 	// AnchorContent places it against the box around what Anchor holds
@@ -876,9 +873,7 @@ const (
 	PlaceRight
 )
 
-// Modal covers its host, the surface or an outer modal, with a layer of
-// its own laid out at the host's size: the core's part of base.Dialog,
-// which apps use. Mounting it presents it, and removing it dismisses it.
+// Modal covers its host, the surface or an outer modal, with a layer of its own laid out at the host's size: the core's part of base.Dialog, which apps use. Mounting it presents it, and removing it dismisses it. A confined owner's mounts only as Scope.Confine allows, else nothing shows.
 type Modal struct {
 	Animation ModalAnimation
 	// TransitionShader, when set, is how it comes and goes instead,

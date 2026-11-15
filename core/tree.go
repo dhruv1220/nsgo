@@ -159,6 +159,8 @@ type Tree struct {
 	focusHint       *node
 	// activated is the owner of the view the user's input last landed on, a press, a touch or a menu chosen, until the commit after it, which lets a confined owner move the focus (mayMoveFocus).
 	activated *Scope
+	// frames are the views other than the root and modals that host a confined owner's overlays (Scope.Confine), which layout places after the root's.
+	frames []*node
 	// reveals are the Reveals asked for, done at the commit's layout.
 	reveals []reveal
 	// pointerStyled is set once a style has named PointerEvents, as apps
@@ -241,7 +243,9 @@ type node struct {
 	scroll   *scrollNode
 	image    *imageNode
 	hoist    *hoistNode // an overlay's or a modal's
-	hosted   []*node    // the overlays and modals this root view or modal hosts
+	hosted   []*node    // the overlays and modals this root view, modal or frame hosts
+	// confines is set on a view that holds views of an owner Confine confined that does not own it: their frame, which clips them and hosts their overlays.
+	confines bool
 	// hidden is set, as the last layout found, for a node DisplayNone
 	// hides: its own or a shadow ancestor's, across hoisting too.
 	hidden bool
@@ -2048,10 +2052,10 @@ func (t *Tree) Dispatch(ev driver.Event) {
 		return
 	case driver.EventBack:
 		n := t.node(ev.ID)
-		// Escape on a view of an overlay is that overlay's.
+		// Escape on a view of an overlay is that overlay's, a confined owner's only while the focus is within it.
 		var overlay *node
 		for p := n; p != nil && overlay == nil; p = p.parent {
-			if p.h.cancel != nil {
+			if p.h.cancel != nil && t.focusWithin(confinement(p.owner)) {
 				overlay = p
 			}
 		}
@@ -2392,7 +2396,7 @@ func (t *Tree) Dispatch(ev driver.Event) {
 			if ev.Value > 0 {
 				n.scroll.zoom = ev.Value
 			}
-			if anchored(t.view) {
+			if anchored(t.view) || slices.ContainsFunc(t.frames, anchored) {
 				t.markLayout(t.view) // anchored overlays follow the scroll
 				t.changed = true
 			}

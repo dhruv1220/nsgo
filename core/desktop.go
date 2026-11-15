@@ -143,14 +143,15 @@ type popupMenu struct {
 	closed  func()
 }
 
-// PopupMenu is the core's part of desktop.PopupMenu, which apps use.
+// PopupMenu is the core's part of desktop.PopupMenu, which apps use. A confined owner shows one only as Scope.Confine allows, else closed runs at once.
 func (cx *Scope) PopupMenu(items []MenuItem, at Point, closed func()) {
 	t := cx.tree()
 	if t == nil {
 		return
 	}
 	owner := cx.current()
-	if os := cx.Env().os.GetUntracked(); os != OSMacOS && os != OSWindows && os != OSLinux {
+	if os := cx.Env().os.GetUntracked(); os != OSMacOS && os != OSWindows && os != OSLinux ||
+		!t.confinedMay(owner, refusedPresent, askedToPresent) {
 		if closed != nil {
 			t.within(owner, closed)
 		}

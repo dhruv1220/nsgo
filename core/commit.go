@@ -250,6 +250,9 @@ func (t *Tree) commitRound() {
 	if len(t.view.hosted) > 0 {
 		t.placeTabStops(t.view)
 	}
+	for _, f := range t.frames {
+		t.placeTabStops(f)
+	}
 	t.sendSticky()
 	t.sizeCanvases()
 	t.laidOut = t.laidOut[:0]
@@ -680,6 +683,9 @@ func (t *Tree) emit(n *node) bool {
 	n.dirty, n.dirtyKids = false, false
 	first := !n.created
 	moved := false
+	if n.childrenDirty && t.rt.confined {
+		n.confines = confines(n)
+	}
 	if self {
 		moved = t.emitParts(n)
 	}
@@ -999,6 +1005,8 @@ func fitStyle(ts driver.TextStyle, scale float32) driver.TextStyle {
 
 func (n *node) viewStyle() driver.ViewStyle {
 	vs := n.style.viewStyle(n.frame.Size, n.color, n.rtl)
+	// A confined owner's frame clips what it shows (Scope.Confine).
+	vs.Clip = vs.Clip || n.confines
 	vs.Material, vs.Elevation = n.material, n.elevation
 	if n.canvas != nil && n.canvas.drawing != nil && n.canvas.drawing.HasBackground() {
 		// Its drawing fills its shapes with the background.
