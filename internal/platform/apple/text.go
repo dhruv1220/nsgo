@@ -716,8 +716,10 @@ func (p *prepared) fitsOneLine(width float64) bool {
 		p.line = ctLineCreateWithAttrString(p.str)
 		// As a frame measures it, without its trailing spaces.
 		p.lineWidth = ctLineGetTypographicBounds(p.line, &p.ascent, &descent, &leading) - ctLineTrailingWhitespace(p.line)
-		// A frame puts a line's baseline on a whole point.
-		p.lineHeight = math.Round(p.ascent) + descent + leading
+		// A frame puts a one-line baseline on a whole point and reports the
+		// resulting box rounded up. Keep the fast path identical to that
+		// framesetter result; wrapped text keeps the fractional measurement.
+		p.lineHeight = math.Ceil(math.Round(p.ascent) + descent + leading - 1e-3)
 	}
 	return p.lineWidth <= width
 }
@@ -759,25 +761,25 @@ func (p *prepared) Measure(maxWidth driver.Points) driver.Size {
 // measure is Measure without the cache.
 func (p *prepared) measure(maxWidth driver.Points) driver.Size {
 	if p.emptyHeight > 0 {
-		return driver.Size{Height: driver.Points(math.Ceil(p.emptyHeight))}
+		return driver.Size{Height: driver.Points(p.emptyHeight)}
 	}
 	w := float64(unbounded)
 	if !maxWidth.IsAuto() {
 		w = float64(maxWidth)
 	}
 	if p.fitsOneLine(w) {
-		return driver.Size{Width: driver.Points(math.Ceil(p.lineWidth)), Height: driver.Points(math.Ceil(p.lineHeight))}
+		return driver.Size{Width: driver.Points(p.lineWidth), Height: driver.Points(p.lineHeight)}
 	}
 	if p.maxLines > 0 {
 		frame := p.frame(CGSize{Width: w, Height: tall})
 		defer Release(frame)
 		if lines := ctFrameGetLines(frame); cfArrayGetCount(lines) > p.maxLines {
 			size := firstLines(frame, lines, p.maxLines, tall)
-			return driver.Size{Width: driver.Points(math.Ceil(size.Width)), Height: driver.Points(math.Ceil(size.Height))}
+			return driver.Size{Width: driver.Points(size.Width), Height: driver.Points(size.Height)}
 		}
 	}
 	size := ctFramesetterSuggestSize(p.framesetter(), 0, 0, 0, w, unbounded, 0)
-	return driver.Size{Width: driver.Points(math.Ceil(size.Width)), Height: driver.Points(math.Ceil(size.Height))}
+	return driver.Size{Width: driver.Points(size.Width), Height: driver.Points(size.Height)}
 }
 
 // firstLines returns the size of a frame's first n lines.

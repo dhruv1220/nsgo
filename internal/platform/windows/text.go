@@ -674,13 +674,10 @@ func (pt *preparedText) Measure(maxWidth driver.Points) driver.Size {
 		pt.layout.call(layoutGetMetrics, uintptr(unsafe.Pointer(&m)))
 		width = m.widthWithTrailing
 	}
-	// Whole points: frames are rounded to them, and a frame narrower than
-	// the measured text would wrap it again.
-	width = float32(math.Ceil(float64(width) - 1e-3))
 	if limit < unbounded {
 		width = min(width, limit)
 	}
-	return driver.Size{Width: driver.Points(width), Height: driver.Points(math.Ceil(float64(height) - 1e-3))}
+	return driver.Size{Width: driver.Points(width), Height: driver.Points(height)}
 }
 
 // Layout lays the text out at size in a layout of its own, which the

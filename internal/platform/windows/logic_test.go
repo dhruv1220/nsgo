@@ -514,8 +514,9 @@ func TestAttachmentsGrowLinesOfAFixedHeight(t *testing.T) {
 	p := w.Prepare(at)
 	defer p.Release()
 	size := p.Measure(driver.Auto)
-	if want := driver.Points(math.Ceil(float64(60 + 24 + 24 + 24 - p.(*preparedText).baseline))); size.Height != want {
-		t.Errorf("height = %v, want the attachment's line, grown, and two of 24", size.Height)
+	want := driver.Points(float64(60 + 24 + 24 + 24 - p.(*preparedText).baseline))
+	if math.Abs(float64(size.Height-want)) > 0.01 {
+		t.Errorf("height = %v, want the attachment's line, grown, and two of 24 (%v)", size.Height, want)
 	}
 	l := p.Layout(size).(*textLayout)
 	defer l.Release()
@@ -599,7 +600,8 @@ func TestPlainTextMeasuresTheLinesItDraws(t *testing.T) {
 	if len(l.lines) < 2 {
 		t.Fatalf("%v wide text drew %d line(s) at %v, want at least 2", natural.Width, len(l.lines), narrow)
 	}
-	if want := driver.Points(math.Ceil(float64(len(l.lines)) * 21.7)); size.Height != want {
+	want := driver.Points(float64(len(l.lines)) * 21.7)
+	if math.Abs(float64(size.Height-want)) > 0.01 {
 		t.Errorf("measured height %v, want %v for %d lines of 21.7", size.Height, want, len(l.lines))
 	}
 	for i := 1; i < len(l.lines); i++ {
