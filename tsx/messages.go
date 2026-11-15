@@ -23,17 +23,11 @@ var registeredCatalogs = map[string]registeredMessages{}
 
 var timeType = reflect.TypeFor[time.Time]()
 
-// RegisterMessages makes a package of catalogs' messages importable from
-// module in TSX, as typed functions: in is the package's In, and params
-// its Parameters, which name each message's parameters in the
-// declarations. The module exports messages, whose methods say each
-// message in the language the app shows and follow it as it changes,
-// messagesIn(locale) for a language of the caller's choice, and
-// language(), the language the app shows. Register them before an app
-// starts:
+// RegisterMessages makes a package of catalogs' messages importable from module in TSX, as typed functions: in is the package's In, and params its Parameters, which name each message's parameters in the declarations. The module exports messages, whose methods say each message in the language the app shows and follow it as it changes, messagesIn(locale) for a language of the caller's choice, and language(), the language the app shows. Sandboxed bundles get them only as Sandbox.Modules says. Register them as Register does components:
 //
 //	tsx.RegisterMessages("app/locales", locales.In, locales.Parameters)
 func RegisterMessages[M any](module string, in func(locale string) M, params map[string][]string) {
+	checkRegistration("RegisterMessages", module)
 	t := reflect.TypeFor[M]()
 	registryMu.Lock()
 	defer registryMu.Unlock()
