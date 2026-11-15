@@ -863,6 +863,9 @@ func (t *Tree) emitParts(n *node) bool {
 			t.refuseSource(n, AccessNetwork, &c.Source, &vn.refused, vn.loadError)
 		}
 		if first || c != vn.sent {
+			if !first && c.Source == vn.sent.Source {
+				t.emitSeeks(n)
+			}
 			vn.sent = c
 			add(driver.MountItem{Kind: driver.ItemVideo, ID: n.id, Video: &c})
 		}

@@ -143,6 +143,7 @@ The protocol is defined in `mount.go` and `events.go`. Backends apply items in o
 - A view that changes parents, or comes back after `ItemRemove`, is inserted after the round's other inserts, once its new parent is in place.
 - Backends move such a view in one step, so scroll offsets and iframes' pages stay: the web with `moveBefore`, parking removed views in a hidden element.
 - Each round's deletes come last.
+- Commands, such as `Ref.Seek`'s `ItemVideoSeek`, follow the round's view items. A video's seeks go ahead of its `ItemVideo` in the update that changes its config and keeps its source, so a video at its end leaves it before an unpause in the same update plays it, where AVPlayer would reach the end again and stop; they stay after an `ItemVideo` that opens a source, which they apply to.
 - A text field counts the user's edits. `ItemInputValue` carries the edit count the engine had seen, and the field ignores a value older than its last edit.
 - Platforms report only the events in a view's mask, and never wait for the engine. The engine queue is unbounded, merges scroll events per view and keeps only the last resize.
 

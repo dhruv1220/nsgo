@@ -216,11 +216,25 @@ type MediaError struct {
 
 func (e *MediaError) Error() string { return e.Message }
 
-// Seek jumps the video r names to position.
+// Seek jumps the video r names to position. In the update that unpauses a video that played to its end, the video plays again from position.
 func (r *Ref) Seek(position time.Duration) {
 	if r.n == nil || r.n.deleted || r.n.video == nil {
 		return
 	}
 	r.t.commands = append(r.t.commands, driver.MountItem{Kind: driver.ItemVideoSeek, ID: r.n.id, Time: max(position, 0)})
 	r.t.changed = true
+}
+
+// emitSeeks sends the seeks of video n queued this round ahead of its new config, which keeps its source: a video that played to its end and is unpaused and sought in one update then plays from the new position, where AVPlayer, given the rate first, reaches the end again and stops before the seek. A seek in the update that mounts a video or changes its source stays after the config, so it applies to the source the config opens.
+func (t *Tree) emitSeeks(n *node) {
+	kept := t.commands[:0]
+	for _, it := range t.commands {
+		if it.Kind == driver.ItemVideoSeek && it.ID == n.id {
+			t.items = append(t.items, it)
+		} else {
+			kept = append(kept, it)
+		}
+	}
+	clear(t.commands[len(kept):])
+	t.commands = kept
 }

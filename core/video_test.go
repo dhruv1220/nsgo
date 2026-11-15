@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -91,6 +93,58 @@ func TestVideoConfiguresSeeksAndReports(t *testing.T) {
 	if me, ok := failed.(*MediaError); !ok || me.Message != "no decoder" {
 		t.Fatalf("error %#v", failed)
 	}
+}
+
+// videoOrder lists a batch's video items for the video with id: "video" for its config, "seek" for a seek.
+func videoOrder(b *driver.MountBatch, id NodeID) []string {
+	var got []string
+	for _, it := range b.Items {
+		switch {
+		case it.ID != id:
+		case it.Kind == driver.ItemVideo:
+			got = append(got, "video")
+		case it.Kind == driver.ItemVideoSeek:
+			got = append(got, fmt.Sprint("seek ", it.Time))
+		}
+	}
+	return got
+}
+
+// A seek in the update that changes a video's config goes first while the source stays, so a video at its end leaves it before it plays again, and after a config that opens a source, so it applies to that source.
+func TestVideoSeeksAroundItsConfig(t *testing.T) {
+	var ref Ref
+	var source *Signal[string]
+	var paused *Signal[bool]
+	h := newHost(t, Size{Width: 300, Height: 400}, func(cx *Scope) Node {
+		source, paused = NewSignal(cx, "asset:/a.mp4"), NewSignal(cx, true)
+		cx.Effect(func() { ref.Seek(5 * time.Second) })
+		return Video{SourceFunc: source.Get, PausedFunc: paused.Get, Ref: &ref, TestID: "video", Style: Style{Width: Pt(300), Height: Pt(200)}}
+	})
+	b := h.commit()
+	id := h.find("video").id
+	check := func(step string, b *driver.MountBatch, want ...string) {
+		t.Helper()
+		if got := videoOrder(b, id); !slices.Equal(got, want) {
+			t.Fatalf("%s: %q, want %q", step, got, want)
+		}
+	}
+	check("mounted", b, "video", "seek 5s")
+
+	paused.Set(false)
+	ref.Seek(0)
+	ref.Seek(time.Second)
+	check("played again", h.commit(), "seek 0s", "seek 1s", "video")
+
+	ref.Seek(2 * time.Second)
+	check("sought", h.commit(), "seek 2s")
+
+	source.Set("asset:/b.mp4")
+	ref.Seek(3 * time.Second)
+	check("opened another", h.commit(), "video", "seek 3s")
+
+	paused.Set(true)
+	ref.Seek(4 * time.Second)
+	check("paused", h.commit(), "seek 4s", "video")
 }
 
 func TestVideoDefaults(t *testing.T) {
