@@ -16,6 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	baselocales "github.com/nsgo-dev/nsgo/base/locales"
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/nsgotest"
 	"github.com/nsgo-dev/nsgo/tsx"
@@ -230,6 +231,7 @@ func TestRegistryIsNSGosAndSetBeforeApps(t *testing.T) {
 		"RegisterClass":     func() { tsx.RegisterClass("app/late", "Late", tsx.Class[sandboxClass]{}) },
 		"RegisterStatics":   func() { tsx.RegisterStatics("app/late", "Late", map[string]any{"f": func() {}}) },
 		"RegisterFunctions": func() { tsx.RegisterFunctions("app/late", map[string]any{"f": func() {}}) },
+		"RegisterMessages":  func() { tsx.RegisterMessages("app/late", baselocales.In, baselocales.Parameters) },
 	} {
 		func() {
 			defer func() {
