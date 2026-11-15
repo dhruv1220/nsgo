@@ -16,7 +16,7 @@ go tool nsgo dev
 `-target` 在别处运行，`-device` 按名称、UDID 或序列号选择 iPhone、Apple TV、Apple Watch、模拟器或 Android 设备：
 
 ```sh
-go tool nsgo dev -target web                # 在浏览器中，端口为 -port（默认 8080）
+go tool nsgo dev -target web                # 在浏览器中，打开它打印的地址，端口为 -port（默认 8080）
 go tool nsgo dev -target ios_simulator      # 在 iOS 模拟器中
 go tool nsgo dev -target ios                # 在连接的 iPhone 上，由 Xcode 签名
 go tool nsgo dev -target tvos_simulator     # 在 Apple TV 模拟器中
@@ -49,7 +49,7 @@ go tool nsgo dev -devtools
 
 TSX 应用的状态、计算和写入会通过打包产物的 source map 以 TSX 代码行命名，并链接到应用中的文件。
 
-DevTools 通过 `nsgo dev` 的服务器读取应用，这个服务器监听你所在的网络，以便手机连接：同一网络中的任何人都能打开 DevTools，在应用运行时修改它的状态，还能往 Recorder 生成的测试里添加步骤，所以运行录制的测试前请先读一遍。你浏览的其他网站的网页做不到这些：服务器只接受 JSON 格式的 DevTools 命令和应用消息，其他网站的网页无法向它发送这种请求，而且服务器只接受来自它自己页面的请求。
+DevTools 通过 `nsgo dev` 的服务器读取应用，这个服务器监听你所在的网络，以便手机连接。每次运行都会生成一个令牌，`nsgo dev` 为 DevTools 和 web 目标打印并打开的地址在 `#` 之后带着它，服务器只回答带着令牌的请求，所以请从这些地址打开 DevTools 和 web 目标。拿到地址的人都能在应用运行时修改它的状态，还能往 Recorder 生成的测试里添加步骤，所以运行录制的测试前请先读一遍。同一网络中的其他人和你浏览的其他网站的网页都做不到这些。
 
 ## 更新
 

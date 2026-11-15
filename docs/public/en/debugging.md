@@ -16,7 +16,7 @@ go tool nsgo dev
 `-target` runs it elsewhere, and `-device` picks the iPhone, Apple TV, Apple Watch, simulator or Android device by name, UDID or serial:
 
 ```sh
-go tool nsgo dev -target web                # in the browser, at -port (8080 by default)
+go tool nsgo dev -target web                # in the browser, at the address it prints, on -port (8080 by default)
 go tool nsgo dev -target ios_simulator      # in the iOS simulator
 go tool nsgo dev -target ios                # on the connected iPhone, signed by Xcode
 go tool nsgo dev -target tvos_simulator     # in the Apple TV simulator
@@ -49,7 +49,7 @@ go tool nsgo dev -devtools
 
 A TSX app's state, computations and writes are named by their TSX lines, through the bundles' source maps, and link to the files in your app.
 
-DevTools read the app through `nsgo dev`'s server, which listens on your network so phones reach it: anyone there can open DevTools, change the app's state while it runs, and add steps to the test the Recorder writes, so read a recorded test before you run it. Web pages of other sites you visit cannot: the server takes DevTools' commands and the app's messages only as JSON, which another site's page cannot send it, and only from its own page.
+DevTools read the app through `nsgo dev`'s server, which listens on your network so phones reach it. Each run makes a token, which the addresses `nsgo dev` prints and opens for DevTools and the web target carry after `#`, and the server answers only requests that hold it, so open DevTools and the web target from those addresses. Anyone you give one to can change the app's state while it runs and add steps to the test the Recorder writes, so read a recorded test before you run it. Others on your network and web pages of other sites you visit reach none of it.
 
 ## Updates
 
