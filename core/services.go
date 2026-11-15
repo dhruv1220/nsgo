@@ -101,7 +101,7 @@ func (cx *Scope) DismissKeyboard() {
 // SetClipboard puts text on the system clipboard, replacing what it
 // holds.
 func (cx *Scope) SetClipboard(text string) {
-	if t := cx.tree(); t != nil {
+	if t := cx.tree(); t != nil && !cx.denied(serviceClipboard, "") {
 		t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemSetClipboard, Value: text})
 		t.changed = true
 	}
@@ -111,14 +111,14 @@ func (cx *Scope) SetClipboard(text string) {
 // replacing what it holds: PNG, JPEG, GIF or WebP bytes, as
 // ReadClipboardImage gives them or an ImageSource holds them.
 func (cx *Scope) SetClipboardImage(data []byte) {
-	if t := cx.tree(); t != nil && len(data) > 0 {
+	if t := cx.tree(); t != nil && len(data) > 0 && !cx.denied(serviceClipboard, "") {
 		t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemSetClipboardImage, Data: data})
 		t.changed = true
 	}
 }
 
 func (cx *Scope) readClipboard(what driver.ClipboardRead, done func(driver.Event)) {
-	if t := cx.tree(); t != nil {
+	if t := cx.tree(); t != nil && !cx.denied(serviceClipboard, "") {
 		t.request(cx, driver.MountItem{Kind: driver.ItemReadClipboard, Clipboard: what}, done)
 	}
 }
@@ -289,7 +289,7 @@ func (cx *Scope) OpenURL(u string, done func(opened bool)) {
 			done(ok)
 		}
 	}
-	if CheckURL(u) != nil || cx.denied(AccessRequest{Permission: AccessOpenURL, Resource: u}) {
+	if CheckURL(u) != nil || cx.denied(serviceOpenURL, u) {
 		answer(false)
 		return
 	}
@@ -357,7 +357,7 @@ func pickLimit(multiple bool, limit int) int {
 // web. The mobile pickers need no permission.
 func (cx *Scope) PickImages(o PickOptions, done func(files []PickedFile)) {
 	t := cx.tree()
-	if t == nil {
+	if t == nil || cx.denied(servicePicker, "") {
 		return
 	}
 	r := o.request()
@@ -390,7 +390,7 @@ var ErrNoCamera = errors.New("core: no camera to take a photo with")
 // starts the camera app, and the web a file chooser that offers it.
 func (cx *Scope) TakePhoto(o PhotoOptions, done func(photo *PickedFile, err error)) {
 	t := cx.tree()
-	if t == nil {
+	if t == nil || cx.denied(servicePicker, "") {
 		return
 	}
 	if !Untracked(cx, cx.Env().CanTakePhoto) {
@@ -455,7 +455,7 @@ func (o PickFilesOptions) request() driver.FilesRequest {
 // where File.Open reads it. The pickers need no permission.
 func (cx *Scope) PickFiles(o PickFilesOptions, done func(files []File, err error)) {
 	t := cx.tree()
-	if t == nil {
+	if t == nil || cx.denied(servicePicker, "") {
 		return
 	}
 	r := o.request()
@@ -477,7 +477,7 @@ func (cx *Scope) PickFiles(o PickFilesOptions, done func(files []File, err error
 // no way to (Env.CanPickScreenColor). base.ColorEyeDropper is its button.
 func (cx *Scope) PickScreenColor(done func(c Color, ok bool)) {
 	t := cx.tree()
-	if t == nil || !Untracked(cx, cx.Env().CanPickScreenColor) {
+	if t == nil || cx.denied(servicePicker, "") || !Untracked(cx, cx.Env().CanPickScreenColor) {
 		done(0, false)
 		return
 	}
@@ -507,7 +507,7 @@ type PickDirectoriesOptions struct {
 // permission.
 func (cx *Scope) PickDirectories(o PickDirectoriesOptions, done func(dirs []Directory, err error)) {
 	t := cx.tree()
-	if t == nil {
+	if t == nil || cx.denied(servicePicker, "") {
 		return
 	}
 	r := driver.DirectoriesRequest{Limit: pickLimit(o.Multiple, o.Limit)}
@@ -549,7 +549,7 @@ func (cx *Scope) SaveFile(o SaveOptions, done func(saved bool, path string, err 
 		}
 	}
 	t := cx.tree()
-	if t == nil {
+	if t == nil || cx.denied(servicePicker, "") {
 		return
 	}
 	r := driver.SaveRequest{Name: o.Name, MIME: o.MIME, Path: o.Path, Data: o.Data}

@@ -15,6 +15,8 @@ import (
 // images, videos and web views refused show nothing and report OnError,
 // and the services fail as AccessDenied or answer as the system would
 // with nothing there.
+//
+// Elements are held by the Access of the owner that rendered them, services by the running owner's, the one whose render, effect, handler or Run is running, or outside one by that of the scope they are called on. A Host's handlers run outside the owner that called them, so they are held to the scope they call services on.
 type Access interface {
 	// Allows reports whether req is granted. It is called on the engine's
 	// goroutine, so it may read only what does not change.
@@ -124,18 +126,80 @@ func refusal(a Access, req AccessRequest) error {
 	return AccessDenied(req.Permission, resource)
 }
 
-// denied reports whether the current owner's Access refuses req,
-// logging the first refusal of each capability.
-func (cx *Scope) denied(req AccessRequest) bool {
-	err := cx.CheckAccess(req)
+// A service is a kind of request core's services make for code an Access may hold. Each such service asks gate for its kind before it reaches the platform, and services says how each kind is held, so a kind missing there is refused to held code rather than allowed. gate_test.go lists every exported Scope method as gated, with its kind, or exempt, with why.
+type service string
+
+// The services core holds to Access.
+const (
+	serviceOpenURL       service = "openURL"
+	serviceStatusBar     service = "statusBar"
+	serviceNotifications service = "notifications"
+	serviceBiometrics    service = "biometrics"
+	servicePermissions   service = "permissions"
+	serviceHost          service = "host"
+	serviceImage         service = "image"
+	serviceClipboard     service = "clipboard"
+	servicePicker        service = "picker"
+	serviceSpeech        service = "speech"
+)
+
+// serviceRule is how core holds a kind of service to Access.
+type serviceRule struct {
+	// permission is the capability Access is asked for, with the request's resource.
+	permission string
+	// source says the resource is a URL the service loads, held as an element's source is (sourceRefusal).
+	source bool
+	// runtimeOnly says core lets the service through and only TSX's runtime asks Access for it, as a Go component's copy, paste, pickers and microphone act on the user's own input (docs/architecture/tsx.md).
+	runtimeOnly bool
+}
+
+// services are the kinds of service gate knows, and how it holds each.
+var services = map[service]serviceRule{
+	serviceOpenURL:       {permission: AccessOpenURL},
+	serviceStatusBar:     {permission: AccessStatusBar},
+	serviceNotifications: {permission: AccessNotifications},
+	serviceBiometrics:    {permission: AccessBiometrics},
+	servicePermissions:   {permission: AccessPermissions},
+	serviceHost:          {permission: AccessHost},
+	serviceImage:         {permission: AccessNetwork, source: true},
+	serviceClipboard:     {permission: AccessClipboard, runtimeOnly: true},
+	servicePicker:        {permission: AccessPicker, runtimeOnly: true},
+	serviceSpeech:        {permission: AccessSpeech, runtimeOnly: true},
+}
+
+// gate is the refusal of a service of kind for resource by the current owner's Access, as services holds it; a kind services lacks is refused.
+func (cx *Scope) gate(kind service, resource string) error {
+	if !cx.rt.restricted {
+		return nil
+	}
+	o := cx.current()
+	a := accessOf(o)
+	if a == nil {
+		return nil
+	}
+	rule, ok := services[kind]
+	switch {
+	case !ok:
+		return AccessDenied(string(kind), resource)
+	case rule.runtimeOnly:
+		return nil
+	case rule.source:
+		return sourceRefusal(o, rule.permission, resource)
+	}
+	return refusal(a, AccessRequest{Permission: rule.permission, Resource: resource})
+}
+
+// denied reports whether gate refuses a service of kind for resource, logging the first refusal of each kind.
+func (cx *Scope) denied(kind service, resource string) bool {
+	err := cx.gate(kind, resource)
 	if err == nil {
 		return false
 	}
-	if !cx.rt.refusals[req.Permission] {
+	if !cx.rt.refusals[kind] {
 		if cx.rt.refusals == nil {
-			cx.rt.refusals = map[string]bool{}
+			cx.rt.refusals = map[service]bool{}
 		}
-		cx.rt.refusals[req.Permission] = true
+		cx.rt.refusals[kind] = true
 		log.Printf("nsgo: %v", err)
 	}
 	return true

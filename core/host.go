@@ -414,7 +414,7 @@ func (cx *Scope) CallHostTimeout(name string, data any, timeout time.Duration, d
 		finish(nil, &Error{Code: CodeUnavailable, Message: "core: no host embeds the app", Err: ErrNoHostHandler})
 		return
 	}
-	if err := cx.CheckAccess(AccessRequest{Permission: AccessHost, Resource: name}); err != nil {
+	if err := cx.gate(serviceHost, name); err != nil {
 		finish(nil, err)
 		return
 	}
@@ -454,7 +454,7 @@ func (cx *Scope) CallHostTimeout(name string, data any, timeout time.Duration, d
 // nothing to answer. Without a host or a handler it is dropped.
 func (cx *Scope) PostHost(name string, data any) {
 	a := cx.hostApp()
-	if a == nil || cx.denied(AccessRequest{Permission: AccessHost, Resource: name}) {
+	if a == nil || cx.denied(serviceHost, name) {
 		return
 	}
 	fn := a.h.handler(name)

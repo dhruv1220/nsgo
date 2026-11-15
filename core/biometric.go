@@ -27,7 +27,7 @@ func (cx *Scope) BiometricAvailability(done func(BiometricKind)) {
 	if done == nil {
 		return
 	}
-	if t := cx.tree(); t != nil && !cx.denied(AccessRequest{Permission: AccessBiometrics}) {
+	if t := cx.tree(); t != nil && !cx.denied(serviceBiometrics, "") {
 		t.request(cx, driver.MountItem{Kind: driver.ItemBiometricAvailability}, func(ev driver.Event) {
 			done(BiometricKind(ev.Index))
 		})
@@ -48,7 +48,7 @@ func (cx *Scope) AuthenticateBiometric(reason string, done func(BiometricResult)
 		answer(BiometricFailure)
 		return
 	}
-	if t := cx.tree(); t != nil && !cx.denied(AccessRequest{Permission: AccessBiometrics}) {
+	if t := cx.tree(); t != nil && !cx.denied(serviceBiometrics, "") {
 		t.request(cx, driver.MountItem{Kind: driver.ItemBiometricAuthenticate, Value: reason}, func(ev driver.Event) {
 			answer(BiometricResult(ev.Index))
 		})

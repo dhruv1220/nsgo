@@ -61,7 +61,7 @@ func (cx *Scope) ImageSize(src ImageSource, done func(pixels Size, err error)) {
 		return
 	}
 	if len(src.Data) == 0 {
-		if err := sourceRefusal(cx.current(), AccessNetwork, src.URI); err != nil {
+		if err := cx.gate(serviceImage, src.URI); err != nil {
 			done(Size{}, err)
 			return
 		}

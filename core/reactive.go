@@ -169,8 +169,8 @@ type runtime struct {
 	hostScoped bool
 	// parked counts the parked scopes, so a memo looks for one above it only while there are any.
 	parked int
-	// refusals are the capabilities a refusal was logged of.
-	refusals map[string]bool
+	// refusals are the services a refusal was logged of.
+	refusals map[service]bool
 	// speech is the speech session running, one per engine.
 	speech *SpeechSession
 	// causes are what ran since a tree last committed, while driver.TraceCauses is set.

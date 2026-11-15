@@ -73,7 +73,7 @@ func (cx *Scope) RequestNotificationPermission(done func(NotificationPermission)
 
 func (cx *Scope) notificationPermission(ask bool, done func(NotificationPermission)) {
 	t := cx.tree()
-	if t == nil || cx.denied(AccessRequest{Permission: AccessNotifications}) {
+	if t == nil || cx.denied(serviceNotifications, "") {
 		if done != nil {
 			done(NotificationsUnavailable)
 		}
@@ -100,7 +100,7 @@ func (cx *Scope) ShowNotification(n Notification, done func(shown bool)) error {
 		}
 	}
 	t := cx.tree()
-	if t == nil || cx.denied(AccessRequest{Permission: AccessNotifications}) {
+	if t == nil || cx.denied(serviceNotifications, "") {
 		answer(false)
 		return nil
 	}
@@ -113,7 +113,7 @@ func (cx *Scope) ShowNotification(n Notification, done func(shown bool)) error {
 // CloseNotification removes the notification called id, if it still
 // shows.
 func (cx *Scope) CloseNotification(id string) {
-	if t := cx.tree(); t != nil && id != "" && !cx.denied(AccessRequest{Permission: AccessNotifications}) {
+	if t := cx.tree(); t != nil && id != "" && !cx.denied(serviceNotifications, "") {
 		t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemCloseNotification, Value: id})
 		t.changed = true
 	}
@@ -122,7 +122,7 @@ func (cx *Scope) CloseNotification(id string) {
 // SetBadge shows count on the app's icon, and 0 or less clears it: the Dock's on macOS, the Home Screen's on iOS, which needs the notification permission, the taskbar button's on Windows, the launcher's on Linux where it follows Unity's LauncherEntry API, such as Ubuntu's dock, Plasma and Dash to Dock, and an installed web app's. Android has no count to set: launchers mark an app whose notifications show, and count goes with those shown after it. Elsewhere nothing happens.
 func (cx *Scope) SetBadge(count int) {
 	t := cx.tree()
-	if t == nil || cx.denied(AccessRequest{Permission: AccessNotifications}) {
+	if t == nil || cx.denied(serviceNotifications, "") {
 		return
 	}
 	t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemBadge, Count: uint32(min(max(count, 0), 1<<31-1))})
@@ -139,7 +139,7 @@ type notificationPressHandler struct {
 // Presses that came before any handler, as the one that started the app,
 // go to the first one registered.
 func (cx *Scope) OnNotificationPress(fn func(id string)) {
-	if cx.denied(AccessRequest{Permission: AccessNotifications}) {
+	if cx.denied(serviceNotifications, "") {
 		return
 	}
 	rt := cx.rt

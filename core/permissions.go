@@ -114,7 +114,7 @@ func answerPermission(done func(PermissionStatus), s PermissionStatus) {
 // permission sends command about p and hands its answer to answered, or calls refused at once, sending nothing, for a key that names no permission or one the current owner's Access refuses.
 func (cx *Scope) permission(p Permission, command driver.PermissionCommand, answered func(driver.Event), refused func()) {
 	t := cx.tree()
-	if t == nil || !p.known() || cx.denied(AccessRequest{Permission: AccessPermissions, Resource: string(p)}) {
+	if t == nil || !p.known() || cx.denied(servicePermissions, string(p)) {
 		refused()
 		return
 	}
@@ -157,7 +157,7 @@ func (cx *Scope) GuidePermission(p Permission, opts PermissionGuideOptions, done
 	rt := cx.rt
 	t := rt.tree
 	// Code under an Access may not hold out another app for the user to give p to.
-	if t == nil || !p.known() || cx.denied(AccessRequest{Permission: AccessPermissions, Resource: string(p)}) ||
+	if t == nil || !p.known() || cx.denied(servicePermissions, string(p)) ||
 		opts.App != "" && accessOf(cx.current()) != nil {
 		answerPermission(done, PermissionUnavailable)
 		return func() {}

@@ -72,7 +72,7 @@ func (cx *Scope) StartSpeech(opts SpeechOptions) (*SpeechSession, error) {
 		return nil, fmt.Errorf("nsgo: speech: %q is no language tag", opts.Lang)
 	}
 	rt, t := cx.rt, cx.tree()
-	if t == nil {
+	if t == nil || cx.denied(serviceSpeech, "") {
 		return nil, SpeechUnavailable
 	}
 	if rt.speech != nil {
