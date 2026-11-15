@@ -19,14 +19,15 @@ import (
 
 // testOptions are nsgo test's flags.
 type testOptions struct {
-	run         string // the tests to run, as go test's -run
-	bench       string // the benchmarks to run, as go test's -bench
-	junit       string // where to write a JUnit report
-	trace       bool   // print each step's batches and commit times
-	target      string // the platform to run on; headless when ""
-	screenshots string // screenshot output directory for target runs
-	fps         bool   // log the performance monitor's readings on target
-	device      string // the simulator or device a mobile target runs on
+	run         string        // the tests to run, as go test's -run
+	timeout     time.Duration // per-test target timeout; zero means none
+	bench       string        // the benchmarks to run, as go test's -bench
+	junit       string        // where to write a JUnit report
+	trace       bool          // print each step's batches and commit times
+	target      string        // the platform to run on; headless when ""
+	screenshots string        // screenshot output directory for target runs
+	fps         bool          // log the performance monitor's readings on target
+	device      string        // the simulator or device a mobile target runs on
 	// env are the tests' KEY=VALUE variables, on every target: a
 	// phone's tests see no others of this machine's.
 	env  []string

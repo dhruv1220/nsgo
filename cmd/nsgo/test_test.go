@@ -6,9 +6,40 @@ import (
 	"encoding/xml"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestSplitTestRun(t *testing.T) {
+	for _, tc := range []struct {
+		pattern, top, sub string
+	}{
+		{"TestGallery/dark-home", "TestGallery", "dark-home"},
+		{"TestGallery/[dark/home]", "TestGallery", "[dark/home]"},
+		{"TestGallery/(dark/home)", "TestGallery", "(dark/home)"},
+		{"TestGallery", "TestGallery", ""},
+	} {
+		if top, sub := splitTestRun(tc.pattern); top != tc.top || sub != tc.sub {
+			t.Errorf("splitTestRun(%q) = %q, %q; want %q, %q", tc.pattern, top, sub, tc.top, tc.sub)
+		}
+	}
+}
+
+func TestTargetTestArgs(t *testing.T) {
+	if got := targetTestArgs("TestGallery", "TestGallery/dark-home", 15*time.Minute); !slices.Equal(got,
+		[]string{"-test.run", "^TestGallery$/dark-home", "-test.v", "-test.timeout", "14m59s"}) {
+		t.Errorf("targetTestArgs = %q", got)
+	}
+}
+
+func TestParseTargetSubtestOutput(t *testing.T) {
+	got := parseTestOutput("TestGallery", "--- PASS: TestGallery/dark-home (0.2s)\n--- PASS: TestGallery (0.2s)\n", 0, nil)
+	if got.Name != "TestGallery/dark-home" || got.Status != "pass" {
+		t.Fatalf("result = %+v, want the selected subtest", got)
+	}
+}
 
 func TestTreeOf(t *testing.T) {
 	for in, want := range map[string]string{

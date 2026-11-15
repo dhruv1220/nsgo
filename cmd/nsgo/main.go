@@ -92,6 +92,7 @@ func main() {
 		fs := flag.NewFlagSet("test", flag.ExitOnError)
 		var o testOptions
 		fs.StringVar(&o.run, "run", "", "run only the tests matching this `regexp`, as go test's -run")
+		fs.DurationVar(&o.timeout, "timeout", testTimeout, "per-test timeout on a target (0 means no timeout)")
 		fs.StringVar(&o.bench, "bench", "", "run the benchmarks matching this `regexp`, as go test's -bench, and no tests unless -run names them")
 		fs.StringVar(&o.junit, "junit", "", "write a JUnit XML report to `file`")
 		fs.BoolVar(&o.trace, "trace", false, "print each step's mount items and commit times")

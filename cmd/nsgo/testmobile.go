@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -40,12 +39,12 @@ func iosTestRunner(ctx context.Context, p *project, sys *appleOS, dir string, op
 			}
 			cmd.Stdout, cmd.Stderr = out, out
 			err := cmd.Run()
-			if exit, ok := err.(*exec.ExitError); ok {
-				return exit.ExitCode(), nil
-			}
 			if ctx.Err() != nil {
 				exec.Command("xcrun", "simctl", "terminate", udid, p.ID).Run()
-				return -1, fmt.Errorf("the test took over %v", testTimeout)
+				return -1, testContextError(ctx, opts.timeout)
+			}
+			if exit, ok := err.(*exec.ExitError); ok {
+				return exit.ExitCode(), nil
 			}
 			return 0, err
 		},
@@ -119,7 +118,7 @@ func androidTestRunner(ctx context.Context, p *project, dir string, opts testOpt
 				}
 			}
 			if ctx.Err() != nil {
-				return -1, fmt.Errorf("the test took over %v", testTimeout)
+				return -1, testContextError(ctx, opts.timeout)
 			}
 			return -1, errors.New("the device's log ended")
 		},

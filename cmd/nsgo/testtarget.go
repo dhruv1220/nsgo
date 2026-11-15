@@ -97,11 +97,17 @@ func runTargetTests(ctx context.Context, p *project, opts testOptions) error {
 	for _, name := range names {
 		var out bytes.Buffer
 		w := io.MultiWriter(&out, traceWriter{r.out, opts.trace, opts.fps})
-		tctx, cancel := context.WithTimeout(ctx, testTimeout)
+		tctx, cancel := context.WithCancel(ctx)
+		if opts.timeout > 0 {
+			tctx, cancel = context.WithTimeout(ctx, opts.timeout)
+		}
 		started := time.Now()
-		code, err := runner.run(tctx, []string{"-test.run", "^" + regexp.QuoteMeta(name) + "$", "-test.v"}, env, w)
+		code, err := runner.run(tctx, targetTestArgs(name, opts.run, opts.timeout), env, w)
+		timedOut := errors.Is(tctx.Err(), context.DeadlineExceeded)
 		cancel()
-		if ctx.Err() != nil {
+		if timedOut {
+			code, err = -1, timeoutError(opts.timeout)
+		} else if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		t, saved := targetResult(name, out.String(), code, err, shots, savedPaths)
@@ -187,7 +193,8 @@ func listTests(ctx context.Context, p *project, target, run string) ([]string, e
 		run = "."
 	}
 	if target != "" {
-		return listTestSources(ctx, p, target, run)
+		top, _ := splitTestRun(run)
+		return listTestSources(ctx, p, target, top)
 	}
 	args := []string{"test", "-list", run}
 	// The TSX tests are in a file the tool adds.
@@ -215,6 +222,68 @@ func listTests(ctx context.Context, p *project, target, run string) ([]string, e
 		}
 	}
 	return names, nil
+}
+
+// splitTestRun returns the top-level part of go test's hierarchical -run
+// expression and the remaining subtest expression. Slashes inside character
+// classes or parentheses are part of the regexp, as they are in testing.
+func splitTestRun(run string) (top, sub string) {
+	classes, groups := 0, 0
+	for i := 0; i < len(run); i++ {
+		switch run[i] {
+		case '[':
+			classes++
+		case ']':
+			if classes > 0 {
+				classes--
+			}
+		case '(':
+			if classes == 0 {
+				groups++
+			}
+		case ')':
+			if classes == 0 && groups > 0 {
+				groups--
+			}
+		case '\\':
+			i++
+		case '/':
+			if classes == 0 && groups == 0 {
+				return run[:i], run[i+1:]
+			}
+		}
+	}
+	return run, ""
+}
+
+// targetTestArgs runs exactly one top-level test while retaining go test's
+// hierarchical subtest matching when -run contains a slash.
+func targetTestArgs(name, run string, timeout time.Duration) []string {
+	_, sub := splitTestRun(run)
+	pattern := "^" + regexp.QuoteMeta(name) + "$"
+	if sub != "" {
+		pattern += "/" + sub
+	}
+	args := []string{"-test.run", pattern, "-test.v"}
+	if timeout > 0 {
+		budget := timeout - time.Second
+		if budget <= 0 {
+			budget = timeout
+		}
+		args = append(args, "-test.timeout", budget.String())
+	}
+	return args
+}
+
+func timeoutError(timeout time.Duration) error {
+	return fmt.Errorf("the test took over %v", timeout)
+}
+
+func testContextError(ctx context.Context, timeout time.Duration) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return timeoutError(timeout)
+	}
+	return ctx.Err()
 }
 
 // buildsHere reports whether the package has Go files for this machine.
@@ -289,12 +358,17 @@ var testLine = regexp.MustCompile(`^--- (PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)`)
 // process that printed no result for it crashed or timed out.
 func parseTestOutput(name, out string, code int, runErr error) *testResult {
 	t := &testResult{Name: name, Output: out}
+	matched := ""
 	for _, line := range strings.Split(out, "\n") {
-		if m := testLine.FindStringSubmatch(line); m != nil && m[2] == name {
+		if m := testLine.FindStringSubmatch(line); m != nil && (m[2] == name || strings.HasPrefix(m[2], name+"/")) && len(m[2]) > len(matched) {
+			matched = m[2]
 			t.Status = strings.ToLower(m[1])
 			s, _ := strconv.ParseFloat(m[3], 64)
 			t.Elapsed = time.Duration(s * float64(time.Second))
 		}
+	}
+	if matched != "" {
+		t.Name = matched
 	}
 	if t.Status == "" || t.Status == "pass" && code != 0 {
 		why := fmt.Sprintf("the test process exited with %d", code)
@@ -472,11 +546,11 @@ func runLocal(ctx context.Context, bin string, args, env []string, out io.Writer
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdout, cmd.Stderr = out, out
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		return -1, ctx.Err()
+	}
 	if exit, ok := err.(*exec.ExitError); ok {
 		return exit.ExitCode(), nil
-	}
-	if ctx.Err() != nil {
-		return -1, fmt.Errorf("the test took over %v", testTimeout)
 	}
 	return 0, err
 }

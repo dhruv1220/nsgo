@@ -209,7 +209,7 @@ func runWebTest(ctx context.Context, b *cdp, base string, args, env []string, ou
 	case code := <-exited:
 		return code, nil
 	case <-ctx.Done():
-		return -1, fmt.Errorf("the test took over %v", testTimeout)
+		return -1, ctx.Err()
 	}
 }
 
