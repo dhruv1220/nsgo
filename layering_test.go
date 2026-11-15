@@ -63,7 +63,10 @@ var layers = []struct {
 	{"internal/platform/webstyle", []string{"internal/driver"}},
 	{"internal/platform/", append([]string{"internal/driver", "internal/engine", "internal/testhost", "core", "desktop/locales"}, platformShared...)},
 	{"nsgotest", []string{"core", "internal/automation", "internal/devtools", "internal/driver", "internal/testhost"}},
-	{"", []string{"core", "internal/devtools", "internal/engine", "internal/platform/", "updater"}},
+	{"", []string{"core", "internal/dev", "internal/engine", "internal/platform/", "internal/restart", "updater"}},
+	// The dev client nsgo.Run starts in nsgo dev's builds; release builds link its no-op Start and Wrap alone.
+	{"internal/dev", []string{"core", "internal/engine"}},
+	{"internal/restart", nil},
 	// The code nsgo writes from catalogs runs on i18n.
 	{"i18n", []string{"core", "internal/cldr"}},
 	{"base/", []string{"core", "base/", "i18n"}},
@@ -139,11 +142,11 @@ var layerTargets = [][2]string{
 
 const modulePath = "github.com/nsgo-dev/nsgo"
 
-// devImports are what a package's nsgo dev builds (the nsgodev tag) import besides its layer's: the root's dev client reads the commit traces and their causes from the driver.
-var devImports = map[string][]string{"": {"internal/driver"}}
+// devImports are what a package's nsgo dev builds (the nsgodev tag) import besides its layer's: the dev client reads what DevTools show from internal/devtools, and the commit traces and their causes from the driver.
+var devImports = map[string][]string{"internal/dev": {"internal/devtools", "internal/driver"}}
 
-// automationImports are what a package's nsgo dev -automation builds (the nsgoautomation tag, with nsgodev) import besides its dev builds': the root's dev client links nsgotest's agent, which it serves over DevTools' channel.
-var automationImports = map[string][]string{"": {"nsgotest"}}
+// automationImports are what a package's nsgo dev -automation builds (the nsgoautomation tag, with nsgodev) import besides its dev builds': the dev client links nsgotest's agent, which it serves over DevTools' channel.
+var automationImports = map[string][]string{"internal/dev": {"nsgotest"}}
 
 // devLayerTargets are the targets whose nsgo dev builds (the nsgodev tag) are checked too: the dev client's files differ only between the web and the rest.
 var devLayerTargets = [][2]string{{"darwin", "arm64"}, {"js", "wasm"}}

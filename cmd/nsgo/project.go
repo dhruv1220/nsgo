@@ -418,25 +418,27 @@ const corePath = "github.com/nsgo-dev/nsgo/core"
 // core.App, and passes the rest of what nsgo.Run takes from it.
 func (p *project) ldflags(extra ...string) string {
 	const pkg = "github.com/nsgo-dev/nsgo"
+	// The dev client, which nsgo.Run starts in dev builds.
+	const devPkg = pkg + "/internal/dev"
 	flags := strings.Join([]string{xflag(corePath+".appName", p.Name), xflag(corePath+".appID", p.ID),
 		xflag(corePath+".appVersion", p.Version), xflag(corePath+".appBuild", p.BundleVersion())}, " ")
 	if p.Appearance != "" {
 		flags += fmt.Sprintf(" -X %s.appearance=%s", pkg, p.Appearance)
 	}
 	if p.devURL != "" {
-		flags += fmt.Sprintf(" -X '%s.devServer=%s' -X '%s.devServer=%s'", pkg, p.devURL, compilerPath, p.devURL)
+		flags += fmt.Sprintf(" -X '%s.devServer=%s' -X '%s.devServer=%s'", devPkg, p.devURL, compilerPath, p.devURL)
 	}
 	if p.Dev.Client && p.Dev.Trace {
-		flags += fmt.Sprintf(" -X %s.devTrace=1", pkg)
+		flags += fmt.Sprintf(" -X %s.devTrace=1", devPkg)
 	}
 	if p.Dev.Client && p.Dev.Highlight {
-		flags += fmt.Sprintf(" -X %s.devHighlight=1", pkg)
+		flags += fmt.Sprintf(" -X %s.devHighlight=1", devPkg)
 	}
 	if p.Dev.Client && p.Dev.Devtools {
-		flags += fmt.Sprintf(" -X %s.devDevtools=1", pkg)
+		flags += fmt.Sprintf(" -X %s.devDevtools=1", devPkg)
 	}
 	if p.Dev.Client && p.Dev.Layout != "" {
-		flags += fmt.Sprintf(" -X %s.devLayout=%s", pkg, p.Dev.Layout)
+		flags += fmt.Sprintf(" -X %s.devLayout=%s", devPkg, p.Dev.Layout)
 	}
 	if p.Dev.Client && p.Dev.Limits != "" {
 		flags += fmt.Sprintf(" -X '%s.devLimits=%s'", compilerPath, p.Dev.Limits)

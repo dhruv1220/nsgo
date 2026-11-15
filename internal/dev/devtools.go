@@ -1,6 +1,6 @@
 //go:build nsgodev
 
-package nsgo
+package dev
 
 import (
 	"bufio"
@@ -55,7 +55,7 @@ type devCommit struct {
 	Causes *driver.Causes `json:"causes,omitempty"`
 }
 
-// startDevTools has core record what DevTools show, sends the page each commit, and follows the page's commands from the server's events. It runs once, before any graph starts (startDevClient).
+// startDevTools has core record what DevTools show, sends the page each commit, and follows the page's commands from the server's events. It runs once, before any graph starts (Start).
 func startDevTools(server string) {
 	out := openDevChannel(server)
 	driver.TraceCauses = true
@@ -91,7 +91,7 @@ func startDevTools(server string) {
 // devChannel is the app's end of the channel DevTools and nsgo dev -automation share, nil until either starts it.
 var devChannel *devOut
 
-// openDevChannel has core record what DevTools show and register its trees, follows the server's events for DevTools' commands and the automation's requests, and returns where the app posts its messages; it starts them once, for whichever of DevTools and the automation starts first, before any graph starts (startDevClient).
+// openDevChannel has core record what DevTools show and register its trees, follows the server's events for DevTools' commands and the automation's requests, and returns where the app posts its messages; it starts them once, for whichever of DevTools and the automation starts first, before any graph starts (Start).
 func openDevChannel(server string) *devOut {
 	if devChannel == nil {
 		devtools.Enabled = true
@@ -243,7 +243,7 @@ func (o *devOut) run() {
 }
 
 // withDevOverlay mounts DevTools' overlay over app, outlining commits from the start under -highlight and showing the layout audit as -layout says.
-func withDevOverlay(app App, highlight bool, layout core.LayoutAudit) App {
+func withDevOverlay(app engine.App, highlight bool, layout core.LayoutAudit) engine.App {
 	return func(cx *core.Scope) core.Node {
 		return core.Group{core.Func(app), core.UpdateHighlights{NoUpdates: !highlight, Layout: layout}}
 	}

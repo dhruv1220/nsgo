@@ -1,6 +1,6 @@
 //go:build nsgodev && js && wasm && !nsgominiprogram
 
-package nsgo
+package dev
 
 import "syscall/js"
 

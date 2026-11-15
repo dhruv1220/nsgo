@@ -1,6 +1,6 @@
 //go:build nsgodev
 
-package nsgo
+package dev
 
 import (
 	"bytes"

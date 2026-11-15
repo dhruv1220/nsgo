@@ -1,6 +1,6 @@
 //go:build (darwin && !ios) || (linux && !android)
 
-package nsgo
+package restart
 
 import (
 	"os"
@@ -37,7 +37,7 @@ func TestRestartWaitsForTheApp(t *testing.T) {
 	cmd := restartCommand(app.Process.Pid, []string{"/bin/sh", "-c", `touch "$0"`, started})
 	guarded := false
 	for _, value := range cmd.Env {
-		if value == restartGuardEnv+"=1" {
+		if value == guardEnv+"=1" {
 			guarded = true
 			break
 		}

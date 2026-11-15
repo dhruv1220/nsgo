@@ -23,7 +23,9 @@ import (
 	"log"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/dev"
 	"github.com/nsgo-dev/nsgo/internal/engine"
+	"github.com/nsgo-dev/nsgo/internal/restart"
 )
 
 // Set by the nsgo tool with -ldflags -X.
@@ -64,7 +66,7 @@ type Main interface {
 // never returns. After desktop.Restart it has started the app again,
 // which waits for this process to exit.
 func Run[M Main](main M, opts ...Option) {
-	awaitRestarted()
+	restart.Await()
 	o := options{width: 480, height: 640, appearance: map[string]core.Appearance{
 		"light": core.AppearanceLight, "dark": core.AppearanceDark}[appearance]}
 	for _, fn := range opts {
@@ -77,20 +79,20 @@ func Run[M Main](main M, opts ...Option) {
 	}
 	size := o.constraints.Clamp(core.Size{Width: o.width, Height: o.height})
 	o.width, o.height = size.Width, size.Height
-	startDevClient()
+	dev.Start()
 	switch m := any(main).(type) {
 	case func(cx *core.Scope) core.Node:
-		run(devApp(launch.localized(m)), nil, o)
+		run(dev.Wrap(launch.localized(m)), nil, o)
 	case func(app *core.Scope):
 		run(nil, launch.localizedApp(m), o)
 	}
 	// nsgo dev ends with the app it started, so a restart there only quits.
-	if core.Restarting() && restartPermitted() {
-		if err := restart(launchArgs); err != nil {
+	if core.Restarting() && !dev.Build {
+		if restart.Looping() {
+			log.Printf("nsgo: not restarting: the app restarted again within %v of its restart", restart.LoopWindow)
+		} else if err := restart.Start(launchArgs); err != nil {
 			log.Printf("nsgo: restarting: %v", err)
 		}
-	} else if core.Restarting() && !devBuild {
-		log.Printf("nsgo: not restarting: the app restarted again within %v of its restart", restartLoopWindow)
 	}
 }
 
@@ -99,7 +101,7 @@ func Run[M Main](main M, opts ...Option) {
 // the view.
 func SetMainView(cx *core.Scope, view func(cx *core.Scope) core.Node) {
 	if view != nil {
-		view = devApp(view)
+		view = dev.Wrap(view)
 	}
 	cx.SetMainView(view)
 }

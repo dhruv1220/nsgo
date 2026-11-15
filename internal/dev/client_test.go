@@ -1,6 +1,6 @@
 //go:build nsgodev
 
-package nsgo
+package dev
 
 import (
 	"bufio"
@@ -17,7 +17,7 @@ import (
 	"github.com/nsgo-dev/nsgo/internal/engine"
 )
 
-// Run starts DevTools before any graph, so an app's function that shows its view with SetMainView has its trees registered and its commits sent with the run's token, and SetMainView, however often it is called, starts nothing again.
+// nsgo.Run starts DevTools before any graph, so an app's function that shows its view with nsgo.SetMainView has its trees registered and its commits sent with the run's token, and SetMainView, however often it is called, starts nothing again.
 func TestDevClientStartsDevToolsOnceBeforeTheGraph(t *testing.T) {
 	var mu sync.Mutex
 	commits := 0
@@ -47,22 +47,22 @@ func TestDevClientStartsDevToolsOnceBeforeTheGraph(t *testing.T) {
 		devtools.Enabled, driver.TraceCauses = false, false
 	})
 
-	// As Run does before it starts the engine.
-	startDevClient()
+	// As nsgo.Run does before it starts the engine.
+	Start()
 	if !devtools.Enabled || engine.Trace == nil {
-		t.Fatalf("after startDevClient devtools.Enabled = %v and engine.Trace is set: %v", devtools.Enabled, engine.Trace != nil)
+		t.Fatalf("after Start devtools.Enabled = %v and engine.Trace is set: %v", devtools.Enabled, engine.Trace != nil)
 	}
 	root := core.NewRoot(core.RootOptions{Post: func(func()) {}})
 	core.NewTree(root, core.ApproxTextEngine{})
 	defer root.Dispose()
 	if len(devtools.Surfaces()) == 0 {
-		t.Fatal("a tree made after startDevClient did not register with DevTools")
+		t.Fatal("a tree made after Start did not register with DevTools")
 	}
 
 	// The app's function shows a view, then another: each is wrapped, nothing starts again.
 	view := func(*core.Scope) core.Node { return core.View{} }
-	devApp(view)
-	devApp(view)
+	Wrap(view)
+	Wrap(view)
 	engine.Trace(&driver.MountBatch{}, time.Millisecond)
 	count := func() int {
 		mu.Lock()

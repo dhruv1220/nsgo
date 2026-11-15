@@ -1,6 +1,6 @@
 //go:build nsgodev && nsgoautomation
 
-package nsgo
+package dev
 
 import (
 	"github.com/nsgo-dev/nsgo/internal/devtools"
@@ -8,7 +8,7 @@ import (
 	_ "github.com/nsgo-dev/nsgo/nsgotest"
 )
 
-// startAutomation has the agent answer the automation over DevTools' channel, when nsgo dev gave the app a token (startDevClient); without one, it follows nothing.
+// startAutomation has the agent answer the automation over DevTools' channel, when nsgo dev gave the app a token (Start); without one, it follows nothing.
 func startAutomation(server string) {
 	if devtools.Token() == "" || devtools.Automation == nil {
 		devtools.Automation = nil

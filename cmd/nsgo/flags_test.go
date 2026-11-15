@@ -267,7 +267,7 @@ func TestLayoutFlag(t *testing.T) {
 	}
 	p := &project{Name: "App", ID: "com.example.app"}
 	p.prepareDev(devOptions{layout: "bounds,grid=4"})
-	if flags := p.ldflags(); !strings.Contains(flags, " -X github.com/nsgo-dev/nsgo.devLayout=bounds,grid=4") {
+	if flags := p.ldflags(); !strings.Contains(flags, " -X github.com/nsgo-dev/nsgo/internal/dev.devLayout=bounds,grid=4") {
 		t.Errorf("ldflags = %q, want -layout's value for the dev client", flags)
 	}
 	p.prepareDev(devOptions{})

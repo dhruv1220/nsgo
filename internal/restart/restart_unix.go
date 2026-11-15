@@ -1,6 +1,6 @@
 //go:build (darwin && !ios) || (linux && !android)
 
-package nsgo
+package restart
 
 import (
 	"fmt"
@@ -11,10 +11,8 @@ import (
 	"syscall"
 )
 
-// restart starts the program again with args once this process has
-// exited, through a shell that waits for it at most 10 seconds: a macOS
-// app in a bundle through Launch Services, as the user opens it.
-func restart(args []string) error {
+// Start starts the program again with args once this process has exited, through a shell that waits for it at most 10 seconds: a macOS app in a bundle through Launch Services, as the user opens it.
+func Start(args []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -27,7 +25,7 @@ func restart(args []string) error {
 func restartCommand(pid int, program []string) *exec.Cmd {
 	const script = `i=0; while kill -0 "$0" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done; exec "$@"`
 	cmd := exec.Command("/bin/sh", append([]string{"-c", script, fmt.Sprint(pid)}, program...)...)
-	cmd.Env = append(os.Environ(), restartGuardEnv+"=1")
+	cmd.Env = append(os.Environ(), guardEnv+"=1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
 }
@@ -55,5 +53,5 @@ func appBundle(exe string) string {
 	return bundle
 }
 
-// awaitRestarted does nothing: restart's shell waits instead.
-func awaitRestarted() { markRestarted() }
+// Await only marks a restarted process (Looping): Start's shell waits instead.
+func Await() { markRestarted() }

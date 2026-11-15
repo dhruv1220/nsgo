@@ -1,6 +1,6 @@
 //go:build nsgodev
 
-package nsgo
+package dev
 
 import (
 	"bufio"
@@ -13,10 +13,11 @@ import (
 
 	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/internal/devtools"
+	"github.com/nsgo-dev/nsgo/internal/engine"
 )
 
-// devBuild is whether nsgo dev built the app.
-const devBuild = true
+// Build is whether nsgo dev built the app.
+const Build = true
 
 // devServer is nsgo dev's server, set with -ldflags -X for targets that
 // pass the app no environment; NSGO_DEV_SERVER overrides it.
@@ -40,8 +41,10 @@ func devServerURL() (server string, page bool) {
 	return server, false
 }
 
-// startDevClient has the server print each commit under -trace, starts DevTools under -devtools and serves -automation's agent. Run calls it before any graph starts, for an app's function as for a root view, as both read what it sets; it starts them once, however many views SetMainView shows.
-var startDevClient = sync.OnceFunc(func() {
+// Start has the server print each commit under -trace, starts DevTools under -devtools and serves -automation's agent. nsgo.Run calls it before any graph starts, for an app's function as for a root view, as both read what it sets; it starts them once, however many views nsgo.SetMainView shows.
+func Start() { start() }
+
+var start = sync.OnceFunc(func() {
 	server, page := devServerURL()
 	if server == "" {
 		return
@@ -57,16 +60,13 @@ var startDevClient = sync.OnceFunc(func() {
 	}
 })
 
-// devApp runs app under nsgo dev: build failures the server reports and
-// the app's own render failures show in an overlay over it, and with
-// -trace the server prints each commit. On the web the page is served from the server and shows build
-// failures itself.
-func devApp(app App) App {
+// Wrap runs app under nsgo dev: build failures the server reports and the app's own render failures show in an overlay over it, and with -trace the server prints each commit. On the web the page is served from the server and shows build failures itself.
+func Wrap(app engine.App) engine.App {
 	server, page := devServerURL()
 	if server == "" {
 		return app
 	}
-	startDevClient()
+	Start()
 	if devHighlight == "1" || devDevtools == "1" || devLayout != "" {
 		app = withDevOverlay(app, devHighlight == "1", parseDevLayout(devLayout))
 	}
