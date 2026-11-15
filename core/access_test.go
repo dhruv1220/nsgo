@@ -247,6 +247,8 @@ func TestHostHandlersRunAsTheHost(t *testing.T) {
 	// The host's handlers call services with the app's own scope, which the plugin's Access does not hold, answering at once or later.
 	plugin.Handle("now", func(c *HostCall) {
 		app.OpenURL("https://help.example.com/now", nil)
+		// The plugin's own scope stays held to its Access, whoever calls on it.
+		inner.OpenURL("https://help.example.com/inner", nil)
 		c.Resolve(nil)
 	})
 	plugin.Handle("later", func(c *HostCall) {
