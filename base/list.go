@@ -2,6 +2,7 @@ package base
 
 import (
 	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/nsgo-dev/nsgo/core"
@@ -29,6 +30,9 @@ type List struct {
 	// rows as it scrolls, so read row's index as a signal.
 	Row       func(cx *core.Scope, row core.ListRow) core.Node
 	Selection *Selection
+	// OnSelectionChange receives the Selection after a press or a key changed
+	// it. It does not run when the app changes Selection itself.
+	OnSelectionChange func(s *Selection)
 	// OnActivate receives the row Enter or a double click activates, or
 	// on touch screens a tap in a list that is not Multiple.
 	OnActivate func(i int)
@@ -133,11 +137,13 @@ func (k *listKeys) moveTo(i int, extend bool) {
 	i = min(max(i, 0), n-1)
 	s := k.list.Selection
 	k.at = i
-	if extend && s.Multiple() && s.Anchor() != nil {
-		k.extendTo(i)
-	} else {
-		s.Set(k.key(i))
-	}
+	k.changeSelection(func() {
+		if extend && s.Multiple() && s.Anchor() != nil {
+			k.extendTo(i)
+		} else {
+			s.Set(k.key(i))
+		}
+	})
 	k.reveal(i)
 	k.announce(i)
 }
@@ -159,6 +165,18 @@ func (k *listKeys) extendTo(i int) {
 		keys = append(keys, k.key(j))
 	}
 	s.SetRange(anchor, k.key(i), keys...)
+}
+
+// changeSelection reports an effective selection write made for a user
+// action. The Selection methods themselves stay silent so app-controlled
+// writes do not look like user choices.
+func (k *listKeys) changeSelection(fn func()) {
+	s := k.list.Selection
+	before := s.Keys()
+	fn()
+	if k.list.OnSelectionChange != nil && !slices.Equal(before, s.Keys()) {
+		k.list.OnSelectionChange(s)
+	}
 }
 
 // step moves the cursor by delta rows, from the first row when it is on
@@ -242,20 +260,22 @@ func (k *listKeys) bind(cx *core.Scope) {
 				keys[i] = k.key(i)
 			}
 			cursor := s.Cursor()
-			s.Set(keys...)
-			if cursor != nil {
-				s.SetCursor(cursor)
-			}
+			k.changeSelection(func() {
+				s.Set(keys...)
+				if cursor != nil {
+					s.SetCursor(cursor)
+				}
+			})
 		})
 		cx.OnKey("space", func() {
 			if c := k.cursor(); c >= 0 {
-				s.Toggle(k.key(c))
+				k.changeSelection(func() { s.Toggle(k.key(c)) })
 			}
 		})
 	} else {
 		cx.OnKey("space", func() {
 			if c := k.cursor(); c >= 0 {
-				s.Set(k.key(c))
+				k.changeSelection(func() { s.Set(k.key(c)) })
 			}
 		})
 	}
@@ -268,14 +288,16 @@ func (k *listKeys) press(i int, e core.PressEvent, touch bool) {
 	s := k.list.Selection
 	m := e.Modifiers
 	k.at = i
-	switch {
-	case s.Multiple() && m.Shift && s.Anchor() != nil:
-		k.extendTo(i)
-	case s.Multiple() && (m.Platform || m.Control || touch):
-		s.Toggle(k.key(i))
-	default:
-		s.Set(k.key(i))
-	}
+	k.changeSelection(func() {
+		switch {
+		case s.Multiple() && m.Shift && s.Anchor() != nil:
+			k.extendTo(i)
+		case s.Multiple() && (m.Platform || m.Control || touch):
+			s.Toggle(k.key(i))
+		default:
+			s.Set(k.key(i))
+		}
+	})
 	if e.Clicks >= 2 || touch && !s.Multiple() && !k.list.TapSelects {
 		k.activate(i)
 	}

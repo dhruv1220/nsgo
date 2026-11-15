@@ -112,6 +112,30 @@ func TestListTypeahead(t *testing.T) {
 	cursor("Apricot")
 }
 
+// TestListSelectionChange reports only choices made through the list's user
+// actions, while an app can still move its Selection without reporting a
+// second choice.
+func TestListSelectionChange(t *testing.T) {
+	var sel *base.Selection
+	var changes [][]any
+	app := startDesktop(t, func(cx *core.Scope) core.Node {
+		sel = base.NewSelection(cx, false)
+		l := rowsOf(sel, nil)
+		l.OnSelectionChange = func(s *base.Selection) { changes = append(changes, s.Keys()) }
+		return l
+	})
+	app.Press("label:Apple")
+	app.Key("down")
+	app.Post(func() { sel.Set("Cherry") })
+	app.Settle()
+	if want := [][]any{{"Apple"}, {"Apricot"}}; !slices.EqualFunc(changes, want, func(a, b []any) bool { return slices.Equal(a, b) }) {
+		t.Fatalf("selection changes are %v, want %v", changes, want)
+	}
+	if got := sel.Keys(); !slices.Equal(got, []any{"Cherry"}) {
+		t.Fatalf("app selection is %v, want Cherry", got)
+	}
+}
+
 // TestListScreenReader has the screen reader's focus follow the cursor as
 // the keys move it.
 func TestListScreenReader(t *testing.T) {
