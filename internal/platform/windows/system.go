@@ -1180,13 +1180,14 @@ func (w *window) setMenuBar(mode driver.MenuBarMode) {
 	w.showMenuBar()
 }
 
-// menuBarKey follows the keys that show a hidden menu bar: Alt pressed
-// and released alone toggles it, and is kept from DefWindowProc, which
-// would enter menu mode; Alt with a mnemonic and F10 show it for the menu
-// DefWindowProc then opens. It reports whether it took the key.
+// menuBarKey follows the keys that show a hidden menu bar. With a hidden
+// title bar, Alt and F10 open the application menu as a popup because there
+// is no native bar to reveal; Alt plus a top-level mnemonic opens that menu's
+// submenu directly. It reports whether it took the key.
 func (w *window) menuBarKey(message uint32, vk uintptr, lParam uintptr) bool {
 	c := &w.chrome
-	if c.menuBar != driver.MenuBarAutoHide || c.menu == nil {
+	hidden := c.titleBar == driver.TitleBarHidden && !c.fullScreen
+	if c.menu == nil || !hidden && c.menuBar != driver.MenuBarAutoHide {
 		return false
 	}
 	switch {
@@ -1198,13 +1199,24 @@ func (w *window) menuBarKey(message uint32, vk uintptr, lParam uintptr) bool {
 		alone := c.altAlone
 		c.altAlone = false
 		if alone {
+			if hidden {
+				w.popupMenu(c.menu, driver.Point{}, 0)
+				return true
+			}
 			c.revealed = !c.revealed
 			w.showMenuBar()
 			return true
 		}
 	case message == wmSysKeyDown:
 		c.altAlone = false
+		if hidden && vk != vkF10 && keyDown(vkMenu) && w.popupMnemonic(vk) {
+			return true
+		}
 		if (vk == vkF10 || keyDown(vkMenu)) && !c.revealed && !c.menuOpen {
+			if hidden {
+				w.popupMenu(c.menu, driver.Point{}, 0)
+				return true
+			}
 			c.menuOpen = true
 			w.showMenuBar()
 		}

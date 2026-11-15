@@ -283,6 +283,27 @@ func TestServicesReachTheSystem(t *testing.T) {
 		t.Error("Alt did not hide the menu bar again")
 	}
 
+	// A hidden title bar has no native menu bar, so F10 opens the same
+	// application menu as a popup at the window's top left.
+	cx.Post(func() {
+		cx.SetTitleBar(core.TitleBarHidden, 40)
+		cx.SetMenuBar(core.MenuBarShown)
+	})
+	deadline = time.Now().Add(3 * time.Second)
+	for {
+		tracking := false
+		onMain(t, hwnd, func(w *window) { tracking = w.popupTracking })
+		if tracking {
+			break
+		}
+		postMessageW.Call(hwnd, wmSysKeyDown, vkF10, 0)
+		if time.Now().After(deadline) {
+			t.Fatal("F10 did not open the hidden-title-bar menu")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	onMain(t, hwnd, func(*window) { endMenu.Call() })
+
 	// A context menu tracks until it ends, then reports it closed.
 	cx.Post(func() {
 		cx.PopupMenu([]core.MenuItem{{Label: "Copy", OnSelect: func() {}}}, core.Point{X: 20, Y: 20},

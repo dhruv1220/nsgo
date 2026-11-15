@@ -4,6 +4,7 @@ package windows
 
 import (
 	"strings"
+	"unicode"
 	"unsafe"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
@@ -785,6 +786,50 @@ func (w *window) menuKeys(entries []driver.MenuEntry) {
 			}
 		}
 	}
+}
+
+// menuMnemonic returns the access key of a menu label. An explicit Windows
+// marker wins; otherwise the first letter or digit keeps plain cross-platform
+// labels usable from Alt without requiring an ampersand in every catalog.
+func menuMnemonic(label string) rune {
+	for i, r := range label {
+		if r != '&' {
+			continue
+		}
+		if i+1 < len(label) && label[i+1] == '&' {
+			continue
+		}
+		n := label[i+1:]
+		for _, next := range n {
+			if unicode.IsLetter(next) || unicode.IsDigit(next) {
+				return unicode.ToLower(next)
+			}
+			break
+		}
+	}
+	for _, r := range label {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+	}
+	return 0
+}
+
+// popupMnemonic opens the top-level menu selected by an Alt access key.
+func (w *window) popupMnemonic(vk uintptr) bool {
+	key := unicode.ToLower(rune(vk))
+	for _, e := range w.chrome.menu {
+		if e.Disabled || menuMnemonic(menutext.Label(w.language, &e, "")) != key {
+			continue
+		}
+		entries := e.Items
+		if len(entries) == 0 {
+			entries = []driver.MenuEntry{e}
+		}
+		w.popupMenu(entries, driver.Point{}, 0)
+		return true
+	}
+	return false
 }
 
 // showMenuBar shows the application menu as the window's menu bar, unless the title bar is hidden, the window is in full screen, the bar hides until Alt shows it or the window is a hidden root.

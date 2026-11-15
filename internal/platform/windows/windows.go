@@ -2348,7 +2348,9 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		if !repeated(lParam) {
 			w.modifierKey(wParam)
 		}
-		w.menuBarKey(message, wParam, lParam)
+		if w.menuBarKey(message, wParam, lParam) {
+			return 0
+		}
 		// Alt+Left; DefWindowProc still sees it, or releasing Alt would
 		// open the window menu.
 		if wParam == vkLeft && !repeated(lParam) {
