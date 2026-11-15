@@ -1306,7 +1306,7 @@ func TestConfinedKeysAndBacksFollowTheFocus(t *testing.T) {
 	press("host save", "host back")
 }
 
-// A confined owner's views take the focus on their own, by a Ref's Focus, AutoFocus or DismissKeyboard, only while it is already in them or until the commit after the user's input landed on one of them; an owner not confined always may.
+// A confined owner's views take the focus on their own, by a Ref's Focus or SetAccessibilityFocus, AutoFocus or DismissKeyboard, only while it is already in them or until the commit after the user's input landed on one of them; an owner not confined always may.
 func TestConfinedFocusFollowsTheUser(t *testing.T) {
 	for _, confined := range []bool{true, false} {
 		var field, other Ref
@@ -1330,12 +1330,15 @@ func TestConfinedFocusFollowsTheUser(t *testing.T) {
 			return View{Children: []Node{Input{TestID: "host-field"}, View{TestID: "host-button", OnPress: func(PressEvent) {}}, shown}}
 		})
 		h.commit()
-		// focused is the view the commit's focus requests focus, reported back as a platform does; 0 for none.
-		focused := func() NodeID {
+		// focusedIn is the view b's focus requests focus, reported back as a platform does; 0 for none. The screen reader's focus moves the keyboard's on the web and desktops.
+		focusedIn := func(b *driver.MountBatch) NodeID {
 			var id NodeID
-			for _, it := range h.commit().Items {
+			if b == nil {
+				return 0
+			}
+			for _, it := range b.Items {
 				switch it.Kind {
-				case driver.ItemFocus:
+				case driver.ItemFocus, driver.ItemAccessibilityFocus:
 					id = it.ID
 					h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: it.ID})
 				case driver.ItemDismissKeyboard:
@@ -1344,6 +1347,7 @@ func TestConfinedFocusFollowsTheUser(t *testing.T) {
 			}
 			return id
 		}
+		focused := func() NodeID { return focusedIn(h.commit()) }
 		focus := func(id string) {
 			h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find(id).id})
 			h.commit()
@@ -1362,6 +1366,9 @@ func TestConfinedFocusFollowsTheUser(t *testing.T) {
 		focus("host-field")
 		plugin.DismissKeyboard()
 		want("DismissKeyboard while the host has the focus", focused(), !confined, h.tree.view.id)
+		focus("host-field")
+		field.SetAccessibilityFocus()
+		want("SetAccessibilityFocus while the host has the focus", focused(), !confined, h.find("plugin-field").id)
 		focus("host-field")
 		// The user's press on the host's view lets the host's views move the focus, not the confined owner's.
 		h.tree.Dispatch(driver.Event{Kind: driver.EventPress, ID: h.find("host-button").id})
