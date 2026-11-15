@@ -1582,6 +1582,41 @@ func TestConfinedOverlaysHearBackWithTheFocus(t *testing.T) {
 	}
 }
 
+// Back pops a confined owner's stack only while the focus is within that owner, as its back handlers fire; else the host's own stack around it pops.
+func TestConfinedStacksPopWithTheFocus(t *testing.T) {
+	for _, confined := range []bool{true, false} {
+		for _, c := range []struct{ focus, want string }{{"host-field", map[bool]string{true: "host", false: "plugin"}[confined]}, {"plugin-field", "plugin"}} {
+			name := map[bool]string{true: "confined", false: "not confined"}[confined]
+			var popped []string
+			screen := func(who string, top Node) Node {
+				return Screen{OnDismiss: func() { popped = append(popped, who) }, Children: []Node{top}}
+			}
+			h := newHost(t, Size{Width: 100, Height: 400}, func(cx *Scope) Node {
+				shown := Dynamic(func(cx *Scope) Node {
+					if confined {
+						cx.Confine()
+					}
+					return Stack{Style: Style{FlexGrow: 1}, Children: []Node{
+						Screen{Children: []Node{View{}}},
+						screen("plugin", Input{TestID: "plugin-field"}),
+					}}
+				})
+				return Stack{Style: Style{FlexGrow: 1}, Children: []Node{
+					Screen{Children: []Node{View{}}},
+					screen("host", View{Style: Style{FlexGrow: 1}, Children: []Node{Input{TestID: "host-field"}, shown}}),
+				}}
+			})
+			h.commit()
+			h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find(c.focus).id})
+			h.commit()
+			h.tree.Dispatch(driver.Event{Kind: driver.EventBack})
+			if !slices.Equal(popped, []string{c.want}) {
+				t.Errorf("%s, focus on %s: back popped %q, want %q", name, c.focus, popped, c.want)
+			}
+		}
+	}
+}
+
 // A confined owner has the screen reader speak only while the focus is in its views or as the user's input on them is handled.
 func TestConfinedAnnouncementsWaitForTheUser(t *testing.T) {
 	for _, confined := range []bool{true, false} {

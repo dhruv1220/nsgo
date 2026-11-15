@@ -520,8 +520,7 @@ func (t *Tree) backFrom(n *node) {
 	}
 }
 
-// innerStack returns the innermost stack under host, outside nested
-// modals, that can pop.
+// innerStack returns the innermost stack under host, outside nested modals, that can pop: a confined owner's only while the focus is within it, as its OnBackPress handlers (Scope.Confine).
 func (t *Tree) innerStack(host *node) *node {
 	var found *node
 	var walk func(n *node)
@@ -529,7 +528,7 @@ func (t *Tree) innerStack(host *node) *node {
 		if n.deleted || (n != host && n.kind == driver.KindModal) || n.style.Display == DisplayNone {
 			return
 		}
-		if n.isStack && len(n.screens()) >= 2 {
+		if n.isStack && len(n.screens()) >= 2 && t.focusWithin(confinement(n.owner)) {
 			found = n
 		}
 		for _, c := range n.children {
