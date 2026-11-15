@@ -66,7 +66,7 @@ cx.PickImages(core.PickOptions{Limit: 1, MaxDimension: 2048}, func(files []core.
 })
 ```
 
-`cx.PickFiles` picks files of any type, `cx.PickDirectories` picks folders as an `fs.FS`, and `cx.SaveFile` saves a file or bytes through the system's save dialog. `cx.PickScreenColor` picks a color anywhere on the screen where the platform allows it.
+`cx.PickFiles` picks files of any type, `cx.PickDirectories` picks folders as an `fs.FS`, and `cx.SaveFile` saves a file or bytes through the system's save dialog. Pickers accept optional titles, button labels and starting folders; file pickers can name their type filter. `cx.PickScreenColor` picks a color anywhere on the screen where the platform allows it.
 
 ## Storage
 

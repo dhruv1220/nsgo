@@ -22,6 +22,14 @@ type FilesRequest struct {
 	// Limit is the most files the user picks: 1 for a single pick, at
 	// most MaxPicked.
 	Limit int
+	// Title is the dialog's title or message where the target has one.
+	Title string
+	// Button is the dialog's accept button label where the target has one.
+	Button string
+	// TypesName names Types in the filter menu where the target has one.
+	TypesName string
+	// Start is the folder the dialog opens in when it exists.
+	Start string
 	// Types are the files offered: lower-case media types
 	// (application/pdf), families (image/*) and extensions (.zip). None
 	// offers every file.
@@ -64,6 +72,12 @@ type DirectoriesRequest struct {
 	// Limit is the most folders the user picks: 1 for a single pick, at
 	// most MaxPicked.
 	Limit int
+	// Title is the dialog's title or message where the target has one.
+	Title string
+	// Button is the dialog's accept button label where the target has one.
+	Button string
+	// Start is the folder the dialog opens in when it exists.
+	Start string
 }
 
 // Directory is a folder the user picked, which reads what it holds as

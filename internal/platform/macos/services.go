@@ -258,6 +258,7 @@ func (s *surface) pickFiles(r driver.FilesRequest, id uint32) {
 	panel.Send(sel("setCanChooseDirectories:"), false)
 	panel.Send(sel("setAllowsMultipleSelection:"), r.Limit > 1)
 	panel.Send(sel("setAllowedContentTypes:"), apple.ContentTypes(r))
+	configureOpenPanel(panel, r.Title, r.Button, r.Start)
 	panel.Send(sel("retain"))
 	done := objc.NewBlock(func(_ objc.Block, response int) {
 		defer panel.Send(selRelease)
@@ -281,6 +282,7 @@ func (s *surface) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	panel.Send(sel("setCanChooseDirectories:"), true)
 	panel.Send(sel("setCanCreateDirectories:"), true)
 	panel.Send(sel("setAllowsMultipleSelection:"), r.Limit > 1)
+	configureOpenPanel(panel, r.Title, r.Button, r.Start)
 	panel.Send(sel("retain"))
 	done := objc.NewBlock(func(_ objc.Block, response int) {
 		defer panel.Send(selRelease)
@@ -294,6 +296,25 @@ func (s *surface) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	})
 	panel.Send(sel("beginSheetModalForWindow:completionHandler:"), s.window, done)
 	done.Release()
+}
+
+// configureOpenPanel applies the optional presentation hints shared by file
+// and folder panels. Invalid start paths are left to AppKit's default folder.
+func configureOpenPanel(panel objc.ID, title, button, start string) {
+	if title != "" {
+		panel.Send(sel("setMessage:"), apple.NSString(title))
+	}
+	if button != "" {
+		panel.Send(sel("setPrompt:"), apple.NSString(button))
+	}
+	if start != "" {
+		if info, err := os.Stat(start); err == nil && info.IsDir() {
+			url := objc.ID(apple.Class("NSURL")).Send(sel("fileURLWithPath:"), apple.NSString(start))
+			if url != 0 {
+				panel.Send(sel("setDirectoryURL:"), url)
+			}
+		}
+	}
 }
 
 // saveFile shows a save panel as a sheet on the window for the file r

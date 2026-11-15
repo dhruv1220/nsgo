@@ -5,6 +5,7 @@ package windows
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -511,12 +512,7 @@ func (w *window) pickImages(r driver.PickRequest, id uint32) {
 // pickFiles queues a pick of the files r offers.
 func (w *window) pickFiles(r driver.FilesRequest, id uint32) {
 	w.queueDialog(func() {
-		exts, every := r.Extensions()
-		name := syscall.StringToUTF16("Files")
-		if every {
-			exts, name = nil, syscall.StringToUTF16("All files")
-		}
-		paths, err := w.openDialog(name, exts, r.Limit)
+		paths, err := w.fileDialog(r)
 		ev := driver.Event{Kind: driver.EventFiles, Count: id}
 		if err != nil {
 			ev.Text = err.Error()
@@ -533,7 +529,7 @@ func (w *window) pickFiles(r driver.FilesRequest, id uint32) {
 // pickDirectories queues a pick of folders.
 func (w *window) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	w.queueDialog(func() {
-		paths, err := w.folderDialog(r.Limit)
+		paths, err := w.folderDialog(r)
 		ev := driver.Event{Kind: driver.EventFiles, Count: id}
 		if err != nil {
 			ev.Text = err.Error()
@@ -661,18 +657,22 @@ var (
 // IFileOpenDialog's methods, from IModalWindow's and IFileDialog's, and
 // those of the shell items it answers with.
 const (
-	fileDialogShow        = 3
-	fileDialogAdvise      = 7
-	fileDialogUnadvise    = 8
-	fileDialogSetOptions  = 9
-	fileDialogGetOptions  = 10
-	fileDialogSetFolder   = 12
-	fileDialogGetFolder   = 13
-	fileDialogSetFileName = 15
-	fileDialogGetResults  = 27
-	itemArrayGetCount     = 7
-	itemArrayGetItemAt    = 8
-	shellItemGetName      = 5
+	fileDialogShow             = 3
+	fileDialogSetFileTypes     = 4
+	fileDialogAdvise           = 7
+	fileDialogUnadvise         = 8
+	fileDialogSetOptions       = 9
+	fileDialogGetOptions       = 10
+	fileDialogSetFolder        = 12
+	fileDialogGetFolder        = 13
+	fileDialogSetFileName      = 15
+	fileDialogSetTitle         = 17
+	fileDialogSetOkButtonLabel = 18
+	fileDialogGetResult        = 20
+	fileDialogGetResults       = 27
+	itemArrayGetCount          = 7
+	itemArrayGetItemAt         = 8
+	shellItemGetName           = 5
 
 	fosNoChangeDir              = 0x8
 	fosPickFolders              = 0x20
@@ -775,10 +775,139 @@ func (w *window) leaveVirtualFolder() {
 	d.call(fileDialogSetFileName, uintptr(unsafe.Pointer(&empty)))
 }
 
+// comFilterSpec is COMDLG_FILTERSPEC, the name and pattern shown by an
+// IFileDialog filter menu.
+type comFilterSpec struct {
+	name    *uint16
+	pattern *uint16
+}
+
+// fileDialog shows the modern Windows file picker, which supports the title,
+// accept label, filter name and initial folder hints.
+func (w *window) fileDialog(r driver.FilesRequest) ([]string, error) {
+	if err := initCOM(); err != nil {
+		return nil, err
+	}
+	var dialog *comObject
+	if hr, _, _ := coCreateInstance.Call(uintptr(unsafe.Pointer(&clsidFileOpenDialog)), 0, clsctxInprocServer,
+		uintptr(unsafe.Pointer(&iidFileOpenDialog)), uintptr(unsafe.Pointer(&dialog))); failed(hr) || dialog == nil {
+		return nil, hresultError("no file dialog", hr)
+	}
+	defer dialog.release()
+	var options uint32
+	dialog.call(fileDialogGetOptions, uintptr(unsafe.Pointer(&options)))
+	options |= fosForceFileSystem | fosPathMustExist | fosNoChangeDir
+	if r.Limit > 1 {
+		options |= fosAllowMultiSelect
+	}
+	if failed(dialog.call(fileDialogSetOptions, uintptr(options))) {
+		return nil, errors.New("could not configure file dialog")
+	}
+	if r.Title != "" {
+		dialog.call(fileDialogSetTitle, uintptr(unsafe.Pointer(wide(r.Title))))
+	}
+	if r.Button != "" {
+		dialog.call(fileDialogSetOkButtonLabel, uintptr(unsafe.Pointer(wide(r.Button))))
+	}
+	exts, every := r.Extensions()
+	if r.TypesName != "" || len(exts) > 0 || every {
+		name := r.TypesName
+		if name == "" {
+			name = "Files"
+		}
+		pattern := "*.*"
+		if !every && len(exts) > 0 {
+			var b strings.Builder
+			for i, ext := range exts {
+				if i > 0 {
+					b.WriteByte(';')
+				}
+				b.WriteString("*.")
+				b.WriteString(ext)
+			}
+			pattern = b.String()
+		}
+		filter := comFilterSpec{name: wide(name), pattern: wide(pattern)}
+		if failed(dialog.call(fileDialogSetFileTypes, 1, uintptr(unsafe.Pointer(&filter)))) {
+			return nil, errors.New("could not configure file types")
+		}
+	}
+	setDialogFolder(dialog, r.Start)
+	hr := dialog.call(fileDialogShow, w.owner())
+	if uint32(hr) == hresultCancelled {
+		return nil, nil
+	}
+	if failed(hr) {
+		return nil, hresultError("file dialog", hr)
+	}
+	if r.Limit <= 1 {
+		var item *comObject
+		if hr := dialog.call(fileDialogGetResult, uintptr(unsafe.Pointer(&item))); failed(hr) || item == nil {
+			return nil, hresultError("no file chosen", hr)
+		}
+		defer item.release()
+		path, err := shellItemPath(item)
+		if err != nil {
+			return nil, err
+		}
+		return []string{path}, nil
+	}
+	return dialogResults(dialog, r.Limit)
+}
+
+// setDialogFolder applies an existing local folder to an IFileDialog.
+func setDialogFolder(dialog *comObject, start string) {
+	if start == "" {
+		return
+	}
+	info, err := os.Stat(start)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	var item *comObject
+	if hr, _, _ := shCreateItemFromParsingName.Call(uintptr(unsafe.Pointer(wide(start))), 0,
+		uintptr(unsafe.Pointer(&iidShellItem)), uintptr(unsafe.Pointer(&item))); !failed(hr) && item != nil {
+		dialog.call(fileDialogSetFolder, item.ptr())
+		item.release()
+	}
+}
+
+func shellItemPath(item *comObject) (string, error) {
+	var path *uint16
+	if hr := item.call(shellItemGetName, sigdnFileSysPath, uintptr(unsafe.Pointer(&path))); failed(hr) || path == nil {
+		return "", hresultError("file dialog path", hr)
+	}
+	return takeString(path), nil
+}
+
+func dialogResults(dialog *comObject, limit int) ([]string, error) {
+	var items *comObject
+	if hr := dialog.call(fileDialogGetResults, uintptr(unsafe.Pointer(&items))); failed(hr) || items == nil {
+		return nil, hresultError("no files chosen", hr)
+	}
+	defer items.release()
+	var n uint32
+	items.call(itemArrayGetCount, uintptr(unsafe.Pointer(&n)))
+	paths := make([]string, 0, min(int(n), max(limit, 1)))
+	for i := uint32(0); i < n && len(paths) < max(limit, 1); i++ {
+		var item *comObject
+		if failed(items.call(itemArrayGetItemAt, uintptr(i), uintptr(unsafe.Pointer(&item)))) || item == nil {
+			continue
+		}
+		path, err := shellItemPath(item)
+		item.release()
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
 // folderDialog returns the paths of the folders chosen in Windows' open
 // dialog for folders (IFileOpenDialog), at most limit; none when it was
 // cancelled. The comdlg32 dialogs pick only files.
-func (w *window) folderDialog(limit int) ([]string, error) {
+func (w *window) folderDialog(r driver.DirectoriesRequest) ([]string, error) {
 	if err := initCOM(); err != nil {
 		return nil, err
 	}
@@ -791,9 +920,16 @@ func (w *window) folderDialog(limit int) ([]string, error) {
 	var options uint32
 	dialog.call(fileDialogGetOptions, uintptr(unsafe.Pointer(&options)))
 	options |= fosPickFolders | fosForceFileSystem | fosPathMustExist | fosNoChangeDir
-	if limit > 1 {
+	if r.Limit > 1 {
 		options |= fosAllowMultiSelect
 	}
+	if r.Title != "" {
+		dialog.call(fileDialogSetTitle, uintptr(unsafe.Pointer(wide(r.Title))))
+	}
+	if r.Button != "" {
+		dialog.call(fileDialogSetOkButtonLabel, uintptr(unsafe.Pointer(wide(r.Button))))
+	}
+	setDialogFolder(dialog, r.Start)
 	dialog.call(fileDialogSetOptions, uintptr(options))
 	events := &folderEvents{vtbl: &folderEventsVtbl, w: w}
 	var cookie uint32
@@ -818,7 +954,7 @@ func (w *window) folderDialog(limit int) ([]string, error) {
 	var n uint32
 	items.call(itemArrayGetCount, uintptr(unsafe.Pointer(&n)))
 	var paths []string
-	for i := range min(int(n), max(limit, 1)) {
+	for i := range min(int(n), max(r.Limit, 1)) {
 		var item *comObject
 		if failed(items.call(itemArrayGetItemAt, uintptr(i), uintptr(unsafe.Pointer(&item)))) || item == nil {
 			continue

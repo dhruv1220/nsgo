@@ -239,9 +239,9 @@ func TestPickFiles(t *testing.T) {
 	var gotErr error
 	answered := 0
 	pick := func(files []File, err error) { got, gotErr = files, err; answered++ }
-	cx.PickFiles(PickFilesOptions{Multiple: true, Limit: 2, Types: []string{" Application/PDF", "zip", "", "image/*"}}, pick)
+	cx.PickFiles(PickFilesOptions{Multiple: true, Limit: 2, Title: "Choose videos", Button: "Open", TypesName: "Videos", Start: t.TempDir(), Types: []string{" Application/PDF", "zip", "", "image/*"}}, pick)
 	it := command(h.commit(), driver.ItemPickFiles)
-	if it == nil || it.Files.Limit != 2 || !slices.Equal(it.Files.Types, []string{"application/pdf", ".zip", "image/*"}) {
+	if it == nil || it.Files.Limit != 2 || it.Files.Title != "Choose videos" || it.Files.Button != "Open" || it.Files.TypesName != "Videos" || it.Files.Start == "" || !slices.Equal(it.Files.Types, []string{"application/pdf", ".zip", "image/*"}) {
 		t.Fatalf("pick = %+v", it)
 	}
 	dir := t.TempDir()
@@ -279,9 +279,9 @@ func TestPickDirectories(t *testing.T) {
 	var gotErr error
 	answered := 0
 	pick := func(dirs []Directory, err error) { got, gotErr = dirs, err; answered++ }
-	cx.PickDirectories(PickDirectoriesOptions{Multiple: true, Limit: 2}, pick)
+	cx.PickDirectories(PickDirectoriesOptions{Multiple: true, Limit: 2, Title: "Import library", Button: "Import", Start: t.TempDir()}, pick)
 	it := command(h.commit(), driver.ItemPickDirectories)
-	if it == nil || it.Directories.Limit != 2 {
+	if it == nil || it.Directories.Limit != 2 || it.Directories.Title != "Import library" || it.Directories.Button != "Import" || it.Directories.Start == "" {
 		t.Fatalf("pick = %+v", it)
 	}
 	h.tree.Dispatch(driver.Event{Kind: driver.EventFiles, Count: it.Count, Data: []driver.Directory{

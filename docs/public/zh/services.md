@@ -66,7 +66,7 @@ cx.PickImages(core.PickOptions{Limit: 1, MaxDimension: 2048}, func(files []core.
 })
 ```
 
-`cx.PickFiles` 选择任意类型的文件，`cx.PickDirectories` 把文件夹选成 `fs.FS`，`cx.SaveFile` 通过系统保存对话框保存文件或字节。`cx.PickScreenColor` 在平台允许时从屏幕任意位置取色。
+`cx.PickFiles` 选择任意类型的文件，`cx.PickDirectories` 把文件夹选成 `fs.FS`，`cx.SaveFile` 通过系统保存对话框保存文件或字节。选择器支持可选的标题、按钮文字和起始文件夹，文件选择器还可以命名类型过滤器。`cx.PickScreenColor` 在平台允许时从屏幕任意位置取色。
 
 ## 存储
 

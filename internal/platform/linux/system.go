@@ -5,6 +5,7 @@ package linux
 import (
 	"bytes"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +40,9 @@ var (
 	gIOErrorQuark                             func() uint32
 	gtkFileDialogNew                          func() uintptr
 	gtkFileDialogSetModal                     func(dialog uintptr, modal int32)
+	gtkFileDialogSetTitle                     func(dialog uintptr, title *byte)
+	gtkFileDialogSetAcceptLabel               func(dialog uintptr, label *byte)
+	gtkFileDialogSetInitialFolder             func(dialog, folder uintptr)
 	gtkFileDialogSetDefaultFilter             func(dialog, filter uintptr)
 	gtkFileDialogOpen                         func(dialog, parent, cancellable, callback, data uintptr)
 	gtkFileDialogOpenFinish                   func(dialog, result, err uintptr) uintptr
@@ -95,6 +99,9 @@ func bindSystem() {
 	purego.RegisterLibFunc(&gIOErrorQuark, gioLib, "g_io_error_quark")
 	gtk(&gtkFileDialogNew, "gtk_file_dialog_new")
 	gtk(&gtkFileDialogSetModal, "gtk_file_dialog_set_modal")
+	gtk(&gtkFileDialogSetTitle, "gtk_file_dialog_set_title")
+	gtk(&gtkFileDialogSetAcceptLabel, "gtk_file_dialog_set_accept_label")
+	gtk(&gtkFileDialogSetInitialFolder, "gtk_file_dialog_set_initial_folder")
 	gtk(&gtkFileDialogSetDefaultFilter, "gtk_file_dialog_set_default_filter")
 	gtk(&gtkFileDialogOpen, "gtk_file_dialog_open")
 	gtk(&gtkFileDialogOpenFinish, "gtk_file_dialog_open_finish")
@@ -361,9 +368,14 @@ func (w *window) pickFiles(r driver.FilesRequest, id uint32) {
 		w.engine.Dispatch(driver.Event{Kind: driver.EventFiles, Count: id, Text: "no file dialog"})
 		return
 	}
+	configureFileDialog(dialog, r.Title, r.Button, r.Start)
 	if len(r.Types) > 0 {
 		filter := gtkFileFilterNew()
-		gtkFileFilterSetName(filter, cstr("Files"))
+		name := r.TypesName
+		if name == "" {
+			name = "Files"
+		}
+		gtkFileFilterSetName(filter, cstr(name))
 		for _, t := range r.Types {
 			if ext, ok := strings.CutPrefix(t, "."); ok {
 				gtkFileFilterAddSuffix(filter, cstr(ext))
@@ -396,6 +408,7 @@ func (w *window) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 		w.engine.Dispatch(driver.Event{Kind: driver.EventFiles, Count: id, Text: "no file dialog"})
 		return
 	}
+	configureFileDialog(dialog, r.Title, r.Button, r.Start)
 	w.openDialog(dialog, r.Limit > 1, true, func(paths []string, err error) {
 		ev := driver.Event{Kind: driver.EventFiles, Count: id}
 		if err != nil {
@@ -408,6 +421,26 @@ func (w *window) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 		ev.Data = dirs
 		w.engine.Dispatch(ev)
 	})
+}
+
+// configureFileDialog applies the hints GtkFileDialog supports. A missing
+// start folder is ignored so the desktop chooses its normal location.
+func configureFileDialog(dialog uintptr, title, button, start string) {
+	if title != "" {
+		gtkFileDialogSetTitle(dialog, cstr(title))
+	}
+	if button != "" {
+		gtkFileDialogSetAcceptLabel(dialog, cstr(button))
+	}
+	if start != "" {
+		if info, err := os.Stat(start); err == nil && info.IsDir() {
+			folder := gFileNewForPath(cstr(start))
+			if folder != 0 {
+				gtkFileDialogSetInitialFolder(dialog, folder)
+				gObjectUnref(folder)
+			}
+		}
+	}
 }
 
 // saveFile shows GtkFileDialog's save dialog suggesting r's name, then

@@ -423,6 +423,14 @@ type PickFilesOptions struct {
 	// MaxPicked).
 	Multiple bool
 	Limit    int
+	// Title says what the picker is for; an empty title keeps the system's.
+	Title string
+	// Button labels the button that picks; an empty label keeps the system's.
+	Button string
+	// TypesName names Types in the picker's filter menu where it has one.
+	TypesName string
+	// Start is the folder the picker opens in when it exists.
+	Start string
 	// Types are the files offered: media types (application/pdf),
 	// families (image/*) and extensions (.zip); none offers every file.
 	Types []string
@@ -430,7 +438,7 @@ type PickFilesOptions struct {
 
 // request is o as the platform carries it out.
 func (o PickFilesOptions) request() driver.FilesRequest {
-	r := driver.FilesRequest{Limit: pickLimit(o.Multiple, o.Limit)}
+	r := driver.FilesRequest{Limit: pickLimit(o.Multiple, o.Limit), Title: o.Title, Button: o.Button, TypesName: o.TypesName, Start: o.Start}
 	for _, t := range o.Types {
 		t = strings.ToLower(strings.TrimSpace(t))
 		switch {
@@ -493,6 +501,12 @@ type PickDirectoriesOptions struct {
 	// to MaxPicked).
 	Multiple bool
 	Limit    int
+	// Title says what the picker is for; an empty title keeps the system's.
+	Title string
+	// Button labels the button that picks; an empty label keeps the system's.
+	Button string
+	// Start is the folder the picker opens in when it exists.
+	Start string
 }
 
 // PickDirectories shows the system's folder picker and calls done with
@@ -510,7 +524,7 @@ func (cx *Scope) PickDirectories(o PickDirectoriesOptions, done func(dirs []Dire
 	if t == nil || cx.denied(servicePicker, "") {
 		return
 	}
-	r := driver.DirectoriesRequest{Limit: pickLimit(o.Multiple, o.Limit)}
+	r := driver.DirectoriesRequest{Limit: pickLimit(o.Multiple, o.Limit), Title: o.Title, Button: o.Button, Start: o.Start}
 	t.request(cx, driver.MountItem{Kind: driver.ItemPickDirectories, Directories: &r}, func(ev driver.Event) {
 		if done == nil {
 			return

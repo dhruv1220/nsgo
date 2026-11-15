@@ -346,6 +346,7 @@ func (s *surface) pickFiles(r driver.FilesRequest, id uint32) {
 	picker := objc.ID(apple.Class("UIDocumentPickerViewController")).Send(selAlloc).
 		Send(sel("initForOpeningContentTypes:asCopy:"), apple.ContentTypes(r), true)
 	picker.Send(sel("setAllowsMultipleSelection:"), r.Limit > 1)
+	setDocumentStart(picker, r.Start)
 	s.presentDocuments(picker, documentRequest{id: id, limit: r.Limit})
 }
 
@@ -358,7 +359,23 @@ func (s *surface) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	picker := objc.ID(apple.Class("UIDocumentPickerViewController")).Send(selAlloc).
 		Send(sel("initForOpeningContentTypes:asCopy:"), types, false)
 	picker.Send(sel("setAllowsMultipleSelection:"), r.Limit > 1)
+	setDocumentStart(picker, r.Start)
 	s.presentDocuments(picker, documentRequest{id: id, limit: r.Limit, folders: true})
+}
+
+// setDocumentStart asks UIKit to open an existing local folder first. Older
+// systems or a missing path simply keep the document picker's default.
+func setDocumentStart(picker objc.ID, start string) {
+	if start == "" {
+		return
+	}
+	if info, err := os.Stat(start); err != nil || !info.IsDir() {
+		return
+	}
+	url := objc.ID(apple.Class("NSURL")).Send(sel("fileURLWithPath:"), apple.NSString(start))
+	if url != 0 {
+		picker.Send(sel("setDirectoryURL:"), url)
+	}
 }
 
 // pickedFolders are the folders a document picker opened, at most limit.
