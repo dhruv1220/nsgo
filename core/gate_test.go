@@ -5,8 +5,8 @@ import (
 	"go/parser"
 	gotoken "go/token"
 	"os"
+	"reflect"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,14 +82,12 @@ func TestServicesGoThroughTheGate(t *testing.T) {
 			exempted[name] = true
 		}
 	}
-	var exported []string
-	for name := range methods {
-		if ast.IsExported(name) {
-			exported = append(exported, name)
-		}
-	}
-	sort.Strings(exported)
-	for _, name := range exported {
+	// The compiler's method set, not the parsed one, says what is exported, so a method declared on an alias of Scope or on its value is listed too.
+	scope := reflect.TypeFor[*Scope]()
+	exported := map[string]bool{}
+	for i := range scope.NumMethod() {
+		name := scope.Method(i).Name
+		exported[name] = true
 		kinds := gatesReached(name, funcs, methods, consts)
 		kind, isGated := gated[name]
 		switch {
@@ -102,12 +100,12 @@ func TestServicesGoThroughTheGate(t *testing.T) {
 		}
 	}
 	for name := range gated {
-		if methods[name] == nil {
+		if !exported[name] {
 			t.Errorf("gated lists Scope.%s, which is gone", name)
 		}
 	}
 	for name := range exempted {
-		if methods[name] == nil {
+		if !exported[name] {
 			t.Errorf("exempt lists Scope.%s, which is gone", name)
 		}
 	}
@@ -156,6 +154,9 @@ func scopeSources(t *testing.T) (funcs, methods map[string][]*ast.FuncDecl, kind
 		t.Fatal(err)
 	}
 	funcs, methods, kinds = map[string][]*ast.FuncDecl{}, map[string][]*ast.FuncDecl{}, map[string]service{}
+	// scopes are Scope's names, its aliases included, and receivers the methods by the type they are declared on.
+	scopes := map[string]bool{"Scope": true}
+	receivers := map[string][]*ast.FuncDecl{}
 	fset := gotoken.NewFileSet()
 	for _, e := range entries {
 		name := e.Name()
@@ -167,6 +168,15 @@ func scopeSources(t *testing.T) (funcs, methods map[string][]*ast.FuncDecl, kind
 			t.Fatal(err)
 		}
 		for _, d := range f.Decls {
+			if g, ok := d.(*ast.GenDecl); ok && g.Tok == gotoken.TYPE {
+				for _, spec := range g.Specs {
+					if ts := spec.(*ast.TypeSpec); ts.Assign.IsValid() {
+						if id, ok := ts.Type.(*ast.Ident); ok && id.Name == "Scope" {
+							scopes[ts.Name.Name] = true
+						}
+					}
+				}
+			}
 			if g, ok := d.(*ast.GenDecl); ok && g.Tok == gotoken.CONST {
 				for _, spec := range g.Specs {
 					v := spec.(*ast.ValueSpec)
@@ -190,11 +200,18 @@ func scopeSources(t *testing.T) (funcs, methods map[string][]*ast.FuncDecl, kind
 				funcs[fn.Name.Name] = append(funcs[fn.Name.Name], fn)
 				continue
 			}
-			if star, ok := fn.Recv.List[0].Type.(*ast.StarExpr); ok {
-				if id, ok := star.X.(*ast.Ident); ok && id.Name == "Scope" {
-					methods[fn.Name.Name] = append(methods[fn.Name.Name], fn)
-				}
+			recv := fn.Recv.List[0].Type
+			if star, ok := recv.(*ast.StarExpr); ok {
+				recv = star.X
 			}
+			if id, ok := recv.(*ast.Ident); ok {
+				receivers[id.Name] = append(receivers[id.Name], fn)
+			}
+		}
+	}
+	for name := range scopes {
+		for _, fn := range receivers[name] {
+			methods[fn.Name.Name] = append(methods[fn.Name.Name], fn)
 		}
 	}
 	return funcs, methods, kinds
