@@ -147,7 +147,7 @@ mount(() => <Text>plugin</Text>);`), 0o644)
 	}
 	if list, err := readRevocations(at("expiring.json")); err != nil {
 		t.Fatal(err)
-	} else if info, err := list.Info(); err != nil || info.NotAfter.Sub(info.IssuedAt).Round(time.Hour) != 7*24*time.Hour {
+	} else if info, err := list.Info(); err != nil || info.NotAfter.Sub(time.Now().AddDate(0, 0, 7)).Abs() > time.Minute {
 		t.Fatalf("a list for 7 days: %+v, %v", info, err)
 	}
 	if err := verifyPackage(verifyOptions{roots: public["root"], revocations: at("revoked.json") + "," + at("expiring.json")}, out); err != nil {
