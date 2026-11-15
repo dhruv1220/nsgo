@@ -111,7 +111,7 @@ func webViewFace(p *props) core.Node {
 		NoJavaScript:                    !p.boolOr("javaScriptEnabled", true),
 		BackForwardGestures:             p.bool("allowsBackForwardNavigationGestures"),
 		Media:                           r.webMedia(p.get("media")),
-		MessageOrigins:                  r.strs(p.get("messageOrigins")),
+		MessageOrigins:                  r.stringList(p.get("messageOrigins")),
 		Class:                           p.class(),
 		StyleFunc:                       p.styleFunc(),
 		OnError:                         p.onError("onError"),
@@ -442,18 +442,6 @@ func (r *runtime) tokenKey(t core.ViewToken, item js.Value) string {
 }
 
 // ints reads an array of numbers.
-func (r *runtime) strs(v js.Value) []string {
-	items := r.arrayItems(v)
-	if items == nil {
-		return nil
-	}
-	out := make([]string, len(items))
-	for i, it := range items {
-		out[i] = it.String()
-	}
-	return out
-}
-
 func (r *runtime) ints(v js.Value) []int {
 	items := r.arrayItems(v)
 	if items == nil {
