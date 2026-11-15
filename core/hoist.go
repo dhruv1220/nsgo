@@ -692,7 +692,7 @@ func (t *Tree) back() {
 	}
 	for i := len(t.backs) - 1; i >= 0; i-- {
 		b := t.backs[i]
-		if b.owner.disposed {
+		if b.owner.disposed || !t.focusWithin(b.within) {
 			continue
 		}
 		taken := false
@@ -724,7 +724,7 @@ func (t *Tree) backPreview() driver.NodeID {
 	}
 	if host.kind != driver.KindModal {
 		for _, b := range t.backs {
-			if !b.owner.disposed {
+			if !b.owner.disposed && t.focusWithin(b.within) {
 				return 0
 			}
 		}

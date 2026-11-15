@@ -14,7 +14,9 @@ import (
 type keyBinding struct {
 	driver.KeyBinding
 	owner *Scope
-	fn    func()
+	// within is the scope Confine confined it to, nil for none.
+	within *Scope
+	fn     func()
 }
 
 // KeyWhen says when a binding fires.
@@ -54,7 +56,8 @@ func (cx *Scope) OnKeyWith(key string, opts KeyOptions, fn func()) {
 	}
 	k := driver.NormalizeKey(key)
 	inText := opts.When == KeyAlways || opts.When == KeyAuto && !EditsText(k)
-	b := &keyBinding{KeyBinding: driver.KeyBinding{Key: k, InText: inText, Repeat: opts.Repeat}, owner: cx.current(), fn: fn}
+	owner := cx.current()
+	b := &keyBinding{KeyBinding: driver.KeyBinding{Key: k, InText: inText, Repeat: opts.Repeat}, owner: owner, within: confinement(owner), fn: fn}
 	t.keys = append(t.keys, b)
 	t.keysChanged = true
 	t.changed = true
@@ -66,8 +69,51 @@ func (cx *Scope) OnKeyWith(key string, opts KeyOptions, fn func()) {
 }
 
 type backHandler struct {
-	owner *Scope
-	fn    func() bool
+	owner, within *Scope
+	fn            func() bool
+}
+
+// confineKey is where Confine marks an owner.
+type confineKey struct{}
+
+// Confine has the key bindings (OnKey) and back handlers (OnBackPress) made under the current owner, whoever makes them, fire only while the keyboard focus is on a view it owns, itself or through the owners below it: never while the focus is elsewhere or nowhere, so what it shows cannot take the keys or back presses of the views around it. A press a confined binding or handler leaves goes on to the others, as if it were not there. tsx's sandbox confines a bundle's scope.
+func (cx *Scope) Confine() {
+	o := cx.current()
+	if o.values == nil {
+		o.values = map[any]any{}
+	}
+	o.values[confineKey{}] = true
+}
+
+// confinement is the owner nearest o that Confine marked, nil for none.
+func confinement(o *Scope) *Scope {
+	for s := o; s != nil; s = s.parent {
+		if _, ok := s.values[confineKey{}]; ok {
+			return s
+		}
+	}
+	return nil
+}
+
+// focusWithin reports whether the keyboard focus is on a view s owns, itself or through the owners below it; any focus, or none, for a nil s.
+func (t *Tree) focusWithin(s *Scope) bool {
+	if s == nil {
+		return true
+	}
+	if t.focus == nil {
+		return false
+	}
+	for o := t.focus.owner; o != nil; o = o.parent {
+		if o == s {
+			return true
+		}
+	}
+	return false
+}
+
+// confinedKeys reports whether a binding is confined, whose part in the keymap follows the focus.
+func (t *Tree) confinedKeys() bool {
+	return slices.ContainsFunc(t.keys, func(b *keyBinding) bool { return b.within != nil })
 }
 
 // OnBackPress runs fn when back is pressed (Escape, the back button or
@@ -80,7 +126,8 @@ func (cx *Scope) OnBackPress(fn func() bool) {
 	if t == nil {
 		return
 	}
-	b := &backHandler{owner: cx.current(), fn: fn}
+	owner := cx.current()
+	b := &backHandler{owner: owner, within: confinement(owner), fn: fn}
 	t.backs = append(t.backs, b)
 	b.owner.addCleanup(func() { t.backs = slices.DeleteFunc(t.backs, func(o *backHandler) bool { return o == b }) })
 }
@@ -94,11 +141,13 @@ func (cx *Scope) ExitApp() {
 	}
 }
 
-// keymap returns the bindings, oldest first: the newest of a key wins.
+// keymap returns the bindings that may fire where the focus is, oldest first: the newest of a key wins.
 func (t *Tree) keymap() []driver.KeyBinding {
 	out := make([]driver.KeyBinding, 0, len(t.keys))
 	for _, b := range t.keys {
-		out = append(out, b.KeyBinding)
+		if t.focusWithin(b.within) {
+			out = append(out, b.KeyBinding)
+		}
 	}
 	return out
 }
@@ -106,7 +155,8 @@ func (t *Tree) keymap() []driver.KeyBinding {
 func (t *Tree) pressKey(key string) {
 	key = driver.NormalizeKey(key)
 	for i := len(t.keys) - 1; i >= 0; i-- {
-		if b := t.keys[i]; b.Key == key && !b.owner.disposed {
+		// A confined binding is checked again, as the platform may have matched the press by a keymap the focus has since left.
+		if b := t.keys[i]; b.Key == key && !b.owner.disposed && t.focusWithin(b.within) {
 			t.within(b.owner, b.fn)
 			return
 		}

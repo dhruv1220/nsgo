@@ -22,7 +22,7 @@ func init() {
 		"Bar": plot.Bar{}, "Rule": plot.Rule{}, "Dot": plot.Dot{}, "Cell": plot.Cell{}, "Pie": plot.Pie{}, "Arc": plot.Arc{},
 		"RadialLine": plot.RadialLine{}, "RadialGrid": plot.RadialGrid{}, "PlotAxis": plot.Axis{}, "PlotLabel": plot.Label{},
 		"Sankey": plot.Sankey{}, "Treemap": plot.Treemap{},
-	}, append(append(slices.Clone(enumOptions), plotEnums...), plotProps...)...)
+	}, slices.Concat(enumOptions, plotEnums, plotProps, []Option{SandboxSafe()})...)
 	// A plot's scales as NSH declares them; plotScale and plotColors read
 	// them.
 	Shape("Scale", `export type Scale = { type: "point"; reverse?: boolean } | { type: "linear"; domain?: [number, number]; reverse?: boolean } | { type: "band"; domain?: string[]; paddingInner?: number; paddingOuter?: number; maxBandWidth?: number; bandCount?: number; groupPadding?: number; reverse?: boolean };`,

@@ -22,7 +22,7 @@ func init() {
 		tsx.Preset("Under", look),
 		tsx.Event("OnChange", "value"), tsx.Event("OnSelectionChange", "selections"),
 		tsx.Event("OnSearchChange", "result"), tsx.Event("OnLineNumberPress", "line"),
-		tsx.Event("OnFindWithSelection", "query"), tsx.Event("OnFoldChange", "folds"),
+		tsx.Event("OnFindWithSelection", "query"), tsx.Event("OnFoldChange", "folds"), tsx.SandboxSafe(),
 	)
 	tsx.Required[editor.CompletionItem]("Label")
 	tsx.Required[editor.Diagnostic]("Message")

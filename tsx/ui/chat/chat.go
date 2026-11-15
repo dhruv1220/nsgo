@@ -18,7 +18,7 @@ func init() {
 	tsx.RegisterClass(module, "ConversationState", tsx.Class[chat.ConversationState]{
 		New:     chat.NewConversationState,
 		Getters: []string{"AtLatest", "ComposerHeight"},
-	})
+	}, tsx.SandboxSafe())
 	tsx.Optional[chat.Activity]("Status", "MaxHeight")
 	tsx.Optional[chat.Option]("Image")
 	tsx.Optional[chat.Chip]("Image")
@@ -34,10 +34,10 @@ func init() {
 		tsx.Enum(map[string]chat.Status{"running": chat.Running, "waiting": chat.Waiting, "completed": chat.Completed,
 			"failed": chat.Failed, "cancelled": chat.Cancelled}),
 		tsx.Event("OnChange", "id"), tsx.Event("OnDraftChange", "text"), tsx.Event("OnDropFiles", "uris"),
-		tsx.Event("OnOpenChange", "open"),
+		tsx.Event("OnOpenChange", "open"), tsx.SandboxSafe(),
 	)
 	// What these show as text is not their accessibility label.
 	tsx.Register(module, map[string]core.Node{"Attachment": chat.Attachment{}, "ResultSummary": chat.ResultSummary{}},
 		tsx.Rename("Label", "label"), tsx.Rename("ActionLabel", "actionLabel"), tsx.Rename("MoreLabel", "moreLabel"),
-		tsx.Rename("LessLabel", "lessLabel"), tsx.Event("OnSelect", "id"))
+		tsx.Rename("LessLabel", "lessLabel"), tsx.Event("OnSelect", "id"), tsx.SandboxSafe())
 }

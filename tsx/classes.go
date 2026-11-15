@@ -47,15 +47,9 @@ type Class[T any] struct {
 	Statics map[string]any
 }
 
-// RegisterClass makes *T the class name, importable from module in TSX:
-// its exported methods are the class's methods, under their names in
-// lower camel case, but for its getters and their setters, and Close,
-// which dispose() calls. JS holds a *T for each instance, the same
-// object while it lives, and dispose() lets it go, after which the
-// object throws. A member's or function's parameter of type *T takes an
-// instance and a result of type *T gives one. Register classes before an
-// app starts.
-func RegisterClass[T any](module, name string, c Class[T]) {
+// RegisterClass makes *T the class name, importable from module in TSX: its exported methods are the class's methods, under their names in lower camel case, but for its getters and their setters, and Close, which dispose() calls. JS holds a *T for each instance, the same object while it lives, and dispose() lets it go, after which the object throws. A member's or function's parameter of type *T takes an instance and a result of type *T gives one. Sandboxed bundles import it, with its statics, only with SandboxSafe, the one option it takes, or as Sandbox.Modules names it. Register classes as Register does components.
+func RegisterClass[T any](module, name string, c Class[T], opts ...Option) {
+	checkRegistration("RegisterClass", module)
 	t := reflect.TypeFor[*T]()
 	def := &classDef{name: name, module: module, t: t, getters: map[string]reflect.Method{}, setters: map[string]reflect.Method{},
 		key: func(p any) any { return weak.Make(p.(*T)) }}
@@ -98,6 +92,7 @@ func RegisterClass[T any](module, name string, c Class[T]) {
 	classes[t] = def
 	registeredClasses[module] = append(registeredClasses[module], def)
 	registered[module] = append(registered[module], export{name, func(r *runtime) js.Value { return r.class(def).ctor }})
+	markSandboxSafe(module, name, newSpec(opts).sandboxSafe)
 }
 
 // classDef is a registered class.

@@ -1203,6 +1203,10 @@ func (t *Tree) focusReported(n *node, focused bool) {
 		}
 		t.focus, t.focusMoved = n, true
 		t.changed = true
+		// The keymap holds the confined bindings only while the focus is within their owner.
+		if t.confinedKeys() {
+			t.keysChanged = true
+		}
 	} else if n != nil && (t.focusVisibleOn == n) != t.focusVisible {
 		t.focusMoved, t.changed = true, true
 	}
@@ -1335,6 +1339,9 @@ func (t *Tree) updateFocusWithin() {
 	t.focusMoved = false
 	if t.focus != nil && t.focus.deleted {
 		t.focus = nil
+		if t.confinedKeys() {
+			t.keysChanged = true
+		}
 	}
 	old := t.focusChain
 	var chain []*node

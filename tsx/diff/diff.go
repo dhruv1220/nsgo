@@ -24,7 +24,7 @@ func Options() []tsx.Option {
 }
 
 func init() {
-	tsx.Register("nsgo/base", map[string]core.Node{"DiffView": diff.DiffView{}}, Options()...)
+	tsx.Register("nsgo/base", map[string]core.Node{"DiffView": diff.DiffView{}}, append(Options(), tsx.SandboxSafe())...)
 	tsx.Required[diff.Change]("OldValue", "NewValue")
 	// NSH's lines count from 0, Go's from 1.
 	tsx.Shape("DiffHunk", `export interface DiffHunk { index: number; oldStart: number; oldLines: number; newStart: number; newLines: number; file: number }`,

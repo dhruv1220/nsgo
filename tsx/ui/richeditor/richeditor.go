@@ -17,5 +17,5 @@ type View trich.View
 func (v View) Render(*core.Scope) core.Node { return uirich.View(trich.View(v).Base()) }
 
 func init() {
-	tsx.Register("nsgo/ui", map[string]core.Node{"RichEditor": View{}}, tsx.Event("OnChange", "revision"))
+	tsx.Register("nsgo/ui", map[string]core.Node{"RichEditor": View{}}, tsx.Event("OnChange", "revision"), tsx.SandboxSafe())
 }

@@ -2,9 +2,13 @@ package tsx_test
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -17,6 +21,14 @@ import (
 	"github.com/nsgo-dev/nsgo/tsx"
 	"github.com/nsgo-dev/nsgo/tsx/bundler"
 	"github.com/nsgo-dev/nsgo/tsx/pkg"
+
+	// NSGo's packages that register into its modules, for the sandbox's surface.
+	_ "github.com/nsgo-dev/nsgo/tsx/diff"
+	_ "github.com/nsgo-dev/nsgo/tsx/editor"
+	_ "github.com/nsgo-dev/nsgo/tsx/terminal"
+	_ "github.com/nsgo-dev/nsgo/tsx/ui"
+	_ "github.com/nsgo-dev/nsgo/tsx/ui/chat"
+	_ "github.com/nsgo-dev/nsgo/tsx/ui/richeditor"
 )
 
 // verified compiles source and signs it with caps as com.example.plugin,
@@ -158,24 +170,151 @@ func TestGrantNarrowsCapabilities(t *testing.T) {
 	}
 }
 
+type sandboxClass struct{}
+
 func init() {
-	tsx.Register("sandboxtest", map[string]core.Node{"Marker": core.Text{}})
+	tsx.Register("sandboxtest", map[string]core.Node{"Marker": core.Text{}}, tsx.SandboxSafe())
 	tsx.RegisterFunctions("nsgo/base", map[string]any{"sandboxSecret": func() string { return "secret" }})
+	// What NSGo's modules hold without SandboxSafe: a component, a class and a static of a component sandboxes import.
+	tsx.Register("nsgo/base", map[string]core.Node{"SandboxHidden": core.Text{}})
+	tsx.RegisterClass("nsgo/base", "SandboxHiddenClass", tsx.Class[sandboxClass]{New: func() *sandboxClass { return &sandboxClass{} }})
+	tsx.RegisterStatics("nsgo/base", "Button", map[string]any{"sandboxHidden": func() string { return "secret" }})
 }
 
 func TestSandboxImportsOnlyWhatItIsGiven(t *testing.T) {
 	attempts := `
 	base: async () => typeof (await import("nsgo/base")).Button,
 	fn: async () => typeof (await import("nsgo/base")).sandboxSecret,
+	component: async () => typeof (await import("nsgo/base")).SandboxHidden,
+	class: async () => typeof (await import("nsgo/base")).SandboxHiddenClass,
+	static: async () => typeof (await import("nsgo/base")).Button.sandboxHidden,
+	theme: async () => typeof (await import("nsgo/base")).Scrollbar.setTheme,
 	app: async () => typeof (await import("sandboxtest")).Marker,
 	`
 	got := results(t, attempts, pkg.Capabilities{}, tsx.Sandbox{})
-	if got["base"] != "function" || got["fn"] != "undefined" || !strings.Contains(got["app"], "not given to this sandbox") {
+	for _, k := range []string{"fn", "component", "class", "static", "theme"} {
+		if got[k] != "undefined" {
+			t.Errorf("by default, %s is %s", k, got[k])
+		}
+	}
+	if got["base"] != "function" || !strings.Contains(got["app"], "not given to this sandbox") {
 		t.Fatalf("by default: %v", got)
 	}
-	got = results(t, attempts, pkg.Capabilities{}, tsx.Sandbox{Modules: []string{"nsgo/base.sandboxSecret", "sandboxtest"}})
-	if got["fn"] != "function" || got["app"] != "function" {
-		t.Fatalf("given: %v", got)
+	got = results(t, attempts, pkg.Capabilities{}, tsx.Sandbox{Modules: []string{"nsgo/base.sandboxSecret", "nsgo/base.SandboxHidden",
+		"nsgo/base.SandboxHiddenClass", "nsgo/base.Button.sandboxHidden", "sandboxtest"}})
+	for _, k := range []string{"fn", "component", "class", "static", "app"} {
+		if got[k] != "function" {
+			t.Errorf("given, %s is %s", k, got[k])
+		}
+	}
+	if got["theme"] != "undefined" {
+		t.Errorf("given others, setTheme is %s", got["theme"])
+	}
+}
+
+// outsideNSGo is what registering into nsgo/base panicked with when the caller was not NSGo's: reflect's call, before any app started.
+var outsideNSGo = func() (msg string) {
+	defer func() { msg = fmt.Sprint(recover()) }()
+	reflect.ValueOf(tsx.Register).Call([]reflect.Value{reflect.ValueOf("nsgo/base"),
+		reflect.ValueOf(map[string]core.Node{"Outsider": core.Text{}}), reflect.ValueOf(tsx.SandboxSafe())})
+	return ""
+}()
+
+func TestRegistryIsNSGosAndSetBeforeApps(t *testing.T) {
+	if !strings.Contains(outsideNSGo, "the nsgo modules are NSGo's own") {
+		t.Errorf("a caller outside NSGo registered into nsgo/base: %q", outsideNSGo)
+	}
+	nsgotest.Start(t, func(cx *core.Scope) core.Node { return tsx.App("late.js", `require("nsgo");`)(cx) })
+	for name, register := range map[string]func(){
+		"Register":          func() { tsx.Register("app/late", map[string]core.Node{"Late": core.Text{}}) },
+		"RegisterClass":     func() { tsx.RegisterClass("app/late", "Late", tsx.Class[sandboxClass]{}) },
+		"RegisterStatics":   func() { tsx.RegisterStatics("app/late", "Late", map[string]any{"f": func() {}}) },
+		"RegisterFunctions": func() { tsx.RegisterFunctions("app/late", map[string]any{"f": func() {}}) },
+	} {
+		func() {
+			defer func() {
+				if msg := fmt.Sprint(recover()); !strings.Contains(msg, "after an app started") {
+					t.Errorf("%s after an app started: %q", name, msg)
+				}
+			}()
+			register()
+		}()
+	}
+}
+
+// What a default Sandbox imports, every export of SandboxModules and the statics of those that are functions, with all of NSGo's packages that register into them linked, is testdata/sandbox-surface.txt, so whatever widens it is a reviewed change; NSGO_UPDATE_SANDBOX_SURFACE writes it anew.
+func TestSandboxSurface(t *testing.T) {
+	modules, _ := json.Marshal(tsx.SandboxModules)
+	p := verified(t, `const modules = `+string(modules)+`;
+export function surface() {
+	const out = [];
+	for (const name of modules) {
+		const m = require(name);
+		for (const k of Object.keys(m).sort()) {
+			out.push(name + "." + k);
+			if (typeof m[k] === "function") for (const s of Object.keys(m[k]).sort()) out.push(name + "." + k + "." + s);
+		}
+	}
+	return out.join("\n") + "\n";
+}`, pkg.Capabilities{})
+	var plugin *tsx.Plugin
+	var loadErr error
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		plugin, loadErr = tsx.Load(cx, p, tsx.Sandbox{})
+		return core.View{}
+	})
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	var got any
+	var callErr error
+	app.Post(func() { plugin.Call("surface", nil, func(v any, err error) { got, callErr = v, err }) })
+	app.WaitUntil(5*time.Second, func() bool { return got != nil || callErr != nil })
+	if callErr != nil {
+		t.Fatal(callErr)
+	}
+	const name = "testdata/sandbox-surface.txt"
+	if os.Getenv("NSGO_UPDATE_SANDBOX_SURFACE") != "" {
+		if err := os.WriteFile(name, []byte(got.(string)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := testdata.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(want) {
+		t.Errorf("a default Sandbox imports other than %s; review the change and write it anew with NSGO_UPDATE_SANDBOX_SURFACE=1:\n%s", name, got)
+	}
+}
+
+// A plugin's key bindings, when: "always" included, and back handlers fire only while the focus is in what it shows: the host's field keeps the host's shortcut and back.
+func TestSandboxKeysAndBackStayInItsView(t *testing.T) {
+	p := verified(t, `import { mount, signal, keymap, View, Text } from "nsgo";
+import { Input } from "nsgo/base";
+import { BackHandler } from "nsgo/mobile";
+const log = signal("");
+keymap.bind("mod+s", () => log.set(log() + "save;"), { when: "always" });
+BackHandler.onBackPress(() => { log.set(log() + "back;"); return true; });
+mount(() => <View><Input testID="plugin-field" /><Text testID="plugin-log">{() => "plugin " + log()}</Text></View>);`, pkg.Capabilities{})
+	var host []string
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		cx.OnKey("mod+s", func() { host = append(host, "save") })
+		cx.OnBackPress(func() bool { host = append(host, "back"); return true })
+		return core.View{Children: []core.Node{core.Input{TestID: "host-field"}, tsx.View{Package: p}}}
+	})
+	app.Focus("id:host-field")
+	app.Key("mod+s")
+	app.Back()
+	if got := app.Find("id:plugin-log").Text; got != "plugin " || !slices.Equal(host, []string{"save", "back"}) {
+		t.Fatalf("focused in the host's field: the plugin's log %q, the host's %q", got, host)
+	}
+	app.Focus("id:plugin-field")
+	app.Key("mod+s")
+	app.Back()
+	if got := app.Find("id:plugin-log").Text; got != "plugin save;back;" || len(host) != 2 {
+		t.Fatalf("focused in the plugin's field: the plugin's log %q, the host's %q", got, host)
 	}
 }
 

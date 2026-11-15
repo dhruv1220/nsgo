@@ -26,7 +26,7 @@ func init() {
 	Fields[base.CalendarEntry](map[string]string{})
 	Fields[base.TimeFieldSegmentEntry](map[string]string{})
 	options := func(extra ...Option) []Option {
-		return append(append(append([]Option(nil), enumOptions...), dateEnums...), extra...)
+		return append(append(append([]Option{SandboxSafe()}, enumOptions...), dateEnums...), extra...)
 	}
 	openChange := Event("OnOpenChange", "open", "reason")
 	Register("nsgo/base", map[string]core.Node{"MenuItem": base.MenuItem{}}, options(

@@ -103,12 +103,12 @@ func (e *Editor) validate() error {
 
 func init() {
 	const module = "nsgo/base"
-	tsx.Register(module, map[string]core.Node{"RichEditor": View{}}, tsx.Event("OnChange", "revision"))
-	tsx.RegisterClass(module, "RichEditorSession", tsx.Class[Editor]{Getters: []string{"Revision", "Editable", "IsFocused", "Selection", "Size"}})
-	tsx.RegisterClass(module, "RichCommand", tsx.Class[Command]{})
+	tsx.Register(module, map[string]core.Node{"RichEditor": View{}}, tsx.Event("OnChange", "revision"), tsx.SandboxSafe())
+	tsx.RegisterClass(module, "RichEditorSession", tsx.Class[Editor]{Getters: []string{"Revision", "Editable", "IsFocused", "Selection", "Size"}}, tsx.SandboxSafe())
+	tsx.RegisterClass(module, "RichCommand", tsx.Class[Command]{}, tsx.SandboxSafe())
 	tsx.Optional[RichExtensionSpec]("Priority")
 	tsx.Optional[RichDecoration]("Side")
-	tsx.RegisterClass(module, "RichExtension", tsx.Class[Extension]{Getters: []string{"Name", "Options"}})
+	tsx.RegisterClass(module, "RichExtension", tsx.Class[Extension]{Getters: []string{"Name", "Options"}}, tsx.SandboxSafe())
 	funcs := map[string]any{
 		"createRichEditor": createRichEditor, "defineExtension": defineExtension,
 		"StarterKit": StarterKit, "TableKit": TableKit, "Mention": Mention, "CharacterCount": CharacterCount,
