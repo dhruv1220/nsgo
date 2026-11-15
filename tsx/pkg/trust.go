@@ -71,7 +71,7 @@ func (t *Trust) AddRoot(root ed25519.PublicKey) {
 	}
 }
 
-// RequireFreshRevocations has Verify and Accept refuse every package, with ErrExpired, while a trusted root's newest revocation list has passed its NotAfter, until UpdateRevocations takes a newer one. Without it, Verify reports such roots in Package.ExpiredRevocations.
+// RequireFreshRevocations has Verify and Accept refuse every package, with ErrExpired, while a trusted root's newest revocation list has passed its NotAfter, until UpdateRevocations takes a newer one. A root the Trust holds no list of yet is not refused, so a host that requires fresh lists takes each root's list before it verifies. Without it, Verify reports such roots in Package.ExpiredRevocations.
 func (t *Trust) RequireFreshRevocations(require bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
