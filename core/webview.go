@@ -155,7 +155,7 @@ func (t *Tree) mountWebView(cx *Scope, parent *node, w WebView) {
 	}
 }
 
-// messageOrigins returns origins as WebOrigin writes them, leaving out, with a log, what is no origin, so that "example.com" allows nothing rather than every page without an origin.
+// messageOrigins returns origins as WebOrigin writes them, leaving out, with a log, what is no origin, so that "example.com" does not allow every page without an origin, as WebOrigin's "null" would. A list left with none keeps the default, the source's origin.
 func messageOrigins(origins []string) []string {
 	var out []string
 	for _, o := range origins {

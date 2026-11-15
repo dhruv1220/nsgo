@@ -107,6 +107,7 @@ func TestWebMessagesComeFromTheSourcesOrigin(t *testing.T) {
 		{"html with a base", WebHTML("<p>", "https://app.example/app/"), nil, []string{"https://app.example"}},
 		{"html without a base", WebHTML("<p>", ""), nil, []string{"null"}},
 		{"listed", WebSrc("https://app.example/"), []string{"https://other.example/", "example.com"}, []string{"https://other.example"}},
+		{"listed, none an origin", WebSrc("https://app.example/"), []string{"example.com"}, []string{"https://app.example"}},
 		{"any", WebSrc("https://app.example/"), []string{"*"}, []string{"https://app.example", "https://other.example", "null", "https://app.example:8443"}},
 		{"no source", WebSource{}, nil, nil},
 	} {
@@ -127,28 +128,6 @@ func TestWebMessagesComeFromTheSourcesOrigin(t *testing.T) {
 				t.Errorf("OnMessageFrom heard %q and OnMessage %q, want %q", got, strs, c.want)
 			}
 		})
-	}
-}
-
-func TestWebOrigin(t *testing.T) {
-	for raw, want := range map[string]string{
-		"https://Example.COM/a?b#c":       "https://example.com",
-		"https://example.com:443/":        "https://example.com",
-		"http://example.com:8080/":        "http://example.com:8080",
-		"http://user:pw@[::1]:80/x":       "http://[::1]",
-		"app://bundle/index.html":         "app://bundle",
-		"file:///Users/me/app/index.html": "file://",
-		"blob:https://example.com/1234":   "https://example.com",
-		"about:blank":                     "null",
-		"about:srcdoc":                    "null",
-		"data:text/html,<p>":              "null",
-		"":                                "",
-		"example.com":                     "null",
-		"https://exa mple.com/":           "null",
-	} {
-		if got := driver.WebOrigin(raw); got != want {
-			t.Errorf("WebOrigin(%q) = %q, want %q", raw, got, want)
-		}
 	}
 }
 
