@@ -1,6 +1,7 @@
 package nsgotest
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 	"time"
@@ -345,18 +346,23 @@ func (a *App) Navigate(selector string, nav driver.WebNavigation) {
 	}
 }
 
-// PostMessage reports that the page the web view selector matches loaded posted data, from its top frame and its source's origin.
+// PostMessage reports that the page the web view selector matches loaded posted data, from its top frame: at its Src, its HTML's BaseURL, or about:blank for HTML without one.
 func (a *App) PostMessage(selector, data string) {
 	a.t.Helper()
-	a.PostMessageFrom(selector, a.Find(selector).Web.Source.Origin(), true, data)
+	src := a.Find(selector).Web.Source
+	page := cmp.Or(src.BaseURL, "about:blank")
+	if src.HTML == "" {
+		page = src.Src
+	}
+	a.PostMessageFrom(selector, page, true, data)
 }
 
-// PostMessageFrom reports that a frame of origin, the page's top one when mainFrame is set, posted data in the web view selector matches, as a page the view navigated to or a frame within it would.
-func (a *App) PostMessageFrom(selector, origin string, mainFrame bool, data string) {
+// PostMessageFrom reports that a frame at url, the page's top one when mainFrame is set, posted data in the web view selector matches, as a page the view navigated to or a frame within it would, from url's origin.
+func (a *App) PostMessageFrom(selector, url string, mainFrame bool, data string) {
 	a.t.Helper()
 	v := a.Find(selector)
 	if v.Events.Has(driver.EventMessage) {
-		a.dispatch(driver.Event{Kind: driver.EventMessage, ID: v.ID, Text: data, Origin: origin, MainFrame: mainFrame})
+		a.dispatch(driver.Event{Kind: driver.EventMessage, ID: v.ID, Text: data, Origin: driver.WebOrigin(url), URL: url, MainFrame: mainFrame})
 	}
 }
 

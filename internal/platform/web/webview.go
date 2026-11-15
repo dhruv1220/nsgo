@@ -3,6 +3,7 @@
 package web
 
 import (
+	"cmp"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -62,9 +63,10 @@ func (s *surface) webBridged(v *view, e js.Value) {
 	e.Call("stopImmediatePropagation")
 	w.closePort()
 	w.port = port
-	origin := w.config.Source.Origin()
+	// The page is the srcdoc, at its base URL when it has one.
+	origin, page := w.config.Source.Origin(), cmp.Or(w.config.Source.BaseURL, "about:srcdoc")
 	w.portFn = js.FuncOf(func(_ js.Value, args []js.Value) any {
-		s.send(v, driver.Event{Kind: driver.EventMessage, Text: args[0].Get("data").String(), Origin: origin, MainFrame: true})
+		s.send(v, driver.Event{Kind: driver.EventMessage, Text: args[0].Get("data").String(), Origin: origin, URL: page, MainFrame: true})
 		return nil
 	})
 	w.port.Set("onmessage", w.portFn)

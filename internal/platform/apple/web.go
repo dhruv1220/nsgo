@@ -96,7 +96,7 @@ func loadWebKit() {
 					body := message.Send(sel("body"))
 					frame := message.Send(sel("frameInfo"))
 					w.Dispatch(driver.Event{Kind: driver.EventMessage, Text: GoString(body.Send(sel("description"))),
-						Origin: frameOrigin(frame), MainFrame: objc.Send[bool](frame, sel("isMainFrame"))})
+						Origin: frameOrigin(frame), URL: frameURL(frame), MainFrame: objc.Send[bool](frame, sel("isMainFrame"))})
 				}
 			}},
 			{Cmd: sel("webView:startURLSchemeTask:"), Fn: func(self objc.ID, _ objc.SEL, _, task objc.ID) {
@@ -474,7 +474,7 @@ func frameOrigin(frame objc.ID) string {
 	origin := frame.Send(sel("securityOrigin"))
 	scheme := GoString(origin.Send(sel("protocol")))
 	if scheme == "" {
-		return driver.WebOrigin(GoString(frame.Send(sel("request")).Send(sel("URL")).Send(sel("absoluteString"))))
+		return driver.WebOrigin(frameURL(frame))
 	}
 	host := GoString(origin.Send(sel("host")))
 	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
@@ -484,6 +484,11 @@ func frameOrigin(frame objc.ID) string {
 		host += ":" + strconv.Itoa(port)
 	}
 	return driver.WebOrigin(scheme + "://" + host + "/")
+}
+
+// frameURL is the URL of a WKFrameInfo's document.
+func frameURL(frame objc.ID) string {
+	return GoString(frame.Send(sel("request")).Send(sel("URL")).Send(sel("absoluteString")))
 }
 
 func nsURL(s string) objc.ID {

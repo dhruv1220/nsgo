@@ -23,3 +23,28 @@ func TestWebOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestWebSourceShows(t *testing.T) {
+	for _, c := range []struct {
+		source WebSource
+		url    string
+		want   bool
+	}{
+		{WebSource{HTML: "<p>"}, "about:blank", true},
+		{WebSource{HTML: "<p>"}, "about:blank#top", true},
+		{WebSource{HTML: "<p>"}, "about:srcdoc", true},
+		{WebSource{HTML: "<p>"}, "data:text/html,<p>", false},
+		{WebSource{HTML: "<p>"}, "blob:null/1234", false},
+		{WebSource{HTML: "<p>"}, "", false},
+		{WebSource{HTML: "<p>", BaseURL: "app://bundle/"}, "app://bundle/", true},
+		{WebSource{HTML: "<p>", BaseURL: "app://bundle/"}, "about:blank", false},
+		{WebSource{Src: "data:text/html,<p>hi</p>"}, "data:text/html,%3Cp%3Ehi%3C/p%3E", true},
+		{WebSource{Src: "data:text/html,<p>hi</p>"}, "data:text/html,<p>evil</p>", false},
+		{WebSource{Src: "data:text/html,<p>hi</p>"}, "about:blank", false},
+		{WebSource{}, "about:blank", false},
+	} {
+		if got := c.source.Shows(c.url); got != c.want {
+			t.Errorf("%+v.Shows(%q) = %v, want %v", c.source, c.url, got, c.want)
+		}
+	}
+}

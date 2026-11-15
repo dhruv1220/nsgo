@@ -310,7 +310,7 @@ func (s *surface) serve(app engine.App, opts Options, test *testOpen) {
 				}
 			case driver.EventMessage:
 				// WebNode takes only the top frame's, with the URL of its page.
-				ev.Origin, ev.MainFrame = driver.WebOrigin(data), true
+				ev.Origin, ev.URL, ev.MainFrame = driver.WebOrigin(data), data, true
 			}
 			if ev.Kind == driver.EventWheel {
 				// A wheel's delta comes as the velocity, and whether a

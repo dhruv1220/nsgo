@@ -7,6 +7,7 @@ import (
 	"log"
 	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
@@ -56,7 +57,7 @@ type WebView struct {
 	OnNavigationStateChange func(WebNavigation)
 	// OnError receives a *WebError.
 	OnError func(err error)
-	// MessageOrigins are the origins whose pages reach OnMessage and OnMessageFrom, written as WebMessage.Origin is ("https://example.com"), or "*" for any. Without them only pages of the source's own origin do: Src's, or for HTML BaseURL's, and "null" for HTML without one, which every page without an origin of its own shares, such as about:blank. Only the page posts, never a frame in it, on every platform; a frame reaches the app through the page, with window.parent.postMessage, whose event tells the page the frame's origin.
+	// MessageOrigins are the origins whose pages reach OnMessage and OnMessageFrom, written as WebMessage.Origin is ("https://example.com"), or "*" for any. Without them only pages of the source's own origin do: Src's, or for HTML BaseURL's, and "null" for HTML without one. "null" is the origin of every page without one of its own, a data: URL a frame sent the view to as much as the source's HTML, so "null", by default or listed, lets in only the source's page; "*" lets in every page. Only the page posts, never a frame in it, on every platform; a frame reaches the app through the page, with window.parent.postMessage, whose event tells the page the frame's origin.
 	MessageOrigins []string
 	// OnMessage receives what the page posted, as a string, and OnMessageFrom with the origin of the page that posted it.
 	OnMessage     func(data string)
@@ -176,15 +177,17 @@ func (wn *webNode) allows(ev driver.Event) bool {
 	if !ev.MainFrame || ev.Origin == "" {
 		return false
 	}
+	if slices.Contains(wn.origins, "*") {
+		return true
+	}
+	// Every page without an origin of its own has "null", the source's HTML without a base URL as much as a data: URL a frame sent the view to, so the page's URL tells them apart.
+	if ev.Origin == "null" && !wn.sent.Source.Shows(ev.URL) {
+		return false
+	}
 	if wn.origins == nil {
 		return ev.Origin == wn.sent.Source.Origin()
 	}
-	for _, o := range wn.origins {
-		if o == "*" || o == ev.Origin {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(wn.origins, ev.Origin)
 }
 
 // restrictWeb holds c to the Access of n's owner: a source it refuses

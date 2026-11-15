@@ -76,26 +76,27 @@ func TestWebViewConfiguresLoadsAndReports(t *testing.T) {
 
 	id := h.find("web").id
 	h.tree.Dispatch(driver.Event{Kind: driver.EventLoad, ID: id, Navigation: &WebNavigation{URL: "about:srcdoc", CanGoBack: true}})
-	h.tree.Dispatch(driver.Event{Kind: driver.EventMessage, ID: id, Text: "pong", Origin: "null", MainFrame: true})
+	h.tree.Dispatch(driver.Event{Kind: driver.EventMessage, ID: id, Text: "pong", Origin: "null", URL: "about:srcdoc", MainFrame: true})
 	if len(loaded) != 1 || !loaded[0].CanGoBack || len(messages) != 1 || messages[0] != "pong" {
 		t.Fatalf("loaded %v, messages %v", loaded, messages)
 	}
 }
 
-// TestWebMessagesComeFromTheSourcesOrigin posts from the loaded page, from a frame within it and from pages of other origins, as backends report them, and checks that only the page reaches the app by default, the origins MessageOrigins lists when it is set, and never a frame.
+// TestWebMessagesComeFromTheSourcesOrigin posts from the loaded page, from a frame within it and from pages of other origins, as backends report them, and checks that only the page reaches the app by default, the origins MessageOrigins lists when it is set, and never a frame; of the pages without an origin of their own ("null") only the source's.
 func TestWebMessagesComeFromTheSourcesOrigin(t *testing.T) {
 	type post struct {
-		origin    string
+		url       string
 		mainFrame bool
 	}
 	posts := []post{
-		{"https://app.example", true},
-		{"https://app.example", false},  // a frame of the page's own origin
-		{"https://ads.example", false},  // a third party's frame
-		{"https://other.example", true}, // a page the view navigated to
-		{"null", true},                  // about:blank, a data: URL
-		{"", true},                      // a backend that told no origin
-		{"https://app.example:8443", true},
+		{"https://app.example/index.html", true},
+		{"https://app.example/frame.html", false}, // a frame of the page's own origin
+		{"https://ads.example/", false},           // a third party's frame
+		{"https://other.example/", true},          // a page the view navigated to
+		{"about:blank", true},                     // HTML without a base URL
+		{"data:text/html,<p>", true},              // a data: URL a frame sent the view to
+		{"", true},                                // a backend that told no origin
+		{"https://app.example:8443/", true},
 	}
 	for _, c := range []struct {
 		name    string
@@ -103,12 +104,15 @@ func TestWebMessagesComeFromTheSourcesOrigin(t *testing.T) {
 		origins []string
 		want    []string
 	}{
-		{"url", WebSrc("https://APP.example:443/index.html"), nil, []string{"https://app.example"}},
-		{"html with a base", WebHTML("<p>", "https://app.example/app/"), nil, []string{"https://app.example"}},
-		{"html without a base", WebHTML("<p>", ""), nil, []string{"null"}},
-		{"listed", WebSrc("https://app.example/"), []string{"https://other.example/", "example.com"}, []string{"https://other.example"}},
-		{"listed, none an origin", WebSrc("https://app.example/"), []string{"example.com"}, []string{"https://app.example"}},
-		{"any", WebSrc("https://app.example/"), []string{"*"}, []string{"https://app.example", "https://other.example", "null", "https://app.example:8443"}},
+		{"url", WebSrc("https://APP.example:443/index.html"), nil, []string{"https://app.example/index.html"}},
+		{"html with a base", WebHTML("<p>", "https://app.example/app/"), nil, []string{"https://app.example/index.html"}},
+		{"html without a base", WebHTML("<p>", ""), nil, []string{"about:blank"}},
+		{"html without a base, listed", WebHTML("<p>", ""), []string{"null", "https://other.example"}, []string{"https://other.example/", "about:blank"}},
+		{"data: url", WebSrc("data:text/html,<p>"), nil, []string{"data:text/html,<p>"}},
+		{"listed", WebSrc("https://app.example/"), []string{"https://other.example/", "example.com"}, []string{"https://other.example/"}},
+		{"listed null", WebSrc("https://app.example/"), []string{"null"}, nil},
+		{"listed, none an origin", WebSrc("https://app.example/"), []string{"example.com"}, []string{"https://app.example/index.html"}},
+		{"any", WebSrc("https://app.example/"), []string{"*"}, []string{"https://app.example/index.html", "https://other.example/", "about:blank", "data:text/html,<p>", "https://app.example:8443/"}},
 		{"no source", WebSource{}, nil, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -116,13 +120,18 @@ func TestWebMessagesComeFromTheSourcesOrigin(t *testing.T) {
 			var got []string
 			h := newHost(t, Size{Width: 100, Height: 100}, func(*Scope) Node {
 				return WebView{Source: c.source, MessageOrigins: c.origins, TestID: "web",
-					OnMessage:     func(d string) { strs = append(strs, d) },
-					OnMessageFrom: func(m WebMessage) { got = append(got, m.Origin) }}
+					OnMessage: func(d string) { strs = append(strs, d) },
+					OnMessageFrom: func(m WebMessage) {
+						if m.Origin != driver.WebOrigin(m.Data) {
+							t.Errorf("%s posted as %s", m.Data, m.Origin)
+						}
+						got = append(got, m.Data)
+					}}
 			})
 			h.commit()
 			id := h.find("web").id
 			for _, p := range posts {
-				h.tree.Dispatch(driver.Event{Kind: driver.EventMessage, ID: id, Text: p.origin, Origin: p.origin, MainFrame: p.mainFrame})
+				h.tree.Dispatch(driver.Event{Kind: driver.EventMessage, ID: id, Text: p.url, Origin: driver.WebOrigin(p.url), URL: p.url, MainFrame: p.mainFrame})
 			}
 			if !slices.Equal(got, c.want) || !slices.Equal(strs, c.want) {
 				t.Errorf("OnMessageFrom heard %q and OnMessage %q, want %q", got, strs, c.want)

@@ -465,7 +465,12 @@ func (wv *webView) listen() {
 			data = takeString(p)
 		}
 		// CoreWebView2's WebMessageReceived is the top document's alone; its frames' come through CoreWebView2Frame, which the host does not follow.
-		wv.report(driver.Event{Kind: driver.EventMessage, Text: data, Origin: driver.WebOrigin(a.getString(messageGetSource)), MainFrame: true})
+		page := a.getString(messageGetSource)
+		// NavigateToString's page may have a data: URL. Chromium refuses a page's own navigations of the top frame to data: URLs (BlockedSchemeNavigationThrottle), so a data: page of HTML without a base URL is that page, which other platforms show at about:blank.
+		if src := wv.applied.Source; src.HTML != "" && src.BaseURL == "" && strings.HasPrefix(page, "data:") {
+			page = "about:blank"
+		}
+		wv.report(driver.Event{Kind: driver.EventMessage, Text: data, Origin: driver.WebOrigin(page), URL: page, MainFrame: true})
 	}))
 }
 

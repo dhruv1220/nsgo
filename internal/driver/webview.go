@@ -28,6 +28,32 @@ func (s WebSource) Origin() string {
 	return ""
 }
 
+// Shows reports whether rawURL is the page s loads, which tells apart the pages of an opaque origin ("null"), as every one of them has the same: HTML without a base URL is at about:blank (about:srcdoc on the web), other HTML at BaseURL and a Src at itself, fragments aside. A page the view went to, such as a data: URL a frame sent it to, is not.
+func (s WebSource) Shows(rawURL string) bool {
+	page, _, _ := strings.Cut(rawURL, "#")
+	switch {
+	case s.HTML != "" && s.BaseURL == "":
+		u, err := url.Parse(page)
+		return err == nil && strings.EqualFold(u.Scheme, "about") && (u.Opaque == "blank" || u.Opaque == "srcdoc")
+	case s.HTML != "":
+		return sameURL(page, s.BaseURL)
+	case s.Src != "":
+		return sameURL(page, s.Src)
+	}
+	return false
+}
+
+// sameURL reports whether page and want, a source's URL, are one URL, as platforms escape a data: URL's characters their own ways.
+func sameURL(page, want string) bool {
+	want, _, _ = strings.Cut(want, "#")
+	if page == want {
+		return true
+	}
+	p, err1 := url.PathUnescape(page)
+	w, err2 := url.PathUnescape(want)
+	return err1 == nil && err2 == nil && p == w
+}
+
 // WebOrigin is the origin of the page at rawURL as browsers write one: scheme://host, with the port when it is not the scheme's own, in lower case, such as "https://example.com" or "app://bundle". A blob: URL has the origin of the URL it holds and every file: URL "file://"; a URL with no host, such as about:blank or a data: URL, or one that does not parse, has an opaque origin, written "null". No URL ("") has no origin ("").
 func WebOrigin(rawURL string) string {
 	if rawURL == "" {

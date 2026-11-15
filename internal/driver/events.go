@@ -78,7 +78,7 @@ const (
 	EventRotation
 	// EventMenu is an application menu item chosen (Count, its ID).
 	EventMenu
-	// EventMessage carries what a web view's page posted (Text), with the Origin of the frame that posted it and whether that frame is the page's top one (MainFrame).
+	// EventMessage carries what a web view's page posted (Text), with the Origin and URL of the frame that posted it and whether that frame is the page's top one (MainFrame).
 	EventMessage
 	// EventNavigationStateChange is a web view's page or history changing
 	// (Navigation).
@@ -300,8 +300,9 @@ type Event struct {
 	Value    float32
 	// Navigation is a web view's state.
 	Navigation *WebNavigation
-	// Origin is the origin of the frame that posted a web view's message, as WebOrigin writes it, and MainFrame whether that frame is the page's top one. A backend that cannot tell a frame's origin delivers the top frame's messages alone.
+	// Origin is the origin of the frame that posted a web view's message, as WebOrigin writes it, URL that frame's URL, and MainFrame whether that frame is the page's top one. A backend that cannot tell a frame's origin delivers the top frame's messages alone.
 	Origin    string
+	URL       string
 	MainFrame bool
 	// Time, Duration and Buffering are a video's.
 	Time, Duration time.Duration

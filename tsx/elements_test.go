@@ -153,10 +153,10 @@ function App() {
 }
 mount(App);`)
 	app.PostMessage("id:own", "a")
-	app.PostMessageFrom("id:own", "https://other.example", true, "b")
-	app.PostMessageFrom("id:listed", "https://app.example", true, "c")
-	app.PostMessageFrom("id:listed", "https://other.example", false, "d")
-	app.PostMessageFrom("id:listed", "https://other.example", true, "e")
+	app.PostMessageFrom("id:own", "https://other.example/", true, "b")
+	app.PostMessageFrom("id:listed", "https://app.example/", true, "c")
+	app.PostMessageFrom("id:listed", "https://other.example/", false, "d")
+	app.PostMessageFrom("id:listed", "https://other.example/", true, "e")
 	app.WaitFor("text:a@https://app.example;e@https://other.example;", time.Second)
 }
 
