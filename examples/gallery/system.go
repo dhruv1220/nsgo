@@ -913,7 +913,7 @@ func filesCard(cx *core.Scope) core.Node {
 	}}
 }
 
-// systemDemo is what the platform does for the app: the environment, the status bar, alerts, frames and timers, shortcuts, the network, the window, the clipboard, links, photos, the appearance, dictation, the lifecycle, notifications, the badge, haptics, biometrics, the system's permissions and files.
+// systemDemo is what the platform does for the app: the environment, the status bar, alerts, frames and timers, shortcuts, the network, the window, the clipboard, links, photos, the appearance, dictation, the lifecycle, notifications, the badge, task progress, haptics, biometrics, the system's permissions and files.
 func systemDemo(cx *core.Scope) core.Node {
 	return demoPage(cx, pageProps{}, environmentCard, statusBarCard, dialogsCard, framesAndTimers, shortcuts, networkCard, windowCard, clipboardCard, servicesCard, speechCard, notificationsCard, biometricsCard, permissionsCard, filesCard)
 }
@@ -926,7 +926,7 @@ func yesNo(tr locales.Messages, yes bool) string {
 	return tr.CommonNo()
 }
 
-// notificationsCard is system notifications, the app's badge and haptics.
+// notificationsCard is system notifications, the app's badge, a task's progress on its icon and haptics.
 func notificationsCard(cx *core.Scope) core.Node {
 	tr := locales.For(cx)
 	colors := ui.ColorsOf(cx)
@@ -971,6 +971,15 @@ func notificationsCard(cx *core.Scope) core.Node {
 			ui.Wrap{Children: []core.Node{
 				small("+1", "badge-up", func() { setBadge(badge.GetUntracked() + 1) }),
 				small(tr.SystemClearBadge(), "badge-clear", func() { setBadge(0) }),
+			}},
+			line(),
+			Caption{Label: tr.SystemTaskProgress()},
+			ui.Wrap{Children: []core.Node{
+				small("43%", "task-progress-normal", func() { cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressNormal, Value: .43}) }),
+				small(tr.SystemTaskPaused(), "task-progress-paused", func() { cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressPaused, Value: .43}) }),
+				small(tr.SystemError(), "task-progress-error", func() { cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressError, Value: .43}) }),
+				small(tr.SystemTaskIndeterminate(), "task-progress-indeterminate", func() { cx.SetTaskProgress(core.TaskProgress{State: core.TaskProgressIndeterminate}) }),
+				small(tr.SystemClearBadge(), "task-progress-clear", func() { cx.SetTaskProgress(core.TaskProgress{}) }),
 			}},
 			line(),
 			Caption{Label: tr.SystemHaptics()},

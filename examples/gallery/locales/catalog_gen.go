@@ -2542,6 +2542,9 @@ const (
 	textSystemNothingPressed
 	textSystemBadge
 	textSystemClearBadge
+	textSystemTaskProgress
+	textSystemTaskPaused
+	textSystemTaskIndeterminate
 	textSystemHaptics
 	textSystemSelection
 	textSystemLightImpact
@@ -4780,6 +4783,9 @@ var keyOfText = [numTexts]string{
 	"systemNothingPressed",
 	"systemBadge",
 	"systemClearBadge",
+	"systemTaskProgress",
+	"systemTaskPaused",
+	"systemTaskIndeterminate",
 	"systemHaptics",
 	"systemSelection",
 	"systemLightImpact",
@@ -7005,7 +7011,7 @@ var textsEn = i18n.NewTexts(""+
 	"Listening…"+
 	"This platform recognizes no speech"+
 	"Notifications and haptics"+
-	"Notifications · SetBadge · PlayHaptic"+
+	"Notifications · SetBadge · SetTaskProgress · PlayHaptic"+
 	"Permission"+
 	"Ask"+
 	"Show"+
@@ -7016,6 +7022,9 @@ var textsEn = i18n.NewTexts(""+
 	"No notification pressed yet"+
 	"Badge"+
 	"Clear"+
+	"Task progress"+
+	"Paused"+
+	"Indeterminate"+
 	"Haptics"+
 	"Selection"+
 	"Light"+
@@ -9238,7 +9247,7 @@ var textsEn = i18n.NewTexts(""+
 		12,
 		34,
 		25,
-		39,
+		58,
 		10,
 		3,
 		4,
@@ -9249,6 +9258,9 @@ var textsEn = i18n.NewTexts(""+
 		27,
 		5,
 		5,
+		13,
+		6,
+		13,
 		7,
 		9,
 		5,
@@ -11474,7 +11486,7 @@ var textsZhHans = i18n.NewTexts(""+
 	"正在聆听…"+
 	"此平台不识别语音"+
 	"通知与触感反馈"+
-	"Notifications · SetBadge · PlayHaptic"+
+	"Notifications · SetBadge · SetTaskProgress · PlayHaptic"+
 	"权限"+
 	"请求"+
 	"显示"+
@@ -11485,6 +11497,9 @@ var textsZhHans = i18n.NewTexts(""+
 	"还没有点按通知"+
 	"角标"+
 	"清除"+
+	"任务进度"+
+	"已暂停"+
+	"不确定"+
 	"触感反馈"+
 	"选择"+
 	"轻"+
@@ -13707,7 +13722,7 @@ var textsZhHans = i18n.NewTexts(""+
 		15,
 		24,
 		21,
-		39,
+		58,
 		6,
 		6,
 		6,
@@ -13718,6 +13733,9 @@ var textsZhHans = i18n.NewTexts(""+
 		21,
 		6,
 		6,
+		12,
+		9,
+		9,
 		12,
 		6,
 		3,
@@ -34366,7 +34384,7 @@ func (msgs Messages) SystemNotificationsAndHaptics() string {
 	return msgs.text(textSystemNotificationsAndHaptics)
 }
 
-// SystemNotificationsHapticsSummary says "Notifications · SetBadge · PlayHaptic"
+// SystemNotificationsHapticsSummary says "Notifications · SetBadge · SetTaskProgress · PlayHaptic"
 // in the language the app shows under cx.
 func SystemNotificationsHapticsSummary(cx *core.Scope) string {
 	return For(cx).SystemNotificationsHapticsSummary()
@@ -34494,6 +34512,27 @@ func SystemClearBadge(cx *core.Scope) string { return For(cx).SystemClearBadge()
 
 // SystemClearBadge is the package's SystemClearBadge in the language of msgs.
 func (msgs Messages) SystemClearBadge() string { return msgs.text(textSystemClearBadge) }
+
+// SystemTaskProgress says "Task progress"
+// in the language the app shows under cx.
+func SystemTaskProgress(cx *core.Scope) string { return For(cx).SystemTaskProgress() }
+
+// SystemTaskProgress is the package's SystemTaskProgress in the language of msgs.
+func (msgs Messages) SystemTaskProgress() string { return msgs.text(textSystemTaskProgress) }
+
+// SystemTaskPaused says "Paused"
+// in the language the app shows under cx.
+func SystemTaskPaused(cx *core.Scope) string { return For(cx).SystemTaskPaused() }
+
+// SystemTaskPaused is the package's SystemTaskPaused in the language of msgs.
+func (msgs Messages) SystemTaskPaused() string { return msgs.text(textSystemTaskPaused) }
+
+// SystemTaskIndeterminate says "Indeterminate"
+// in the language the app shows under cx.
+func SystemTaskIndeterminate(cx *core.Scope) string { return For(cx).SystemTaskIndeterminate() }
+
+// SystemTaskIndeterminate is the package's SystemTaskIndeterminate in the language of msgs.
+func (msgs Messages) SystemTaskIndeterminate() string { return msgs.text(textSystemTaskIndeterminate) }
 
 // SystemHaptics says "Haptics"
 // in the language the app shows under cx.
