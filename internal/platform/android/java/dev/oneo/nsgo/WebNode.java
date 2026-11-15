@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * A web view node's android.webkit.WebView, filling the node's view, as NSH's WebBox. Pages post to the app through window.nsgo.postMessage, which the bridge defines as each page starts over the JavaScript interface INTERFACE. The view loads its source again when it or the scripts change.
  *
- * android.webkit adds a JavaScript interface to every frame of every page and tells it no caller, and only androidx's WebViewCompat.addWebMessageListener, which the runtime does without, would. So the bridge, which evaluateJavascript runs in the top frame alone, holds a token Java makes anew for each page, and Java takes only the messages that carry the current page's: a frame, or a page that came after, posting to the interface itself is dropped. A message reports the URL the view showed when it handed the page its token.
+ * android.webkit adds a JavaScript interface to every frame of every page and tells it no caller, and only androidx's WebViewCompat.addWebMessageListener, which the runtime does without, would. So the bridge, which evaluateJavascript runs in the top frame alone, holds a token Java makes anew for each page, and Java takes only the messages that carry the current page's: a frame, or a page that came after, posting to the interface itself is dropped. A message reports the URL the view showed as it handed the page its token, which for HTML is its base URL, or about:blank without one.
  */
 @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface", "ClickableViewAccessibility"})
 final class WebNode {
@@ -187,10 +187,12 @@ final class WebNode {
         }
     }
 
-    /** The script that defines window.nsgo.postMessage in the page token is for, passing any value as a string. */
+    /** The script that defines window.nsgo.postMessage in the page token is for, passing any value as a string. A page that has a bridge already, as when it starts again, keeps the interface under it, so that the new bridge replaces it with the new token. */
     private static String bridge(String token) {
-        return "(function (n, t) { if (n && n.post) window." + INTERFACE
-                + " = { postMessage: function (data) { n.post(t, String(data)); } }; })(window." + INTERFACE + ", " + JSONObject.quote(token) + ");";
+        return "(function (b, t) { var n = b && (b.post ? b : b.interface); if (!n || !n.post) return;"
+                + " var bridge = { postMessage: function (data) { n.post(t, String(data)); } };"
+                + " Object.defineProperty(bridge, 'interface', { value: n }); window." + INTERFACE + " = bridge; })(window."
+                + INTERFACE + ", " + JSONObject.quote(token) + ");";
     }
 
     /** Called from a page's frames on a binder thread: only the current page's bridge knows its token. */
@@ -253,10 +255,12 @@ final class WebNode {
 
         @Override
         public void onPageStarted(WebView web, String url, Bitmap favicon) {
-            // android.webkit cannot run a script at document start: only androidx's WebViewCompat.addDocumentStartJavaScript can, which the runtime does without. The bridge, then the app's script before content, run as the page starts loading instead, so a page's earliest scripts may run before them. The page the view shows now is the one evaluateJavascript reaches, also when it moved on before this ran.
+            // android.webkit cannot run a script at document start: only androidx's WebViewCompat.addDocumentStartJavaScript can, which the runtime does without. The bridge, then the app's script before content, run as the page starts instead, so a page's earliest scripts may run before them.
+            // This runs after the page at url committed, and evaluateJavascript reaches the page committed last. The view shows url, or for HTML loadDataWithBaseURL loaded, whose commit is a data: URL, the history URL. Showing another URL, it has committed another page since, whose own start comes next, or the app started a load of the URL it shows, which the page here would report until it commits: so then no page gets a bridge.
             String shown = web.getUrl();
-            page = new Page(UUID.randomUUID().toString(), shown != null ? shown : url);
-            web.evaluateJavascript(bridge(page.token), null);
+            boolean current = shown != null && (shown.equals(url) || url.startsWith("data:") && !shown.startsWith("data:"));
+            page = current ? new Page(UUID.randomUUID().toString(), shown) : null;
+            if (current) web.evaluateJavascript(bridge(page.token), null);
             if (!injectedBefore.isEmpty()) web.evaluateJavascript(injectedBefore, null);
             if (!downloadDir.isEmpty()) web.evaluateJavascript(DOWNLOAD_NAMES, null);
             // A blob: URL lives as long as its document: the page leaving takes the downloads still reading theirs.
