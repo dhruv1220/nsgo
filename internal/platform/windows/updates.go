@@ -36,8 +36,9 @@ var (
 )
 
 // startWinSparkle starts WinSparkle on c's appcast, for the app's main
-// window hwnd.
-func startWinSparkle(c updates.Config, hwnd uintptr) {
+// window hwnd. appLanguage is the catalog language the mounted app shows;
+// WinSparkle must receive it before initialization.
+func startWinSparkle(c updates.Config, hwnd uintptr, appLanguage string) {
 	if c.Feed == "" {
 		return
 	}
@@ -78,6 +79,9 @@ func startWinSparkle(c updates.Config, hwnd uintptr) {
 	call("win_sparkle_set_app_details", wstr(c.App), wstr(c.App), wstr(c.Version))
 	if c.Build != "" && c.Build != c.Version {
 		call("win_sparkle_set_app_build_version", wstr(c.Build))
+	}
+	if lang := updates.WinSparkleLanguage(appLanguage); lang != "" {
+		call("win_sparkle_set_lang", cstr(lang))
 	}
 	call("win_sparkle_set_registry_path", cstr(registry))
 	// nsgo.yaml's choice is the default; the user's, in WinSparkle's

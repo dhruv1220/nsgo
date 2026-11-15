@@ -646,7 +646,7 @@ func Run(app engine.App, opts Options) {
 		w.engine.Dispatch(driver.Event{Kind: driver.EventOpenFiles, Data: paths})
 	}
 	if opts.test == nil {
-		startWinSparkle(opts.Updates, hwnd)
+		startWinSparkle(opts.Updates, hwnd, w.engine.Language())
 	}
 
 	var m msg

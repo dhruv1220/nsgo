@@ -114,6 +114,30 @@ func TestDispatchNeverBlocksAndMerges(t *testing.T) {
 	}
 }
 
+func TestLanguageReadsTheMountedApp(t *testing.T) {
+	core.SetLanguageMatch(func(locale string) string {
+		if locale == "zh-CN" {
+			return "zh-Hans"
+		}
+		return "en"
+	})
+	defer core.SetLanguageMatch(nil)
+	p := &recorder{mounted: make(chan struct{}, 1)}
+	e := Start(p, func(cx *core.Scope) core.Node {
+		cx.SetLocale("zh-CN")
+		return core.Text{Content: "text"}
+	}, Options{Size: driver.Size{Width: 100, Height: 100}, Environment: driver.Environment{Locale: "en-US"}})
+	defer e.Close()
+	select {
+	case <-p.mounted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the first commit")
+	}
+	if got := e.Language(); got != "zh-Hans" {
+		t.Fatalf("Language() = %q, want zh-Hans", got)
+	}
+}
+
 func TestCloseRunsTheQuitHandlersFirst(t *testing.T) {
 	p := &recorder{mounted: make(chan struct{}, 1)}
 	var order []string

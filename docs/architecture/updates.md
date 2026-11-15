@@ -16,7 +16,7 @@ NSH's `nsh/updater` downloads, verifies and swaps in the next version itself. NS
 | Target | Updater |
 | --- | --- |
 | macOS | Sparkle's `SPUStandardUpdaterController`, started when Info.plist names a feed. Installing, it quits the app as `Quit` does |
-| Windows | WinSparkle from beside the executable; its shutdown request closes the main window as `Quit` does |
+| Windows | WinSparkle from beside the executable; before it initializes, NSGo selects the app's resolved catalog language when WinSparkle ships that translation, and its shutdown request closes the main window as `Quit` does |
 | Linux, Android | `internal/platform/updates` reads the target's appcast with the backend's HTTP client, verifies the package's SHA-256 and Ed25519 signature, then `updater` stages it and hands it to the platform installer |
 | iOS | The App Store's lookup by the bundle's ID in the locale's country, against `CFBundleShortVersionString` |
 
