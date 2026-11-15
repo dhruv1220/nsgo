@@ -48,6 +48,23 @@ type observed struct {
 	dispatch  func(driver.Event)
 }
 
+// platform is what the engine runs on in o's place: o itself, or, over a platform that registers fonts, o with its RegisterFont, which embedding the Platform interface does not promote (#313).
+func (o observed) platform() Platform {
+	if _, ok := o.Platform.(driver.FontRegistrar); ok {
+		return observedFonts{o}
+	}
+	return o
+}
+
+// observedFonts is an observed platform that registers fonts.
+type observedFonts struct{ observed }
+
+var _ driver.FontRegistrar = observedFonts{}
+
+func (o observedFonts) RegisterFont(data []byte) error {
+	return o.Platform.(driver.FontRegistrar).RegisterFont(data)
+}
+
 func (o observed) Mount(b *driver.MountBatch) {
 	o.observe(b)
 	if o.clipboard != nil {
@@ -288,7 +305,7 @@ func Start(p Platform, app App, opts Options) *Engine {
 	e.raw = opts.Environment
 	opts.Environment = e.effective(opts.Environment)
 	if observe := opts.Observe; observe != nil {
-		p = observed{p, observe, opts.Clipboard, e.Dispatch}
+		p = observed{p, observe, opts.Clipboard, e.Dispatch}.platform()
 	}
 	go e.run(p, app, opts, tokens)
 	if opts.LogPerf && opts.Perf != nil {

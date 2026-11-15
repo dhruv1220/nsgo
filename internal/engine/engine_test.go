@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"sync"
@@ -310,6 +311,53 @@ func TestATestsClipboardIsItsOwn(t *testing.T) {
 				t.Errorf("the platform got %v", it.Kind)
 			}
 		}
+	}
+}
+
+// fontRecorder is a recorder that registers fonts, handing each font's data to fonts and answering with err.
+type fontRecorder struct {
+	recorder
+	fonts chan []byte
+	err   error
+}
+
+func (r *fontRecorder) RegisterFont(data []byte) error {
+	r.fonts <- slices.Clone(data)
+	return r.err
+}
+
+// TestATestsAppRegistersFonts registers a font from an app a test observes: the platform under the test host takes it and answers (#313).
+func TestATestsAppRegistersFonts(t *testing.T) {
+	p := &fontRecorder{recorder: recorder{mounted: make(chan struct{}, 1)}, fonts: make(chan []byte, 1), err: errors.New("the platform's answer")}
+	answered := make(chan error, 1)
+	var opts Options
+	opts.UseTest(testhostOptions(func(*driver.MountBatch) {}), &TestPin{})
+	opts.Size = driver.Size{Width: 100, Height: 100}
+	e := Start(p, func(cx *core.Scope) core.Node {
+		answered <- cx.RegisterFont([]byte("font"))
+		return core.View{}
+	}, opts)
+	defer e.Close()
+	select {
+	case data := <-p.fonts:
+		if string(data) != "font" {
+			t.Errorf("the platform registered %q, want the app's font", data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the platform registered no font")
+	}
+	if err := <-answered; err != p.err {
+		t.Errorf("RegisterFont returned %v, want the platform's answer", err)
+	}
+}
+
+// TestAnObservedPlatformRegistersOnlyWhatItCan keeps a platform that registers no fonts from seeming to under a test host, where Scope.RegisterFont would prepare every text again for nothing.
+func TestAnObservedPlatformRegistersOnlyWhatItCan(t *testing.T) {
+	if _, ok := (observed{Platform: &recorder{}}).platform().(driver.FontRegistrar); ok {
+		t.Error("a platform without fonts registers them when observed")
+	}
+	if _, ok := (observed{Platform: &fontRecorder{}}).platform().(driver.FontRegistrar); !ok {
+		t.Error("a platform with fonts stops registering them when observed")
 	}
 }
 
