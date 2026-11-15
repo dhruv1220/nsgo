@@ -205,13 +205,13 @@ func verifyPackage(o verifyOptions, path string) error {
 			}
 			trust.AddRoot(root)
 		}
-		if o.revocations != "" {
-			list, err := readRevocations(o.revocations)
+		for _, path := range splitList(o.revocations) {
+			list, err := readRevocations(path)
 			if err != nil {
 				return err
 			}
 			if err := trust.UpdateRevocations(list); err != nil {
-				return err
+				return fmt.Errorf("%s: %w", rel(path), err)
 			}
 		}
 		p, err := trust.Verify(data)
@@ -219,6 +219,9 @@ func verifyPackage(o verifyOptions, path string) error {
 			return err
 		}
 		info = &p.Info
+		for _, root := range p.ExpiredRevocations {
+			warn("root %s's revocation list has expired", root)
+		}
 	}
 	cert, err := info.Certificate.Info()
 	if err != nil {
@@ -249,13 +252,20 @@ func verifyPackage(o verifyOptions, path string) error {
 type revokeOptions struct {
 	keys, packages, out string
 	sequence            uint64
+	days                int
 }
 
-// revoke has NSGO_ROOT_KEY's root sign a revocation list of release keys
-// and packages, named by SHA-256 or by file.
+// revoke has NSGO_ROOT_KEY's root sign a revocation list of release keys and packages, named by SHA-256 or by file, expiring in days, or never when it is 0.
 func revoke(o revokeOptions) error {
 	if o.out == "" || o.sequence == 0 {
 		return errors.New("revoke: -sequence and -out are required")
+	}
+	if o.days < 0 {
+		return errors.New("revoke: -days is 0, for a list that never expires, or more")
+	}
+	var notAfter time.Time
+	if o.days > 0 {
+		notAfter = time.Now().AddDate(0, 0, o.days)
 	}
 	root, err := envSecretKey("NSGO_ROOT_KEY")
 	if err != nil {
@@ -274,7 +284,7 @@ func revoke(o revokeOptions) error {
 		packages = append(packages, p)
 	}
 	keys := splitList(o.keys)
-	list, err := pkg.Revoke(root, o.sequence, keys, packages)
+	list, err := pkg.Revoke(root, o.sequence, notAfter, keys, packages)
 	if err != nil {
 		return err
 	}
@@ -282,6 +292,9 @@ func revoke(o revokeOptions) error {
 		return err
 	}
 	done("revocation list %d of %d keys and %d packages: %s", o.sequence, len(keys), len(packages), rel(o.out))
+	if !notAfter.IsZero() {
+		detail("expires %s: sign a newer one before then", notAfter.Format(time.DateOnly))
+	}
 	return nil
 }
 

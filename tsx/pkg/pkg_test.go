@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -214,7 +215,7 @@ func TestRevocations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	list, err := Revoke(k.root, 1, nil, []string{strings.ToUpper(p.SHA256)})
+	list, err := Revoke(k.root, 1, time.Time{}, nil, []string{strings.ToUpper(p.SHA256)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +234,7 @@ func TestRevocations(t *testing.T) {
 	if err := trust.UpdateRevocations(list); !errors.Is(err, ErrStale) {
 		t.Fatalf("the same list again: got %v", err)
 	}
-	keyList, err := Revoke(k.root, 2, []string{p.KeyID}, nil)
+	keyList, err := Revoke(k.root, 2, time.Time{}, []string{p.KeyID}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,14 +244,14 @@ func TestRevocations(t *testing.T) {
 	if _, err := trust.Verify(k.build(t, 2)); !errors.Is(err, ErrRevoked) {
 		t.Fatalf("a revoked key: got %v", err)
 	}
-	foreign, err := Revoke(newKeys(t).root, 3, nil, nil)
+	foreign, err := Revoke(newKeys(t).root, 3, time.Time{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := trust.UpdateRevocations(foreign); !errors.Is(err, ErrUntrusted) {
 		t.Fatalf("another root's list: got %v", err)
 	}
-	if _, err := Revoke(k.root, 0, nil, nil); err == nil {
+	if _, err := Revoke(k.root, 0, time.Time{}, nil, nil); err == nil {
 		t.Fatal("made list 0")
 	}
 }
@@ -274,7 +275,7 @@ func TestRollback(t *testing.T) {
 	if err := trust.Accept(p); err != nil {
 		t.Fatal(err)
 	}
-	list, err := Revoke(k.root, 7, nil, nil)
+	list, err := Revoke(k.root, 7, time.Time{}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,6 +299,206 @@ func TestRollback(t *testing.T) {
 	}
 	if err := again.UpdateRevocations(list); !errors.Is(err, ErrStale) {
 		t.Fatalf("a replayed list: got %v", err)
+	}
+}
+
+// TestRotation trusts two roots, as while they rotate: each root's lists replace only its own, by its own sequence.
+func TestRotation(t *testing.T) {
+	a, b := newKeys(t), newKeys(t)
+	trust := a.trust()
+	trust.AddRoot(b.root.Public().(ed25519.PublicKey))
+	fromA, fromB := a.build(t, 1), b.build(t, 1)
+	pa, err := trust.Verify(fromA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := trust.Verify(fromB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := func(k keys, sequence uint64, revoke string) error {
+		t.Helper()
+		list, err := Revoke(k.root, sequence, time.Time{}, []string{revoke}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return trust.UpdateRevocations(list)
+	}
+	if err := update(a, 5, pa.KeyID); err != nil {
+		t.Fatal(err)
+	}
+	if err := update(b, 3, pb.KeyID); err != nil {
+		t.Fatalf("B's list 3 after A's list 5: %v", err)
+	}
+	if _, err := trust.Verify(fromB); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("the key B revoked: got %v", err)
+	}
+	if err := update(b, 6, pb.KeyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := trust.Verify(fromA); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("the key A revoked, after B's list 6: got %v", err)
+	}
+	if err := trust.Accept(pa); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("accepting the key A revoked: got %v", err)
+	}
+	if err := update(b, 6, pb.KeyID); !errors.Is(err, ErrStale) {
+		t.Fatalf("B's list 6 again: got %v", err)
+	}
+	if err := update(a, 4, pa.KeyID); !errors.Is(err, ErrStale) {
+		t.Fatalf("A's list 4 after its list 5: got %v", err)
+	}
+	// A root no longer trusted revokes nothing.
+	onlyB := b.trust()
+	for _, l := range trust.state.Lists {
+		onlyB.state.Lists[l.s.Signer] = l
+	}
+	if _, err := onlyB.Verify(fromA); !errors.Is(err, ErrUntrusted) {
+		t.Fatalf("A's package without A: got %v", err)
+	}
+	if _, err := onlyB.Verify(fromB); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("the key B revoked, without A: got %v", err)
+	}
+}
+
+func TestRevocationsExpire(t *testing.T) {
+	k := newKeys(t)
+	trust := k.trust()
+	data := k.build(t, 1)
+	start := time.Now()
+	list, err := Revoke(k.root, 1, start.Add(time.Hour), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := list.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list, err = ParseRevocations(j); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := list.Info(); err != nil || info.NotAfter.Unix() != start.Add(time.Hour).Unix() {
+		t.Fatalf("NotAfter %v, %v", info.NotAfter, err)
+	}
+	if err := trust.UpdateRevocations(list); err != nil {
+		t.Fatal(err)
+	}
+	p, err := trust.Verify(data)
+	if err != nil || len(p.ExpiredRevocations) != 0 {
+		t.Fatalf("before it expires: %v, %v", p, err)
+	}
+
+	now = func() time.Time { return start.Add(2 * time.Hour) }
+	t.Cleanup(func() { now = time.Now })
+	p, err = trust.Verify(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id := KeyID(k.root.Public().(ed25519.PublicKey)); !slices.Equal(p.ExpiredRevocations, []string{id}) {
+		t.Fatalf("expired %v, not root %s", p.ExpiredRevocations, id)
+	}
+	trust.RequireFreshRevocations(true)
+	if _, err := trust.Verify(data); !errors.Is(err, ErrExpired) {
+		t.Fatalf("requiring fresh lists: got %v", err)
+	}
+	if err := trust.Accept(p); !errors.Is(err, ErrExpired) {
+		t.Fatalf("accepting while requiring fresh lists: got %v", err)
+	}
+	fresh, err := Revoke(k.root, 2, start.Add(3*time.Hour), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := trust.UpdateRevocations(fresh); err != nil {
+		t.Fatal(err)
+	}
+	if p, err = trust.Verify(data); err != nil || len(p.ExpiredRevocations) != 0 {
+		t.Fatalf("after a fresh list: %v, %v", p, err)
+	}
+	if err := trust.Accept(p); err != nil {
+		t.Fatal(err)
+	}
+
+	// A list without NotAfter never expires.
+	forever, err := Revoke(k.root, 3, time.Time{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := trust.UpdateRevocations(forever); err != nil {
+		t.Fatal(err)
+	}
+	now = func() time.Time { return start.AddDate(100, 0, 0) }
+	if _, err := trust.Verify(data); err != nil {
+		t.Fatalf("a list that never expires: %v", err)
+	}
+	if _, err := Revoke(k.root, 4, now().Add(-time.Second), nil, nil); !errors.Is(err, ErrFormat) {
+		t.Fatalf("a list expired when issued: got %v", err)
+	}
+}
+
+// TestTrustStateMigrates opens a trust.json written when a Trust held one list for all roots.
+func TestTrustStateMigrates(t *testing.T) {
+	a, b := newKeys(t), newKeys(t)
+	fromA := a.build(t, 3)
+	pa, err := a.trust().Verify(fromA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := Revoke(a.root, 5, time.Time{}, []string{pa.KeyID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := json.Marshal(map[string]any{"revocations": list, "builds": map[string]uint64{"com.example.app": 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := writeState(dir, old); err != nil {
+		t.Fatal(err)
+	}
+	trust, err := OpenTrust(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust.AddRoot(a.root.Public().(ed25519.PublicKey))
+	trust.AddRoot(b.root.Public().(ed25519.PublicKey))
+	if build, ok := trust.AcceptedBuild("com.example.app"); !ok || build != 2 {
+		t.Fatalf("accepted build %d, %v", build, ok)
+	}
+	if _, err := trust.Verify(fromA); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("the key the old list revoked: got %v", err)
+	}
+	if err := trust.UpdateRevocations(list); !errors.Is(err, ErrStale) {
+		t.Fatalf("the old list again: got %v", err)
+	}
+	fromB, err := Revoke(b.root, 1, time.Time{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := trust.UpdateRevocations(fromB); err != nil {
+		t.Fatalf("the other root's first list: %v", err)
+	}
+
+	data, err := readState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var written map[string]json.RawMessage
+	if err := json.Unmarshal(data, &written); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := written["revocations"]; ok {
+		t.Errorf("the state still holds the old list: %s", data)
+	}
+	again, err := OpenTrust(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again.AddRoot(a.root.Public().(ed25519.PublicKey))
+	if _, err := again.Verify(fromA); !errors.Is(err, ErrRevoked) {
+		t.Fatalf("the key the old list revoked, reopened: got %v", err)
+	}
+	if len(again.state.Lists) != 2 {
+		t.Fatalf("lists %v", again.state.Lists)
 	}
 }
 

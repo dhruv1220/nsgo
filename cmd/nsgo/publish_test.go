@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nsgo-dev/nsgo/tsx/pkg"
 )
@@ -137,6 +138,20 @@ mount(() => <Text>plugin</Text>);`), 0o644)
 	}
 	if err := verifyPackage(verifyOptions{roots: public["root"], revocations: at("revoked.json")}, out); !errors.Is(err, pkg.ErrRevoked) {
 		t.Fatalf("a revoked package: got %v", err)
+	}
+	if err := revoke(revokeOptions{sequence: 2, days: -1, out: at("expiring.json")}); err == nil {
+		t.Fatal("signed a list with -days -1")
+	}
+	if err := revoke(revokeOptions{sequence: 2, days: 7, out: at("expiring.json")}); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := readRevocations(at("expiring.json")); err != nil {
+		t.Fatal(err)
+	} else if info, err := list.Info(); err != nil || info.NotAfter.Sub(info.IssuedAt).Round(time.Hour) != 7*24*time.Hour {
+		t.Fatalf("a list for 7 days: %+v, %v", info, err)
+	}
+	if err := verifyPackage(verifyOptions{roots: public["root"], revocations: at("revoked.json") + "," + at("expiring.json")}, out); err != nil {
+		t.Fatalf("the root's newer list, which revokes nothing: %v", err)
 	}
 
 	t.Setenv("NSGO_ROOT_KEY", secret["platform-root"])

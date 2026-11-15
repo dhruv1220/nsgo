@@ -134,7 +134,7 @@ func TestRefusesARevokedPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	list, err := pkg.Revoke(s.root, 1, []string{p.KeyID}, nil)
+	list, err := pkg.Revoke(s.root, 1, time.Time{}, []string{p.KeyID}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

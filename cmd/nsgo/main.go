@@ -18,8 +18,9 @@
 //	nsgo certify -key P -apps A [-days N] [-out F]       certify a release key for apps
 //	nsgo publish -cert C [-entry E] [-min-runtime V] [-out F] [dir | package]
 //	                                                      compile a TSX app into a signed package, or sign one again
-//	nsgo verify  [-root P,... [-revocations F]] package  check a package and print what it holds
-//	nsgo revoke  -sequence N [-keys IDs] [-packages H,...] -out F
+//	nsgo verify  [-root P,... [-revocations F,...]] package
+//	                                                      check a package and print what it holds
+//	nsgo revoke  -sequence N [-days N] [-keys IDs] [-packages H,...] -out F
 //	                                                      sign a revocation list
 //
 // dir is the app's directory, holding nsgo.yaml and its main package; it
@@ -175,7 +176,7 @@ func main() {
 		fs := flag.NewFlagSet("verify", flag.ExitOnError)
 		var o verifyOptions
 		fs.StringVar(&o.roots, "root", "", "the comma-separated public `keys` of the roots to trust (default: check the package against itself)")
-		fs.StringVar(&o.revocations, "revocations", "", "a revocation list `file` to check it against")
+		fs.StringVar(&o.revocations, "revocations", "", "the comma-separated revocation list `files`, a root's newest each, to check it against")
 		fs.Parse(args)
 		if fs.NArg() != 1 {
 			usage()
@@ -184,7 +185,8 @@ func main() {
 	case "revoke":
 		fs := flag.NewFlagSet("revoke", flag.ExitOnError)
 		var o revokeOptions
-		fs.Uint64Var(&o.sequence, "sequence", 0, "the list's `number`, above the last one's; the root's secret key is NSGO_ROOT_KEY's")
+		fs.Uint64Var(&o.sequence, "sequence", 0, "the list's `number`, above the root's last one's; the root's secret key is NSGO_ROOT_KEY's")
+		fs.IntVar(&o.days, "days", 0, "how many `days` from now the list lasts, which hosts may require a newer one by (default: it never expires)")
 		fs.StringVar(&o.keys, "keys", "", "the comma-separated `IDs` of the release keys to revoke")
 		fs.StringVar(&o.packages, "packages", "", "the comma-separated packages to revoke, by `SHA-256` or file")
 		fs.StringVar(&o.out, "out", "", "the list's `file`")
@@ -212,8 +214,8 @@ func usage() {
   nsgo keygen
   nsgo certify -key P -apps A [-days N] [-out F]
   nsgo publish -cert C [-entry E] [-min-runtime V] [-out F] [dir | package]
-  nsgo verify  [-root P,... [-revocations F]] package
-  nsgo revoke  -sequence N [-keys IDs] [-packages H,...] -out F
+  nsgo verify  [-root P,... [-revocations F,...]] package
+  nsgo revoke  -sequence N [-days N] [-keys IDs] [-packages H,...] -out F
 
 dev and build take -name, -id and -version, which replace nsgo.yaml's
 values, and -h lists every flag.`)

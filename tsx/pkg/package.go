@@ -58,7 +58,9 @@ type Info struct {
 // A Package is one Trust.Verify verified, for tsx.View.
 type Package struct {
 	Info
-	source string
+	// ExpiredRevocations names the trusted roots, by key ID, whose newest revocation list had passed its NotAfter when Verify checked the package: no list the Trust holds revokes it, but a newer one may.
+	ExpiredRevocations []string
+	source             string
 }
 
 // Source is the package's bundle.
@@ -102,7 +104,7 @@ type fileEntry struct {
 	SHA256 string `json:"sha256"`
 }
 
-// now is the clock packages and lists are signed by.
+// now is the clock packages and lists are signed by, and lists expire by.
 var now = time.Now
 
 // Build signs contents with key, a release key cert certifies.
