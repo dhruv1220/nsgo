@@ -176,7 +176,6 @@ nsgo.safeArea
 nsgo.safeAreaInsets
 nsgo.screenReaderEnabled
 nsgo.setAccessibilityFocus
-nsgo.setColorScheme
 nsgo.signal
 nsgo.split
 nsgo.token
@@ -410,7 +409,6 @@ nsgo/ui/chat.ResultSummary
 nsgo/ui/chat.Shimmer
 nsgo/ui/chat.Turn
 nsgo/mobile.BackHandler
-nsgo/mobile.BackHandler.exitApp
 nsgo/mobile.BackHandler.onBackPress
 nsgo/mobile.Haptics
 nsgo/mobile.Haptics.impact

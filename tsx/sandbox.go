@@ -106,7 +106,7 @@ type Sandbox struct {
 	// reaches what the app's code does. Grant, when set, narrows them to
 	// what it also allows: what the host gives this view.
 	Capabilities, Grant *pkg.Capabilities
-	// Modules are what it may import beyond SandboxModules and what is registered SandboxSafe into them: a module ("myapp"), one export ("nsgo/base.Terminal") or static ("nsgo/base.Scrollbar.setTheme"), a native component ("native:MapView"), or "*" for everything.
+	// Modules are what it may import beyond SandboxModules and what is registered SandboxSafe into them: a module ("myapp"), one export ("nsgo/base.Terminal", "nsgo.setColorScheme") or static or member ("nsgo/base.Scrollbar.setTheme", "nsgo/mobile.BackHandler.exitApp"), a native component ("native:MapView"), or "*" for everything.
 	Modules []string
 	// Host is the channel its host module reaches, for the Go app to
 	// answer its calls and send it events; nil gives it none.
@@ -116,7 +116,7 @@ type Sandbox struct {
 	Storage string
 }
 
-// SandboxModules are the modules a sandboxed bundle imports without Sandbox.Modules naming them: NSGo's own, with what is registered into them SandboxSafe, and none of the Go functions registered with RegisterFunctions.
+// SandboxModules are the modules a sandboxed bundle imports without Sandbox.Modules naming them: NSGo's own, with what is registered into them SandboxSafe, none of the Go functions registered with RegisterFunctions, and none of their exports that act on the whole app (setColorScheme, BackHandler.exitApp).
 var SandboxModules = []string{"nsgo", "nsgo:rt", "nsgo/base", "nsgo/base/plot", "nsgo/ui", "nsgo/ui/chat", "nsgo/mobile"}
 
 // Sandboxed returns the app of a bundle, as App does, run within s.
@@ -210,6 +210,14 @@ func (s *sandboxed) importsExport(module, name string) bool {
 	return slices.ContainsFunc(s.modules, func(m string) bool {
 		return m == "*" || m == module+"."+name || m == module && !slices.Contains(SandboxModules, module)
 	})
+}
+
+// appWide are the exports of NSGo's own modules, and their members, that act on the whole app rather than the view showing them, as Scrollbar.setTheme does: sandboxed bundles get them only as Sandbox.Modules names them. setColorScheme forces every window's appearance, and BackHandler.exitApp leaves the app.
+var appWide = map[string]bool{"nsgo.setColorScheme": true, "nsgo/mobile.BackHandler.exitApp": true}
+
+// withholds reports whether the runtime is sandboxed and may not import module's export, or member of one, name, one of appWide that Modules does not name.
+func (r *runtime) withholds(module, name string) bool {
+	return r.sandbox != nil && appWide[module+"."+name] && !r.sandbox.importsExport(module, name)
 }
 
 // imports reports whether the runtime may import a registered export of module, or a static of one ("TextView.parse"): all of them unless it is sandboxed, else those registered SandboxSafe and those Modules names.

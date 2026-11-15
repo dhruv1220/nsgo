@@ -190,10 +190,12 @@ func TestSandboxImportsOnlyWhatItIsGiven(t *testing.T) {
 	class: async () => typeof (await import("nsgo/base")).SandboxHiddenClass,
 	static: async () => typeof (await import("nsgo/base")).Button.sandboxHidden,
 	theme: async () => typeof (await import("nsgo/base")).Scrollbar.setTheme,
+	scheme: async () => typeof (await import("nsgo")).setColorScheme,
+	exit: async () => typeof (await import("nsgo/mobile")).BackHandler.exitApp,
 	app: async () => typeof (await import("sandboxtest")).Marker,
 	`
 	got := results(t, attempts, pkg.Capabilities{}, tsx.Sandbox{})
-	for _, k := range []string{"fn", "component", "class", "static", "theme"} {
+	for _, k := range []string{"fn", "component", "class", "static", "theme", "scheme", "exit"} {
 		if got[k] != "undefined" {
 			t.Errorf("by default, %s is %s", k, got[k])
 		}
@@ -202,8 +204,8 @@ func TestSandboxImportsOnlyWhatItIsGiven(t *testing.T) {
 		t.Fatalf("by default: %v", got)
 	}
 	got = results(t, attempts, pkg.Capabilities{}, tsx.Sandbox{Modules: []string{"nsgo/base.sandboxSecret", "nsgo/base.SandboxHidden",
-		"nsgo/base.SandboxHiddenClass", "nsgo/base.Button.sandboxHidden", "sandboxtest"}})
-	for _, k := range []string{"fn", "component", "class", "static", "app"} {
+		"nsgo/base.SandboxHiddenClass", "nsgo/base.Button.sandboxHidden", "nsgo.setColorScheme", "nsgo/mobile.BackHandler.exitApp", "sandboxtest"}})
+	for _, k := range []string{"fn", "component", "class", "static", "scheme", "exit", "app"} {
 		if got[k] != "function" {
 			t.Errorf("given, %s is %s", k, got[k])
 		}
