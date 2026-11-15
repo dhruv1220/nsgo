@@ -1133,12 +1133,13 @@ func (s *languageServer) current() *lspModel {
 	return m
 }
 
-// lspAsk asks the server on a goroutine of its own and hands the answer
-// to the engine latency later, as a server's round trip does.
+// lspAsk asks the server on a goroutine of its own and hands the answer to the
+// engine after latency on the graph's clock, as a server's round trip does.
+// Using the graph clock keeps the demo deterministic under nsgotest's manual
+// clock and prevents an answer from racing an appearance switch.
 func lspAsk[T any](cx *core.Scope, s *languageServer, latency time.Duration, work func(m *lspModel) T, answer func(T)) {
 	go func() {
 		v := work(s.current())
-		time.Sleep(latency)
-		cx.Post(func() { answer(v) })
+		cx.Post(func() { cx.AfterFunc(latency, func() { answer(v) }) })
 	}()
 }
