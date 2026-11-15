@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
 
@@ -113,7 +112,7 @@ func (w *window) keepAwake(id uint32, req driver.KeepAwake) {
 		g := awakeGroupOf(req.Display)
 		g.refs++
 		if g.refs == 1 {
-			g.end = inhibitAwake(appID, req)
+			g.end = inhibitAwake(appID, w.opts.Title, req)
 		}
 	}
 }
@@ -183,9 +182,9 @@ func awakeGroupOf(display bool) *awakeGroup {
 }
 
 // inhibitAwake starts the inhibition req asks for and returns what ends it, nil when none started.
-func inhibitAwake(appID string, req driver.KeepAwake) func() {
+func inhibitAwake(appID, appName string, req driver.KeepAwake) func() {
 	exe, _ := os.Executable()
-	id := awakeAppID(appID, core.App().Name, exe)
+	id := awakeAppID(appID, appName, exe)
 	reason := awakeReason(req.Reason, id)
 	bus := sessionBus()
 	box := sandboxed()

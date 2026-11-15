@@ -1,18 +1,56 @@
 package moduletest
 
 import (
+	"bytes"
 	"go/importer"
 	"go/token"
 	"go/types"
+	"os/exec"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 )
 
-// publicPackages are what apps import; everything under internal/ is the
-// implementation.
-var publicPackages = []string{"", "audio", "core", "base", "base/textview", "base/textview/highlight", "mobile", "desktop", "icons/lucide", "nsgotest"}
+// publicPackages lists what apps may import. It is derived from the module so
+// adding a public package cannot silently leave it outside the API checks.
+func publicPackages(t *testing.T) []string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-e", "-f", "{{.ImportPath}}", "./...")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go list public packages: %v\n%s", err, stderr.Bytes())
+	}
+	var packages []string
+	for path := range strings.SplitSeq(string(out), "\n") {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		rel, ok := strings.CutPrefix(path, modulePath)
+		if !ok || (rel != "" && !strings.HasPrefix(rel, "/")) {
+			continue
+		}
+		rel = strings.TrimPrefix(rel, "/")
+		if rel == "" || publicPackage(rel) {
+			packages = append(packages, rel)
+		}
+	}
+	slices.Sort(packages)
+	return packages
+}
+
+func publicPackage(rel string) bool {
+	for _, part := range strings.Split(rel, "/") {
+		switch part {
+		case "internal", "cmd", "tools", "examples", "testdata":
+			return false
+		}
+	}
+	return true
+}
 
 // runtimeAPI is what the engine and nsgotest drive core's tree with. Apps
 // never call it, so the internal types it takes need no alias.
@@ -52,7 +90,7 @@ func TestPublicAPINamesNoInternalType(t *testing.T) {
 	internal := func(p *types.Package) bool {
 		return p != nil && strings.HasPrefix(p.Path(), modulePath+"/internal/")
 	}
-	for _, rel := range publicPackages {
+	for _, rel := range publicPackages(t) {
 		pkg := load(rel)
 		named := map[*types.TypeName]bool{}
 		aliases(core, named)

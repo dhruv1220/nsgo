@@ -58,8 +58,9 @@ type Data struct {
 // Look colors what the view draws itself. Line is an edge's color and
 // Emphasis that of the edges of the hovered or selected node; Label,
 // LabelBackground and LabelBorder color an edge's label. Zero fields take
-// the theme's text, with lines and the label's border faded, and the
-// label's background is the theme's background.
+// the current text color, with lines, labels and the label's border faded,
+// and a transparent label background. A styled form such as ui/flow supplies
+// its own look.
 type Look struct {
 	Line, Emphasis                      core.Color
 	Label, LabelBackground, LabelBorder core.Color

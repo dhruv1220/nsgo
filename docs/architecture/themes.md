@@ -26,7 +26,7 @@ Overlays (muted and faint text, hover, press, edges, scroll bars, switch tracks)
 - `cx.SetSubtreeAppearance(a)` forces light or dark for `cx` and what it builds from then on; `AppearanceSystem` follows the appearance above. `cx.SetAppearance` keeps forcing the app's, with its window chrome.
 - `cx.Theme()`, `cx.Palette()` and `cx.Dark()` read the nearest theme, its palette in the appearance its subtree shows, and that appearance. They are tracked, so a `StyleFunc` that reads them follows every change without a rebuild.
 - Both setters keep a signal in the scope's values, as `core.Key` does; a node made under a forced subtree binds the nearest one, so lookups cost nothing until an app forces one.
-- `base` components read no theme. `Editor`, `DiffView` and highlighting follow `cx.Dark()`, so they match their subtree.
+- `base` components read no theme. `Editor`, `DiffView` and highlighting follow `cx.Dark()`, so they match their subtree; a static API check keeps other base packages from reading `Palette` or `Theme`.
 
 Native views follow a subtree's forced appearance through `ViewProps.Appearance`, which each node carries: `NSView.appearance` on macOS, `overrideUserInterfaceStyle` on iOS, `color-scheme` on the web. Windows, Linux and Android scope appearance per window only, so their native parts keep the app's.
 

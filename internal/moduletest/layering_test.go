@@ -61,7 +61,7 @@ var layers = []struct {
 	{"internal/platform/textselect", []string{"internal/driver"}},
 	{"internal/platform/updates", []string{"internal/driver", "internal/platform/imageload"}},
 	{"internal/platform/webstyle", []string{"internal/driver"}},
-	{"internal/platform/", append([]string{"internal/driver", "internal/engine", "internal/testhost", "core", "desktop/locales"}, platformShared...)},
+	{"internal/platform/", append([]string{"internal/driver", "internal/engine", "internal/testhost", "desktop/locales"}, platformShared...)},
 	{"nsgotest", []string{"core", "internal/automation", "internal/devtools", "internal/driver", "internal/testhost"}},
 	{"", []string{"core", "internal/backend", "internal/dev", "internal/engine"}},
 	// The backend runs the app on the platform build tags pick, with the launch flags, the dev client, restarts and, where the platform's updater keeps no schedule, update checks.
@@ -173,7 +173,11 @@ func TestLayering(t *testing.T) {
 	}
 	for _, target := range layerTargets {
 		check(target[0], target[1], "")
+		check(target[0], target[1], "nsgotest")
 	}
+	check("ios", "arm64", "nsgotest,nsgowatch")
+	check("ios", "arm64", "nsgotest,nsgoembed")
+	check("js", "wasm", "nsgotest,nsgominiprogram")
 	for _, target := range devLayerTargets {
 		check(target[0], target[1], "nsgodev")
 	}
@@ -229,7 +233,7 @@ func checkLayer(t *testing.T, p listedPackage, tags string) {
 	if len(p.CgoFiles) > 0 {
 		t.Errorf("%s: cgo files %v; reach system APIs through purego or syscall", p.ImportPath, p.CgoFiles)
 	}
-	allowed, ruled := layerImports(pkg)
+	allowed, ruled := layerImports(pkg, tags)
 	for _, tag := range strings.Split(tags, ",") {
 		switch tag {
 		case "nsgodev":
@@ -264,13 +268,28 @@ func inModule(importPath string) (string, bool) {
 	return rest, ok
 }
 
-func layerImports(pkg string) ([]string, bool) {
+func layerImports(pkg, tags string) ([]string, bool) {
 	for _, l := range layers {
 		if matches(pkg, l.pkg) {
-			return l.imports, true
+			allowed := l.imports
+			if matches(pkg, "internal/platform/") && hasTag(tags, "nsgotest", "nsgoautomation") {
+				allowed = append(slices.Clip(allowed), "core")
+			}
+			return allowed, true
 		}
 	}
 	return nil, false
+}
+
+func hasTag(tags string, wanted ...string) bool {
+	for _, tag := range strings.Split(tags, ",") {
+		for _, want := range wanted {
+			if tag == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func matches(pkg, pattern string) bool {

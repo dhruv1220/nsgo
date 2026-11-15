@@ -178,7 +178,7 @@ func (spec View) Render(cx *core.Scope) core.Node {
 		Children: []core.Node{core.Show{When: empty, Then: func(cx *core.Scope) core.Node {
 			content := spec.Empty
 			if content == nil {
-				content = core.Text{Content: "—", StyleFunc: func() core.Style { return core.Style{Color: cx.Palette().TextMuted} }}
+				content = core.Text{Content: "—"}
 			}
 			return core.View{Style: core.Style{AlignItems: core.AlignCenter, JustifyContent: core.JustifyCenter, Padding: core.All(24)},
 				Children: []core.Node{content}}
@@ -201,22 +201,21 @@ func (v *view) look() Look {
 	if v.spec.LookFunc != nil {
 		l = v.spec.LookFunc()
 	}
-	p := v.cx.Palette()
 	zero := core.Color(0)
 	if l.Line == zero {
-		l.Line = p.Text.Faded(.35)
+		l.Line = core.CurrentColor.Faded(.35)
 	}
 	if l.Emphasis == zero {
-		l.Emphasis = p.Text
+		l.Emphasis = core.CurrentColor
 	}
 	if l.Label == zero {
-		l.Label = p.TextMuted
+		l.Label = core.CurrentColor.Faded(.55)
 	}
 	if l.LabelBackground == zero {
-		l.LabelBackground = p.Background
+		l.LabelBackground = core.Transparent
 	}
 	if l.LabelBorder == zero {
-		l.LabelBorder = p.Text.Faded(.2)
+		l.LabelBorder = core.CurrentColor.Faded(.2)
 	}
 	return l
 }
@@ -325,7 +324,7 @@ func (v *view) nodeBox(cx *core.Scope, item func() nodeItem) core.Node {
 				StyleFunc: func() core.Style {
 					s := core.Style{}
 					if v.spec.RingStyle.BorderColor == 0 {
-						s.BorderColor = cx.Palette().Text
+						s.BorderColor = core.CurrentColor
 					}
 					if v.spec.RingStyleFunc != nil {
 						s = s.Merge(v.spec.RingStyleFunc())
