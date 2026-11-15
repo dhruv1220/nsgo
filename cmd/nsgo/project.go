@@ -48,6 +48,8 @@ type project struct {
 	Name    string `yaml:"name"`
 	ID      string `yaml:"id"`
 	Version string `yaml:"version"`
+	// Copyright is the optional legal copyright in Windows VERSIONINFO.
+	Copyright string `yaml:"copyright"`
 	// BuildNumber numbers builds of a version, as stores want each upload
 	// numbered: CFBundleVersion and Android's versionCode. Without it
 	// they come from Version.
@@ -165,6 +167,7 @@ type project struct {
 	// Windows is the Windows target's options: CommandLine adds a .com console companion beside the GUI executable, while InstallerIcon and UninstallerIcon, an .ico or a square PNG, are the icons of the setup program and the uninstaller, else the app's. DeviceCapabilities are the devices a store build's MSIX declares the app uses, such as microphone and webcam, which Windows asks the user for and keeps under the package's name. Store is the Microsoft Store's package identity, as Partner Center lists it, which a store build's MSIX carries (msix.go): the package's name, its publisher (CN=...) and the publisher's display name.
 	Windows struct {
 		CommandLine        bool     `yaml:"command_line"`
+		Publisher          string   `yaml:"publisher"`
 		InstallerIcon      string   `yaml:"installer_icon"`
 		UninstallerIcon    string   `yaml:"uninstaller_icon"`
 		DeviceCapabilities []string `yaml:"device_capabilities"`

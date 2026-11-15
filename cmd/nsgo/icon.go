@@ -651,22 +651,32 @@ StartupWMClass={{.WMClass}}
 // from the package's own directory.
 func writeWindowsIcon(p *project, goarch string) (func(), error) {
 	img, err := p.iconImage()
-	if img == nil || err != nil {
+	if err != nil {
 		return func() {}, err
 	}
 	var images [][]byte
-	for _, size := range windowsIconSizes {
-		images = append(images, scaledPNG(img, size))
+	if img != nil {
+		for _, size := range windowsIconSizes {
+			images = append(images, scaledPNG(img, size))
+		}
 	}
-	syso, err := iconResource(images, windowsIconSizes, goarch)
+	versions, err := windowsVersionStringsFor(p)
+	if err != nil {
+		return func() {}, err
+	}
+	syso, err := windowsResource(images, windowsIconSizes, goarch, versions)
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(p.Dir, "nsgo_icon_windows_"+goarch+".syso")
+	path := windowsResourcePath(p, goarch)
 	if err := os.WriteFile(path, syso, 0o644); err != nil {
 		return nil, err
 	}
 	return func() { os.Remove(path) }, nil
+}
+
+func windowsResourcePath(p *project, goarch string) string {
+	return filepath.Join(p.Dir, "nsgo_icon_windows_"+goarch+".syso")
 }
 
 // windowsIconSizes are the sizes Explorer, the taskbar and title bars

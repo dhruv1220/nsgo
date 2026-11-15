@@ -720,18 +720,20 @@ func buildWindows(ctx context.Context, p *project, dir, arch string) error {
 	}
 	err = goBuild(ctx, p, filepath.Join(dir, p.Name+".exe"),
 		[]string{"GOOS=windows", "GOARCH=" + arch, "CGO_ENABLED=0"}, "-H=windowsgui")
-	removeIcon()
 	if err != nil {
+		removeIcon()
 		return err
 	}
 	if p.windowsCommandLine() {
 		stage(ctx, "compiling the command companion")
 		if err := buildWindowsCommand(ctx, p, dir, arch); err != nil {
+			removeIcon()
 			return err
 		}
 	} else if p.Windows.CommandLine {
 		detailIn(ctx, "the Microsoft Store's package leaves out the command companion, which no console finds there")
 	}
+	removeIcon()
 	stage(ctx, "copying resources")
 	if err := copyResources(p, dir); err != nil {
 		return err

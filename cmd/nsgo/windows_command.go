@@ -159,8 +159,22 @@ func buildWindowsCommand(ctx context.Context, p *project, dir, arch string) erro
 	if err := os.WriteFile(source, []byte(windowsCommandSource), 0o644); err != nil {
 		return err
 	}
+	if err := os.WriteFile(filepath.Join(temp, "go.mod"), []byte("module nsgo-windows-command\n\ngo 1.26\n"), 0o644); err != nil {
+		return err
+	}
+	// The companion is compiled from a temporary package, so copy the same
+	// combined icon/version object into it. This gives .com identical metadata
+	// without creating a second .rsrc section in either executable.
+	resource := windowsResourcePath(p, arch)
+	if data, err := os.ReadFile(resource); err == nil {
+		if err := os.WriteFile(filepath.Join(temp, filepath.Base(resource)), data, 0o644); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read Windows resources: %w", err)
+	}
 	output := filepath.Join(dir, p.Name+".com")
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-buildvcs=false", "-o", output, "main.go")
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-buildvcs=false", "-o", output, ".")
 	cmd.Dir = temp
 	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH="+arch, "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
