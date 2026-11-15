@@ -348,16 +348,19 @@ func TestRotation(t *testing.T) {
 	if err := update(a, 4, pa.KeyID); !errors.Is(err, ErrStale) {
 		t.Fatalf("A's list 4 after its list 5: got %v", err)
 	}
-	// A root no longer trusted revokes nothing.
+	// A root no longer trusted revokes nothing, and revokes again once trusted again.
+	fromAOfB, err := Revoke(a.root, 7, time.Time{}, []string{pb.KeyID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	onlyB := b.trust()
-	for _, l := range trust.state.Lists {
-		onlyB.state.Lists[l.s.Signer] = l
+	onlyB.state.Lists[fromAOfB.s.Signer] = fromAOfB
+	if _, err := onlyB.Verify(fromB); err != nil {
+		t.Fatalf("B's key, which only A revoked, without A: %v", err)
 	}
-	if _, err := onlyB.Verify(fromA); !errors.Is(err, ErrUntrusted) {
-		t.Fatalf("A's package without A: got %v", err)
-	}
+	onlyB.AddRoot(a.root.Public().(ed25519.PublicKey))
 	if _, err := onlyB.Verify(fromB); !errors.Is(err, ErrRevoked) {
-		t.Fatalf("the key B revoked, without A: got %v", err)
+		t.Fatalf("B's key, which A revoked, with A again: got %v", err)
 	}
 }
 
