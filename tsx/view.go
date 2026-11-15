@@ -10,13 +10,7 @@ import (
 	"github.com/nsgo-dev/nsgo/core"
 )
 
-// View runs the app of a package a pkg.Trust verified where it is placed
-// in a Go app, sandboxed: the app's own screens delivered anew, or a
-// plugin. The package's capabilities hold it, narrowed by Grant; it keeps
-// a partition of the app's storage of its app ID's, and its host module
-// reaches Host alone. A package that throws as it loads, or stops at a
-// quota, panics, as any component does; place it under a core.Catch to
-// show something else.
+// View runs the app of a package a pkg.Trust verified where it is placed in a Go app, sandboxed: the app's own screens delivered anew, or a plugin. The package's capabilities hold it, narrowed by Grant; it keeps a partition of the app's storage of its app ID's, and its host module reaches Host alone. A package that throws as it loads, or stops at a quota, panics, as any component does; place it under a core.Catch to show something else. The web cannot isolate a package from the page, so there it panics with ErrUnisolated unless Sandbox.WebUnisolated.
 //
 //	p, err := trust.Verify(data) // off the engine's goroutine
 //	...
@@ -67,10 +61,13 @@ type Plugin struct {
 // export as a function.
 var ErrNoExport = errors.New("tsx: the plugin exports no such function")
 
-// Load runs package p as a plugin under cx, within s as View runs it, and
-// returns it once its entry module ran, or what that threw. Call it on
-// the engine's goroutine.
+// Load runs package p as a plugin under cx, within s as View runs it, and returns it once its entry module ran, or what that threw, ErrUnisolated on the web as View panics with it. Call it on the engine's goroutine.
 func Load(cx *core.Scope, p *pkg.Package, s Sandbox) (plugin *Plugin, err error) {
+	s = s.of(p)
+	// Refused before the scope runs it, which would send the panic to a Catch rather than to the caller.
+	if err := s.isolation(js.Browser); err != nil {
+		return nil, err
+	}
 	inner := cx.Child()
 	defer func() {
 		if x := recover(); x != nil {
@@ -83,7 +80,7 @@ func Load(cx *core.Scope, p *pkg.Package, s Sandbox) (plugin *Plugin, err error)
 		}
 	}()
 	var r *runtime
-	inner.Run(func() { r = s.of(p).start(inner, p.App.ID, p.Source()) })
+	inner.Run(func() { r = s.start(inner, p.App.ID, p.Source()) })
 	plugin = &Plugin{r: r, cx: inner}
 	plugin.exports, _ = r.vm.Get(exportsGlobal).(*js.Object)
 	return plugin, nil

@@ -35,6 +35,12 @@ func TestInstallsAndRunsThePackages(t *testing.T) {
 		t.Fatalf("the consent says %q", texts)
 	}
 	app.Press("id:install")
+	if runtime.GOOS == "js" {
+		// The page's engine cannot isolate the packages: both are refused.
+		want := "Refused: " + tsx.ErrUnisolated.Error()
+		app.WaitUntil(wait, func() bool { return strings.Count(strings.Join(app.Texts(), "\n"), want) == 2 })
+		return
+	}
 	app.WaitUntil(wait, func() bool { return app.Exists("id:greeting") && app.Find("id:greeting").Text == "Hello from the host" })
 	app.Press("id:wave")
 	app.Press("id:wave")
@@ -147,14 +153,13 @@ func TestRefusesARevokedPackage(t *testing.T) {
 }
 
 func TestRefusesAnOlderBuild(t *testing.T) {
+	if runtime.GOOS == "js" {
+		t.Skip("the web refuses to run the package, so no build is accepted")
+	}
 	s := newSigner(t)
-	// The web has no files to keep a Trust's state in.
-	trust := pkg.NewTrust()
-	if runtime.GOOS != "js" {
-		var err error
-		if trust, err = pkg.OpenTrust(t.TempDir()); err != nil {
-			t.Fatal(err)
-		}
+	trust, err := pkg.OpenTrust(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
 	trust.AddRoot(s.root.Public().(ed25519.PublicKey))
 	newer, older := s.build(t, 2), s.build(t, 1)

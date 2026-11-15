@@ -49,7 +49,7 @@ mount(() => <Text testID="count" onPress={() => n.set(n() + 1)}>{made + " " + n(
 		t.Fatal(err)
 	}
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
-		return core.View{Children: []core.Node{core.Text{Content: "host", TestID: "host"}, tsx.View{Package: p}}}
+		return core.View{Children: []core.Node{core.Text{Content: "host", TestID: "host"}, tsx.View{Package: p, Sandbox: tsx.Sandbox{WebUnisolated: true}}}}
 	})
 	if got := app.Find("id:count").Text; got != "refused 0" {
 		t.Fatalf("the package shows %q\n%s", got, app.Dump())
@@ -76,7 +76,7 @@ func TestViewThrowsUnderCatch(t *testing.T) {
 	}
 	var failed error
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
-		return core.Catch{Try: tsx.View{Package: p}.Render, Fallback: func(cx *core.Scope, err error, _ func()) core.Node {
+		return core.Catch{Try: tsx.View{Package: p, Sandbox: tsx.Sandbox{WebUnisolated: true}}.Render, Fallback: func(cx *core.Scope, err error, _ func()) core.Node {
 			failed = err
 			return core.Text{Content: "failed", TestID: "failed"}
 		}}

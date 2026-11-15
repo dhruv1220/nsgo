@@ -6,6 +6,8 @@
 // own; or it shows why the package was refused. search.nsgopkg is a
 // plugin of functions, which the app loads with tsx.Load and calls.
 //
+// The web cannot isolate a package from the page, so there both are refused with tsx.ErrUnisolated: the app does not set Sandbox.WebUnisolated, which would give them the page's authority whatever they declare.
+//
 // The packages are the apps in plugin/ and search/, signed by a release
 // key of a root whose secret was thrown away. To sign them again, print
 // a root and a release key with go tool nsgo keygen, keep their secret
@@ -21,6 +23,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,7 +121,12 @@ func Host(cx *core.Scope, data []byte, trust *pkg.Trust, dir string) core.Node {
 				// A view of the package's content height: the view it shows in fills the room it is given.
 				return core.View{Children: []core.Node{n}}
 			},
-			Fallback: func(cx *core.Scope, err error, _ func()) core.Node { return refused(err) },
+			Fallback: func(cx *core.Scope, err error, _ func()) core.Node {
+				if errors.Is(err, tsx.ErrUnisolated) {
+					err = tsx.ErrUnisolated // without the panic's stack
+				}
+				return refused(err)
+			},
 		}
 	})
 }

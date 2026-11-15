@@ -114,12 +114,25 @@ type Sandbox struct {
 	// Storage names its partition of the app's storage, which no one
 	// else's code sees; "" leaves it the app's storage.
 	Storage string
+	// WebUnisolated runs it on the web with the page's authority. The page's engine runs it in a realm of the page's origin, which reaches the page's own APIs (XMLHttpRequest, WebSocket, navigator, localStorage, the page's window) past Go, so there Capabilities and Grant hold only the requests the runtime and core make, and Storage's partition and a pkg.Trust kept in the page's storage are open to its code. Without it, a sandbox with Capabilities or Grant refuses to start on the web with ErrUnisolated. Other targets isolate it and ignore this.
+	WebUnisolated bool
+}
+
+// ErrUnisolated is what a sandbox with Capabilities or Grant fails with on the web unless Sandbox.WebUnisolated is set: the page's engine cannot isolate a package's realm from the page, so what it declares would not hold.
+var ErrUnisolated = errors.New("tsx: the web cannot isolate a sandboxed package from the page, so its capabilities would not hold; set Sandbox.WebUnisolated to run it with the page's authority")
+
+// isolation is why s cannot start, browser saying whether the page's engine runs it. A sandbox without Capabilities or Grant reaches what the app's code does on every target, which the page's realm gives it anyway.
+func (s Sandbox) isolation(browser bool) error {
+	if browser && (s.Capabilities != nil || s.Grant != nil) && !s.WebUnisolated {
+		return ErrUnisolated
+	}
+	return nil
 }
 
 // SandboxModules are the modules a sandboxed bundle imports without Sandbox.Modules naming them: NSGo's own, with what is registered into them SandboxSafe, none of the Go functions registered with RegisterFunctions, and none of their exports that act on the whole app (setColorScheme, BackHandler.exitApp).
 var SandboxModules = []string{"nsgo", "nsgo:rt", "nsgo/base", "nsgo/base/plot", "nsgo/ui", "nsgo/ui/chat", "nsgo/mobile"}
 
-// Sandboxed returns the app of a bundle, as App does, run within s, in a view of its own: its frame, which fills the room its parent gives it, no more, so the bundle cannot grow over the host's views, and clips what the bundle shows, overlays included (core.Scope.Confine). In a scroll view that room is the scroll view's height: a host that wants the bundle as tall as its content puts it in a view of its own.
+// Sandboxed returns the app of a bundle, as App does, run within s, in a view of its own: its frame, which fills the room its parent gives it, no more, so the bundle cannot grow over the host's views, and clips what the bundle shows, overlays included (core.Scope.Confine). In a scroll view that room is the scroll view's height: a host that wants the bundle as tall as its content puts it in a view of its own. On the web it panics with ErrUnisolated when s has Capabilities or Grant, unless s.WebUnisolated.
 func Sandboxed(name, src string, s Sandbox) func(cx *core.Scope) core.Node {
 	return func(cx *core.Scope) core.Node {
 		inner := cx.Child()
@@ -132,9 +145,11 @@ func Sandboxed(name, src string, s Sandbox) func(cx *core.Scope) core.Node {
 // sandboxFrame is the style of the view a sandboxed bundle shows in, which the host's scope owns and the bundle cannot restyle.
 var sandboxFrame = core.Style{FlexGrow: 1, FlexShrink: 1, Overflow: core.Hidden}
 
-// start runs src in a new runtime under cx, panicking with what it
-// throws as it loads.
+// start runs src in a new runtime under cx, panicking with what it throws as it loads, or with ErrUnisolated where it cannot be isolated.
 func (s Sandbox) start(cx *core.Scope, name, src string) *runtime {
+	if err := s.isolation(js.Browser); err != nil {
+		panic(err)
+	}
 	limits := DefaultLimits
 	if s.Limits != nil {
 		limits = *s.Limits
