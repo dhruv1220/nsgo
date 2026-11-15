@@ -240,3 +240,67 @@ func TestWebConfigNavigable(t *testing.T) {
 		t.Fatalf("IntersectHosts = %v", got)
 	}
 }
+
+func TestHostHandlersRunAsTheHost(t *testing.T) {
+	plugin := NewHost()
+	var app, inner *Scope
+	// The host's handlers call services with the app's own scope, which the plugin's Access does not hold, answering at once or later.
+	plugin.Handle("now", func(c *HostCall) {
+		app.OpenURL("https://help.example.com/now", nil)
+		c.Resolve(nil)
+	})
+	plugin.Handle("later", func(c *HostCall) {
+		app.Post(func() {
+			app.OpenURL("https://help.example.com/later", nil)
+			c.Resolve(nil)
+		})
+	})
+	plugin.HandleOpenURL(func(u string, answer func(bool)) {
+		app.SetStatusBar(StatusBarSetting{Hidden: ToggleOn})
+		answer(false)
+	})
+	h := newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
+		app, inner = cx, cx.Child()
+		inner.Run(func() {
+			inner.ProvideHost(plugin)
+			inner.ProvideAccess(allows(func(req AccessRequest) bool {
+				return req.Permission == AccessHost || req.Resource == "https://plugin.example.com"
+			}))
+		})
+		return View{}
+	})
+	h.commit()
+	var errs []error
+	answer := func(_ any, err error) { errs = append(errs, err) }
+	// The plugin's code calls as it runs, under its own owner.
+	inner.Run(func() {
+		inner.CallHost("now", nil, answer)
+		inner.PostHost("later", nil)
+		inner.CallHost("later", nil, answer)
+		inner.OpenURL("https://plugin.example.com", nil)
+	})
+	h.drain()
+	if len(errs) != 2 || errs[0] != nil || errs[1] != nil {
+		t.Fatalf("the calls answered %v", errs)
+	}
+	var urls []string
+	for _, it := range h.commit().Items {
+		if it.Kind == driver.ItemOpenURL {
+			urls = append(urls, it.Value)
+		}
+	}
+	want := []string{"https://help.example.com/now", "https://help.example.com/later", "https://help.example.com/later", "https://plugin.example.com"}
+	if !slices.Equal(urls, want) {
+		t.Fatalf("the platform opened %q, want %q", urls, want)
+	}
+	if h.tree.status.base.Hidden != ToggleOn {
+		t.Fatal("the host's URL handler was held to the plugin's Access")
+	}
+}
+
+// allows is an Access of a function.
+type allows func(AccessRequest) bool
+
+func (a allows) Allows(req AccessRequest) bool { return a(req) }
+
+func (a allows) WebHosts() []string { return nil }

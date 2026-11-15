@@ -115,10 +115,7 @@ func keepEvent(q []hostEvent, ev hostEvent, where string) []hostEvent {
 	return append(q, ev)
 }
 
-// Handle has fn answer the app's calls and posts of name (Scope.CallHost,
-// Scope.PostHost), replacing the handler it had. fn runs on the app's
-// goroutine, so it must not block: it answers the call once, then or
-// later from any goroutine.
+// Handle has fn answer the app's calls and posts of name (Scope.CallHost, Scope.PostHost), replacing the handler it had. fn runs on the app's goroutine, so it must not block: it answers the call once, then or later from any goroutine. It runs outside the owner that called, so the services it calls are held to the Access of the scope it calls them on, as when it answers later through Scope.Post: a plugin's Access does not hold the app's scope.
 func (h *Host) Handle(name string, fn func(call *HostCall)) {
 	h.mu.Lock()
 	h.handlers[name] = fn
@@ -300,6 +297,9 @@ func (cx *Scope) hostApp() *hostApp {
 	return cx.rt.host
 }
 
+// asHost runs fn, a host's Go code called for the code that calls it, such as a plugin, outside that code's owner: nothing owns what fn creates but the scopes it uses, and the services it calls are held to the Access of the scope it calls them on, the app's own for the app's scope, as they are when it answers later through Scope.Post.
+func (rt *runtime) asHost(fn func()) { rt.run(nil, fn) }
+
 // drain delivers the events queued since the last drain.
 func (a *hostApp) drain() {
 	a.h.mu.Lock()
@@ -465,14 +465,16 @@ func (cx *Scope) PostHost(name string, data any) {
 	a.handle(fn, &HostCall{Name: name, Data: v, post: true})
 }
 
-// handle runs a host's handler, failing the call when it panics.
+// handle runs a host's handler as the host, failing the call when it panics.
 func (a *hostApp) handle(fn func(*HostCall), call *HostCall) {
-	defer func() {
-		if r := recover(); r != nil {
-			call.Reject(fmt.Errorf("core: the host's handler of %q panicked: %v", call.Name, r))
-		}
-	}()
-	fn(call)
+	a.rt.asHost(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				call.Reject(fmt.Errorf("core: the host's handler of %q panicked: %v", call.Name, r))
+			}
+		}()
+		fn(call)
+	})
 }
 
 // openURL offers u to the host's handler, which answer hears on the
@@ -491,12 +493,14 @@ func (a *hostApp) openURL(u string, answer func(handled bool)) bool {
 	reply := func(handled bool) {
 		once.Do(func() { a.rt.post(func() { answer(handled) }) })
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("nsgo: the host's URL handler panicked: %v", r)
-			reply(false)
-		}
-	}()
-	fn(u, reply)
+	a.rt.asHost(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("nsgo: the host's URL handler panicked: %v", r)
+				reply(false)
+			}
+		}()
+		fn(u, reply)
+	})
 	return true
 }
