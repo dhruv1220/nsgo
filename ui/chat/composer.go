@@ -35,8 +35,7 @@ type Composer struct {
 	HasAttachments func() bool
 	// Footer shows below the card while the software keyboard is hidden.
 	Footer View
-	// OnDropFiles makes the card take files dropped from other apps. It
-	// gets their URLs; reading them is the app's.
+	// OnDropFiles makes the card take files dropped from other apps. It gets their URLs, which core.FileFromURL opens; reading them is the app's.
 	OnDropFiles func(uris []string)
 	// OnPaste hears what the user pastes, images and files included.
 	OnPaste func(core.PasteEvent)

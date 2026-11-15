@@ -48,6 +48,9 @@ type File struct {
 	Opener func() (io.ReadCloser, error)
 }
 
+// BlobFile, set by the web backend, is the file the page's blob: URL url (without its fragment) stands for, named name: the Blob a drop made it for, with its size, type and time, or else one read by fetching url.
+var BlobFile func(url, name string) File
+
 // Open opens the file for reading.
 func (f File) Open() (io.ReadCloser, error) {
 	if f.Opener != nil {

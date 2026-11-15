@@ -101,8 +101,8 @@ The app's own requests to move the focus, `Ref.Focus`, an input's `AutoFocus`, `
 
 ## File drops
 
-Files dragged from other apps follow NSH's `file-drop.md`. `View.OnFileDrop` receives `file:` URLs; `OnFileDragEnter` and `OnFileDragLeave` follow the drag.
+Files dragged from other apps follow NSH's `file-drop.md`. `View.OnFileDrop` receives `file:` URLs, which `core.FileFromURL` opens as a `File`; `OnFileDragEnter` and `OnFileDragLeave` follow the drag.
 
 - The destination is the innermost view under the pointer whose mask has `EventFileDrop`, unless it is disabled; the topmost modal bounds the search. The platform decides on the main thread from the mounted views and answers Copy or nothing.
 - Leaving one destination for another reports a leave, then an enter. A deleted destination hears nothing more, since its ID may be reused.
-- macOS takes `NSPasteboardTypeFileURL` on the surface, Windows registers an OLE `IDropTarget` written in Go while a view listens, and Linux adds a `GtkDropTarget` for `GdkFileList`. Browsers hide paths, so the web delivers each file as a `blob:` URL that `fetch` and `net/http` read, its name as the fragment.
+- macOS takes `NSPasteboardTypeFileURL` on the surface, Windows registers an OLE `IDropTarget` written in Go while a view listens, and Linux adds a `GtkDropTarget` for `GdkFileList`. Browsers hide paths, so the web delivers each file as a `blob:` URL, its name as the fragment; the backend keeps the dropped `File` by URL, so `FileFromURL` gives its size, type and time and reads its `Blob` a slice at a time, and fetches a `blob:` URL the page made otherwise.

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"net/url"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -415,10 +413,7 @@ func chatDemo(cx *core.Scope) core.Node {
 		if len(uris) == 0 {
 			return
 		}
-		name := uris[0]
-		if u, err := url.Parse(name); err == nil {
-			name = path.Base(u.Path)
-		}
+		name := fileName(uris[0])
 		attachment.Set(&chatAttachment{file: fileRef{name, fileKind(name)}})
 	}
 

@@ -147,11 +147,7 @@ type View struct {
 	// OnRotation.
 	PinchValue    *AnimatedValue
 	RotationValue *AnimatedValue
-	// OnFileDrop receives the file: URLs of files dropped on the view from
-	// another app, on desktops and the web; OnFileDragEnter and
-	// OnFileDragLeave follow them while they are dragged over it. The
-	// innermost view with OnFileDrop under the pointer takes them, unless
-	// it is Disabled.
+	// OnFileDrop receives the URLs of files dropped on the view from another app, on desktops and the web: file: URLs on desktops, and on the web, which hides paths, blob: URLs with each file's name as the fragment; FileFromURL opens either. OnFileDragEnter and OnFileDragLeave follow them while they are dragged over it. The innermost view with OnFileDrop under the pointer takes them, unless it is Disabled.
 	OnFileDrop      func(uris []string)
 	OnFileDragEnter func()
 	OnFileDragLeave func()

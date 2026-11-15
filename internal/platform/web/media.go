@@ -5,7 +5,6 @@ package web
 import (
 	"fmt"
 	"log"
-	"net/url"
 	"strings"
 	"syscall/js"
 	"time"
@@ -274,9 +273,7 @@ func (s *surface) configureNative(v *view, c *driver.NativeConfig) {
 	}
 }
 
-// File drops: files dragged from the desktop onto a view that listens.
-// Browsers hide files' paths, so each file arrives as a blob: URL, which
-// fetch and net/http read, with the file's name as its fragment.
+// File drops: files dragged from the desktop onto a view that listens. Browsers hide files' paths, so each file arrives as a blob: URL with the file's name as its fragment, which core.FileFromURL opens.
 
 func (s *surface) listenFiles(ls *listeners) {
 	over := func(e js.Value) {
@@ -310,9 +307,7 @@ func (s *surface) listenFiles(ls *listeners) {
 		files := e.Get("dataTransfer").Get("files")
 		var uris []string
 		for i := range files.Length() {
-			f := files.Index(i)
-			blob := js.Global().Get("URL").Call("createObjectURL", f).String()
-			uris = append(uris, blob+"#"+url.PathEscape(f.Get("name").String()))
+			uris = append(uris, droppedURL(files.Index(i)))
 		}
 		if len(uris) > 0 {
 			s.send(v, driver.Event{Kind: driver.EventFileDrop, URIs: uris})

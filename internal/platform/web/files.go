@@ -4,13 +4,58 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"net/url"
 	"strings"
+	"sync"
 	"syscall/js"
 	"time"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
+
+func init() { driver.BlobFile = blobFile }
+
+// dropped holds the File each blob: URL a drop made stands for, by URL, as long as the page lives, as the URL does.
+var dropped sync.Map
+
+// droppedURL makes a blob: URL for a dropped File, its name as the fragment, and remembers the File for blobFile.
+func droppedURL(f js.Value) string {
+	u := js.Global().Get("URL").Call("createObjectURL", f).String()
+	dropped.Store(u, f)
+	return u + "#" + url.PathEscape(f.Get("name").String())
+}
+
+// blobFile is the file the blob: URL raw stands for: the File a drop made it for, read a slice at a time, or else what fetching raw answers.
+func blobFile(raw, name string) driver.File {
+	f := driver.File{Name: name, MIME: driver.MIMEForFile(name)}
+	if v, ok := dropped.Load(raw); ok {
+		blob := v.(js.Value)
+		size := int64(blob.Get("size").Float())
+		if t := blob.Get("type").String(); t != "" {
+			f.MIME = t
+		}
+		f.Size, f.Modified = size, modified(blob)
+		f.Opener = func() (io.ReadCloser, error) { return &blobReader{blob: blob, size: size}, nil }
+		return f
+	}
+	f.Opener = func() (io.ReadCloser, error) {
+		response, err := await(js.Global().Call("fetch", raw))
+		if err != nil {
+			return nil, err
+		}
+		if !response.Get("ok").Bool() {
+			return nil, fmt.Errorf("web: reading %s: HTTP %d", raw, response.Get("status").Int())
+		}
+		blob, err := await(response.Call("blob"))
+		if err != nil {
+			return nil, err
+		}
+		return &blobReader{blob: blob, size: int64(blob.Get("size").Float())}, nil
+	}
+	return f
+}
 
 // pickFiles shows the browser's file chooser for the files r offers; a
 // picked file has no path, so it reads from its blob. A cancelled

@@ -166,9 +166,7 @@ func (cx *Scope) HasClipboardImage(done func(bool)) {
 	cx.readClipboard(driver.ClipboardReadHasImage, func(ev driver.Event) { done(ev.Finished) })
 }
 
-// ReadClipboardFiles calls done with the file: URLs of the local files
-// on the clipboard, such as files copied in a file manager, none when it
-// holds none.
+// ReadClipboardFiles calls done with the file: URLs of the local files on the clipboard, such as files copied in a file manager, which FileFromURL opens, none when it holds none.
 func (cx *Scope) ReadClipboardFiles(done func(uris []string)) {
 	cx.readClipboard(driver.ClipboardReadFiles, func(ev driver.Event) { done(ev.URIs) })
 }

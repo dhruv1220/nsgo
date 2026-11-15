@@ -24,7 +24,7 @@ cx.ShowAlert(core.AlertConfig{
 })
 ```
 
-`SetClipboard` 写入文本，`SetClipboardImage` 写入图片。`ReadClipboard`、`ReadClipboardImage` 和 `ReadClipboardFiles` 异步回答，`HasClipboardText` 和 `HasClipboardImage` 只读取剪贴板内容，不会触发粘贴提示。
+`SetClipboard` 写入文本，`SetClipboardImage` 写入图片。`ReadClipboard`、`ReadClipboardImage` 和 `ReadClipboardFiles` 异步回答，`HasClipboardText` 和 `HasClipboardImage` 只读取剪贴板内容，不会触发粘贴提示。`core.FileFromURL` 把 `ReadClipboardFiles` 和 `View.OnFileDrop` 给出的 URL 打开为 `core.File`：`file:` URL，以及 Web 上的 `blob:` URL。
 
 ```go
 cx.ReadClipboard(func(text string) { pasted.Set(text) })
