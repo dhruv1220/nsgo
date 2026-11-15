@@ -17,6 +17,8 @@ var (
 	dockProgressContainer objc.ID
 	dockProgressBar       objc.ID
 	dockProgressState     driver.TaskProgress
+	// dockProgressCall is the call of the progress the Dock tile shows, whichever surface sent it.
+	dockProgressCall uint64
 )
 
 func registerTaskProgressClass() {
@@ -28,11 +30,12 @@ func registerTaskProgressClass() {
 	})
 }
 
-// setDockProgress keeps the app icon visible and draws a small progress bar
-// across its lower edge. The Dock tile is a snapshot, so indeterminate is a
-// static half-filled bar; callers get a live indicator once a fraction is
-// available.
+// setDockProgress keeps the app icon visible and draws a small progress bar across its lower edge. The Dock tile is a snapshot, so indeterminate is a static half-filled bar; callers get a live indicator once a fraction is available. A call older than the one shown is a surface's that committed after a later call's, and changes nothing.
 func setDockProgress(progress driver.TaskProgress) {
+	if progress.Call < dockProgressCall {
+		return
+	}
+	dockProgressCall = progress.Call
 	app := objc.ID(apple.Class("NSApplication")).Send(sel("sharedApplication"))
 	tile := app.Send(sel("dockTile"))
 	if progress.State == driver.TaskProgressNone {

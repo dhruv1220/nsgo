@@ -1223,6 +1223,15 @@ func TestTaskProgressOfSurfacesWithoutAButtonShowsOnTheAppsWindows(t *testing.T)
 	if opened.shownProgress() != busy || opened.progress != (driver.TaskProgress{}) {
 		t.Errorf("the opened window shows %+v and keeps %+v", opened.shownProgress(), opened.progress)
 	}
+	// The app's tree commits before a panel's, so the panel's earlier call can arrive after the app's later one, and changes nothing.
+	cleared := driver.TaskProgress{Call: 3}
+	root.setTaskProgress(cleared)
+	panel.setTaskProgress(driver.TaskProgress{State: driver.TaskProgressNormal, Value: 1, Call: 2})
+	if opened.shownProgress() != cleared {
+		t.Errorf("the opened window shows %+v after an earlier call arrived late, want the later clear", opened.shownProgress())
+	}
+	busy.Call = 4
+	root.setTaskProgress(busy)
 	own := driver.TaskProgress{State: driver.TaskProgressPaused, Value: .2}
 	opened.setTaskProgress(own)
 	if opened.shownProgress() != own {

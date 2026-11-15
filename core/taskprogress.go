@@ -2,6 +2,7 @@ package core
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
@@ -30,7 +31,10 @@ type TaskProgress struct {
 	Value float64
 }
 
-// SetTaskProgress shows p on the taskbar button of the scope's window on Windows, or on the app's icon on macOS and Linux. On Windows, a scope whose surface has no button, such as the app's own scope where it opens its windows, a panel or a tray icon's view, sets the progress every window of the app shows while it sets none of its own. Android, iOS and the web ignore it. Repeating the value the same window sent last sends nothing, unless another window changed the progress since.
+// taskProgressCalls counts the process's SetTaskProgress calls, for driver.TaskProgress.Call: the process's, not a root's, as the Dock tile and a launcher entry outlive an app that restarts in the same process.
+var taskProgressCalls atomic.Uint64
+
+// SetTaskProgress shows p on the taskbar button of the scope's window on Windows, or on the app's icon on macOS and Linux. On Windows, a scope whose surface has no button, such as the app's own scope where it opens its windows, a panel or a tray icon's view, sets the progress every window of the app shows while it sets none of its own. Android, iOS and the web ignore it. Where one indicator shows the progress of several windows, the latest call wins, whichever window's changes commit first. Repeating the value the same window sent last sends nothing, unless another window changed the progress since.
 func (cx *Scope) SetTaskProgress(p TaskProgress) {
 	t := cx.tree()
 	if t == nil {
@@ -49,12 +53,14 @@ func (cx *Scope) SetTaskProgress(p TaskProgress) {
 	if state == TaskProgressNone || state == TaskProgressIndeterminate {
 		value = 0
 	}
-	next := driver.TaskProgress{State: driver.TaskProgressState(state), Value: value}
+	shown := driver.TaskProgress{State: driver.TaskProgressState(state), Value: value}
 	rt := cx.rt
-	if rt.taskProgressSent && rt.taskProgressFrom == t.id && rt.taskProgress == next {
+	if rt.taskProgressSent && rt.taskProgressFrom == t.id && rt.taskProgress == shown {
 		return
 	}
-	rt.taskProgress, rt.taskProgressFrom, rt.taskProgressSent = next, t.id, true
+	rt.taskProgress, rt.taskProgressFrom, rt.taskProgressSent = shown, t.id, true
+	next := shown
+	next.Call = taskProgressCalls.Add(1)
 	t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemTaskProgress, Progress: &next})
 	t.changed = true
 }

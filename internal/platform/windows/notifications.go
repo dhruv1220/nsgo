@@ -367,7 +367,7 @@ func (w *window) rootWindow() *window {
 	return w
 }
 
-// setTaskProgress keeps progress for the window's taskbar button and shows it there once the button is in place. A window without a button of its own sets the app's progress instead, which every window of the app shows while it has none of its own, as the Dock tile and Linux launchers show one progress for the app.
+// setTaskProgress keeps progress for the window's taskbar button and shows it there once the button is in place. A window without a button of its own sets the app's progress instead, which every window of the app shows while it has none of its own, as the Dock tile and Linux launchers show one progress for the app; as several surfaces set it, a call older than the one it holds is a surface's that committed after a later call's, and changes nothing.
 func (w *window) setTaskProgress(progress driver.TaskProgress) {
 	if w.ownsTaskbarButton() {
 		w.progress = progress
@@ -375,6 +375,9 @@ func (w *window) setTaskProgress(progress driver.TaskProgress) {
 		return
 	}
 	root := w.rootWindow()
+	if progress.Call < root.appProgress.Call {
+		return
+	}
 	root.appProgress = progress
 	for _, o := range windows {
 		if o.rootWindow() == root && o.ownsTaskbarButton() && o.progress.State == driver.TaskProgressNone {

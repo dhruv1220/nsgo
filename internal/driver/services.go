@@ -581,6 +581,8 @@ const (
 type TaskProgress struct {
 	State TaskProgressState
 	Value float64
+	// Call numbers the SetTaskProgress call that sent it, from 1 in the order the app made the calls. A platform that shows one progress for several surfaces, as the Dock tile, a Linux launcher entry and the progress Windows windows show from surfaces without a button, ignores a call older than the one it shows: the surfaces commit in their own order, not in the order of the calls.
+	Call uint64
 }
 
 // BarFraction is the fraction a bar drawn for p fills where the platform has no indeterminate or cleared state of its own, as the Dock tile and Unity's LauncherEntry: none for no progress, half for an indeterminate task, which a snapshot cannot animate, and Value otherwise.

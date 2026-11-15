@@ -48,3 +48,39 @@ func TestTaskProgressRepeatsWhatAnotherTreeChanged(t *testing.T) {
 		t.Errorf("after the app cleared it the window sent %+v, want indeterminate again", got)
 	}
 }
+
+// TestTaskProgressNumbersCallsInTheirOrder checks that a call's number follows the calls, not the commits: the app's tree commits before its windows', so a window's progress set before the app's clear in the same pass reaches the platform after it, which keeps the clear as the later call (driver.TaskProgress.Call).
+func TestTaskProgressNumbersCallsInTheirOrder(t *testing.T) {
+	var app, inWindow *Scope
+	var win *Window
+	w := newWindows(t, func(cx *Scope) {
+		app = cx
+		cx.SetShutdownMode(ShutdownOnExplicit)
+		win = cx.OpenWindow(WindowOptions{Title: "Downloads"}, func(cx *Scope) Node {
+			inWindow = cx
+			return View{}
+		})
+	})
+	id := win.t.ID()
+	w.items = map[uint32][]driver.MountItem{}
+	inWindow.SetTaskProgress(TaskProgress{State: TaskProgressNormal, Value: 1})
+	app.SetTaskProgress(TaskProgress{})
+	w.commit()
+	fromApp, fromWindow := w.take(0, driver.ItemTaskProgress), w.take(id, driver.ItemTaskProgress)
+	if len(fromApp) != 1 || len(fromWindow) != 1 {
+		t.Fatalf("the app sent %d items and the window %d, want one each", len(fromApp), len(fromWindow))
+	}
+	if cleared, full := fromApp[0].Progress, fromWindow[0].Progress; cleared.State != driver.TaskProgressNone || full.State != driver.TaskProgressNormal || full.Call == 0 || cleared.Call <= full.Call {
+		t.Fatalf("the app sent %+v and the window %+v, want the app's clear the later call", *cleared, *full)
+	}
+	// The app's clear is the progress shown, so clearing it again sends nothing, and the window's value is sent again.
+	app.SetTaskProgress(TaskProgress{})
+	inWindow.SetTaskProgress(TaskProgress{State: TaskProgressNormal, Value: 1})
+	w.commit()
+	if got := w.take(0, driver.ItemTaskProgress); len(got) != 0 {
+		t.Errorf("the app sent %d items for a repeated clear, want none", len(got))
+	}
+	if got := w.take(id, driver.ItemTaskProgress); len(got) != 1 || got[0].Progress.State != driver.TaskProgressNormal {
+		t.Errorf("the window sent %d items after the app cleared its progress, want one", len(got))
+	}
+}

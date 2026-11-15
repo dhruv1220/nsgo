@@ -130,10 +130,15 @@ func setLauncherBadge(bus uintptr, appID string, count uint32) {
 	}
 }
 
-// setLauncherProgress updates the LauncherEntry progress properties. Unity's
-// protocol has no indeterminate state, so an indeterminate task uses a
-// static half-filled bar until it reports a fraction or clears itself.
+// launcherProgressCall is the call of the progress the launcher entry shows, whichever surface sent it; only the notification queue reads and writes it.
+var launcherProgressCall uint64
+
+// setLauncherProgress updates the LauncherEntry progress properties. Unity's protocol has no indeterminate state, so an indeterminate task uses a static half-filled bar until it reports a fraction or clears itself. A call older than the one shown is a surface's that committed after a later call's, and changes nothing.
 func setLauncherProgress(bus uintptr, appID string, progress driver.TaskProgress) {
+	if progress.Call < launcherProgressCall {
+		return
+	}
+	launcherProgressCall = progress.Call
 	if bus == 0 || appID == "" {
 		return
 	}

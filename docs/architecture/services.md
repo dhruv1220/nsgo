@@ -197,7 +197,7 @@ A playing `Video` keeps the display on only on iOS, where `AVPlayer`'s `prevents
 
 ## Task progress
 
-`SetTaskProgress` puts a task's state and fraction on the app icon, where the platform has a surface, and clears it with `TaskProgressNone`. Values are clamped to 0..1; repeating what the same window, panel or tray view sent last sends no update, unless another surface changed the progress since, as the Dock tile and the launcher entry are the whole app's. It does not require notification access.
+`SetTaskProgress` puts a task's state and fraction on the app icon, where the platform has a surface, and clears it with `TaskProgressNone`. Values are clamped to 0..1; where one indicator shows several surfaces' progress, as the Dock tile, the launcher entry and the progress Windows shows from surfaces without a button, the latest call wins: each call is numbered (`driver.TaskProgress.Call`) and the platform ignores one older than what it shows, as the app's tree commits before the others whatever the order of the calls. Repeating what the same window, panel or tray view sent last sends no update, unless another surface changed the progress since. It does not require notification access.
 
 | Target | Surface | States |
 | --- | --- | --- |
