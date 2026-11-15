@@ -1,6 +1,7 @@
 package core
 
 import (
+	"log"
 	"slices"
 	"strings"
 
@@ -76,7 +77,7 @@ type backHandler struct {
 // confineKey is where Confine marks an owner.
 type confineKey struct{}
 
-// Confine has the key bindings (OnKey) and back handlers (OnBackPress) made under the current owner, whoever makes them, fire only while the keyboard focus is on a view it owns, itself or through the owners below it: never while the focus is elsewhere or nowhere, so what it shows cannot take the keys or back presses of the views around it. A press a confined binding or handler leaves goes on to the others, as if it were not there. tsx's sandbox confines a bundle's scope.
+// Confine has the key bindings (OnKey) and back handlers (OnBackPress) made under the current owner, whoever makes them, fire only while the keyboard focus is on a view it owns, itself or through the owners below it: never while the focus is elsewhere or nowhere, so what it shows cannot take the keys or back presses of the views around it. A press a confined binding or handler leaves goes on to the others, as if it were not there. Nor may its views take the focus on their own: a Ref's Focus, an input's AutoFocus and DismissKeyboard move it only while the focus is already in them or the user's input just landed on one (mayMoveFocus). tsx's sandbox confines a bundle's scope.
 func (cx *Scope) Confine() {
 	o := cx.current()
 	if o.values == nil {
@@ -100,13 +101,31 @@ func (t *Tree) focusWithin(s *Scope) bool {
 	if s == nil {
 		return true
 	}
-	if t.focus == nil {
-		return false
-	}
-	for o := t.focus.owner; o != nil; o = o.parent {
+	return t.focus != nil && owns(s, t.focus.owner)
+}
+
+// owns reports whether s is o or an owner above it.
+func owns(s, o *Scope) bool {
+	for ; o != nil; o = o.parent {
 		if o == s {
 			return true
 		}
+	}
+	return false
+}
+
+// focusRefusedKey is where a confined owner notes that a focus request of its was refused, which logs once.
+type focusRefusedKey struct{}
+
+// mayMoveFocus reports whether a focus request of owner o, a Ref's Focus or an input's AutoFocus on a view it owns or its DismissKeyboard, may move the keyboard focus. One of an owner Confine confined may only while the focus is already in a view it owns, or until the commit after the user's own input (activated) landed on one, as a browser lets a cross-origin frame take the focus only on the user's activation: else its views could take the focus, and with it the keys, from the views around them whenever they like. Any other owner always may. The first refusal of each confined owner logs.
+func (t *Tree) mayMoveFocus(o *Scope) bool {
+	c := confinement(o)
+	if c == nil || t.focusWithin(c) || owns(c, t.activated) {
+		return true
+	}
+	if _, ok := c.values[focusRefusedKey{}]; !ok {
+		c.values[focusRefusedKey{}] = true
+		log.Printf("nsgo: a confined view asked for the keyboard focus while it was elsewhere and the user's input had not landed on the view; refused")
 	}
 	return false
 }

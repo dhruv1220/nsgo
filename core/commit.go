@@ -41,6 +41,7 @@ const hiddenInk = driver.Color(0xffffff00)
 
 func (t *Tree) commit(shared bool) *driver.MountBatch {
 	if !t.changed {
+		t.activated = nil
 		return nil
 	}
 	if t.follower != nil {
@@ -66,6 +67,8 @@ func (t *Tree) commit(shared bool) *driver.MountBatch {
 		}
 		t.commitRound()
 	}
+	// The user's input let its owner move the focus until what it caused was committed.
+	t.activated = nil
 	t.markShaderInputs()
 	if len(t.shaderStarts) > 0 {
 		// The platform pictures what a transition starts from before it
@@ -796,7 +799,7 @@ func (t *Tree) emitParts(n *node) bool {
 			in.shown = in.value
 			add(driver.MountItem{Kind: driver.ItemInputValue, ID: n.id, Value: in.value, Count: in.count})
 		}
-		if first && in.autoFocus {
+		if first && in.autoFocus && t.mayMoveFocus(n.owner) {
 			t.command(driver.ItemFocus, n)
 		}
 		t.reportContentSize(n)

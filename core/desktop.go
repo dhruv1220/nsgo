@@ -180,6 +180,8 @@ func (t *Tree) popupClosed(id uint32) {
 		if owner.disposed {
 			owner = t.root
 		}
+		// The user closed it, choosing or not (mayMoveFocus).
+		t.activated = owner
 		t.within(owner, p.closed)
 	}
 }
@@ -219,6 +221,8 @@ func (t *Tree) chooseMenu(id uint32) {
 		a, ok = t.popup.actions[id]
 	}
 	if ok && !a.owner.disposed {
+		// Choosing it is the user's input on its owner's views (mayMoveFocus).
+		t.activated = a.owner
 		t.within(a.owner, a.fn)
 	}
 }

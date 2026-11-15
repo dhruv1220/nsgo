@@ -260,6 +260,10 @@ func (t *Tree) touched(ev driver.Event) {
 	if len(path) == 0 && s.responder == nil {
 		return
 	}
+	if len(path) > 0 && (e.Phase == TouchStart || e.Phase == TouchEnd) {
+		// A finger going down or lifting is the user's input on the views it is on (mayMoveFocus).
+		t.activated = path[0].owner
+	}
 	// A finger down hides the tooltips of the views it is on.
 	if e.Phase == TouchStart {
 		for _, n := range path {
