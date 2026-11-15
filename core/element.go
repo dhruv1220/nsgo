@@ -900,10 +900,7 @@ type Modal struct {
 	Style     Style
 	StyleFunc func() Style
 	Children  []Node
-	// OnRequestClose receives Escape or back ("cancel") while the modal is
-	// the topmost, and an iOS sheet's swipe ("swipe"); the app decides
-	// whether to remove it. A sheet swiped away has left the screen
-	// already and stays hidden until the app removes it.
+	// OnRequestClose receives Escape or back ("cancel") while the modal is the topmost, and an iOS sheet's swipe ("swipe"); the app decides whether to remove it, except that back takes a confined owner's away regardless (Scope.Confine). A sheet swiped away has left the screen already and stays hidden until the app removes it.
 	OnRequestClose func(reason string)
 	// OnShown and OnDismissed receive the platform's reports that it
 	// finished presenting the modal and taking it away, where it makes

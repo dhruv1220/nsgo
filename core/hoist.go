@@ -758,6 +758,10 @@ func (t *Tree) back() {
 		if f := host.hoist.modal.OnRequestClose; f != nil {
 			t.within(host.owner, func() { f("cancel") })
 		}
+		if confinement(host.owner) != nil {
+			// A confined owner's modal covers the window around it, so back takes it away whether or not its owner removes it, as the user expects (Scope.Confine). Deleting its view dismisses it on every platform, which a hidden one is not where the platform presented it; its owner removing it later finds it gone.
+			t.discard(host)
+		}
 		return
 	}
 	for i := len(t.backs) - 1; i >= 0; i-- {

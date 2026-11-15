@@ -1481,7 +1481,7 @@ func TestConfinedViewsStayInTheirFrame(t *testing.T) {
 	}
 }
 
-// What a frame cannot clip, a confined owner's modal, alert and context menu, it shows only while the focus is in its views or as the user's input on them is handled; a modal so shown stays and hears back wherever the focus is. An owner not confined shows them whenever it likes.
+// What a frame cannot clip, a confined owner's modal, alert and context menu, it shows only while the focus is in its views or as the user's input on them is handled; a modal so shown stays and hears back wherever the focus is, and back takes it away whether or not its owner removes it. An owner not confined shows them whenever it likes, and keeps its modal while it likes.
 func TestConfinedPresentationsWaitForTheUser(t *testing.T) {
 	for _, confined := range []bool{true, false} {
 		name := map[bool]string{true: "confined", false: "not confined"}[confined]
@@ -1536,12 +1536,14 @@ func TestConfinedPresentationsWaitForTheUser(t *testing.T) {
 		if !modalShown() || command(b, driver.ItemAlert) == nil || command(b, driver.ItemPopupMenu) == nil {
 			t.Errorf("%s, on a press: modal %v, alert %v, menu %v", name, modalShown(), command(b, driver.ItemAlert) != nil, command(b, driver.ItemPopupMenu) != nil)
 		}
-		// Shown, it stays, and back closes it with the focus outside its owner.
+		// Shown, it stays, and back asks it to close with the focus outside its owner; a confined owner's goes even though its owner keeps it.
+		modal := h.find("plugin-modal").id
 		h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("host-field").id})
 		h.commit()
 		h.tree.Dispatch(driver.Event{Kind: driver.EventBack})
-		if !modalShown() || !slices.Equal(closes, []string{"cancel"}) {
-			t.Errorf("%s: after a back the modal is shown %v and asked to close %q", name, modalShown(), closes)
+		deleted := slices.ContainsFunc(h.commit().Items, func(it driver.MountItem) bool { return it.Kind == driver.ItemDelete && it.ID == modal })
+		if modalShown() == confined || deleted != confined || !slices.Equal(closes, []string{"cancel"}) {
+			t.Errorf("%s: after a back the modal is shown %v, its view deleted %v, and asked to close %q", name, modalShown(), deleted, closes)
 		}
 	}
 }
