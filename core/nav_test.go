@@ -246,6 +246,25 @@ func TestStatusBarLayers(t *testing.T) {
 	}
 }
 
+func TestStatusBarFunctionChecksAccessOnlyForASetting(t *testing.T) {
+	h := newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
+		cx.ProvideAccess(hostsAccess{})
+		return Modal{StatusBarFunc: func() StatusBarSetting { return StatusBarSetting{} }}
+	})
+	h.commit()
+	if h.root.rt.refusals[AccessStatusBar] {
+		t.Fatal("a zero status bar function checked access")
+	}
+	h = newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
+		cx.ProvideAccess(hostsAccess{})
+		return Modal{StatusBarFunc: func() StatusBarSetting { return StatusBarSetting{Hidden: ToggleOn} }}
+	})
+	h.commit()
+	if !h.root.rt.refusals[AccessStatusBar] {
+		t.Fatal("a non-zero status bar function did not check access")
+	}
+}
+
 func TestModalSheetSizeAndSwipe(t *testing.T) {
 	var reasons []string
 	var insets Edges

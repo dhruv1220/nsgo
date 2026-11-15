@@ -79,7 +79,10 @@ func (cx *Scope) SetStatusBar(patch StatusBarSetting) {
 // bindStatusBar gives n a layer of status bar settings: the static one,
 // or fn's while it changes.
 func (t *Tree) bindStatusBar(cx *Scope, n *node, s StatusBarSetting, fn func() StatusBarSetting) {
-	if s == (StatusBarSetting{}) && fn == nil || cx.denied(AccessRequest{Permission: AccessStatusBar}) {
+	if s == (StatusBarSetting{}) && fn == nil {
+		return
+	}
+	if fn == nil && cx.denied(AccessRequest{Permission: AccessStatusBar}) {
 		return
 	}
 	l := &statusLayer{n: n, setting: s}
@@ -87,7 +90,11 @@ func (t *Tree) bindStatusBar(cx *Scope, n *node, s StatusBarSetting, fn func() S
 	t.changed = true
 	if fn != nil {
 		cx.renderEffect(func() {
-			l.setting = fn()
+			setting := fn()
+			if setting != (StatusBarSetting{}) && cx.denied(AccessRequest{Permission: AccessStatusBar}) {
+				setting = StatusBarSetting{}
+			}
+			l.setting = setting
 			t.changed = true
 		})
 	}
