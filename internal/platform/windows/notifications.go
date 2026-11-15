@@ -64,7 +64,7 @@ var (
 	// TypedEventHandler<ToastNotification, IInspectable>, Activated's.
 	iidToastActivated = parseGUID("ab54de2d-97d9-5528-b6ad-105afe156530")
 	clsidTaskbarList  = parseGUID("56fdf344-fd6d-11d0-958a-006097c9a090")
-	iidTaskbarList3   = parseGUID("ea1afb91-9e28-4b86-90e9-9e9f8a5eee6f")
+	iidTaskbarList3   = parseGUID("ea1afb91-9e28-4b86-90e9-9e9f8a5eefaf")
 )
 
 // The methods called, by their vtable slots: IInspectable's six come
