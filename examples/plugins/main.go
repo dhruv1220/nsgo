@@ -115,7 +115,8 @@ func Host(cx *core.Scope, data []byte, trust *pkg.Trust, dir string) core.Node {
 			Try: func(cx *core.Scope) core.Node {
 				n := tsx.View{Package: p, Sandbox: tsx.Sandbox{Host: channel}}.Render(cx)
 				go trust.Accept(p)
-				return n
+				// A view of the package's content height: the view it shows in fills the room it is given.
+				return core.View{Children: []core.Node{n}}
 			},
 			Fallback: func(cx *core.Scope, err error, _ func()) core.Node { return refused(err) },
 		}
