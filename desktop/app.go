@@ -15,8 +15,7 @@ type (
 	Window = core.Window
 	// WindowOptions are a window's title, size, constraints and key.
 	WindowOptions = core.WindowOptions
-	// PanelOptions are a panel's size and whether it hides as it loses
-	// the focus.
+	// PanelOptions are a panel's size, activation and focus behavior.
 	PanelOptions = core.PanelOptions
 	// WindowClosing is a close the user asked for, which
 	// Window.OnClosing may cancel.
@@ -48,9 +47,9 @@ func OpenWindow(cx *core.Scope, opts WindowOptions, content func(cx *core.Scope)
 }
 
 // OpenPanel opens a hidden panel showing content: a borderless window
-// above the others, which takes the keyboard without activating the app,
-// for Window.Toggle, a global shortcut or a tray icon to show, as a
-// launcher or a tray icon's panel does.
+// above the others, non-activating by default, for Window.Toggle, a global
+// shortcut or a tray icon to show. Set PanelOptions.Activates when the
+// panel should take the application's focus.
 func OpenPanel(cx *core.Scope, opts PanelOptions, content func(cx *core.Scope) core.Node) *Window {
 	return cx.OpenPanel(opts, content)
 }

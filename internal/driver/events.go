@@ -260,6 +260,10 @@ const (
 	EventPermission
 	// EventAudio reports sound or player Count (Data, an *AudioEvent).
 	EventAudio
+	// EventWindowPlacementFailed reports that a panel could not be placed
+	// at the requested screen rectangle. Text explains the platform reason.
+	// It is appended so Android's wire event numbers stay compatible.
+	EventWindowPlacementFailed
 )
 
 // What EventInputModality reports.

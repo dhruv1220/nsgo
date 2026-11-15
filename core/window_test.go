@@ -258,6 +258,42 @@ func TestTrayAndPanel(t *testing.T) {
 	}
 }
 
+func TestPanelPlacementCommands(t *testing.T) {
+	var panel *Window
+	var owner *Scope
+	w := newWindows(t, func(cx *Scope) {
+		owner = cx
+		cx.SetShutdownMode(ShutdownOnExplicit)
+		panel = cx.OpenPanel(PanelOptions{}, func(cx *Scope) Node { return Text{Content: "panel"} })
+	})
+	w.take(0, driver.ItemOpenSurface)
+	var placementErr error
+	panel.OnPlacementError(owner, func(err error) { placementErr = err })
+	anchor := Bounds{Origin: Point{X: 100, Y: 200}, Size: Size{Width: 40, Height: 20}}
+	if err := panel.ShowAt(anchor, PlaceTop); err != nil {
+		t.Fatal(err)
+	}
+	w.commit()
+	cmds := w.take(panel.t.id, driver.ItemWindow)
+	if len(cmds) != 1 || cmds[0].Window.Action != driver.WindowShow || cmds[0].Window.AnchorBounds != anchor ||
+		cmds[0].Window.Placement != driver.WindowPlaceTop || cmds[0].Window.Activate {
+		t.Fatalf("show at command = %+v", cmds)
+	}
+	if err := panel.MoveTo(anchor, PlaceRight); err != nil {
+		t.Fatal(err)
+	}
+	w.commit()
+	cmds = w.take(panel.t.id, driver.ItemWindow)
+	if len(cmds) != 1 || cmds[0].Window.Action != driver.WindowSetAnchor || cmds[0].Window.AnchorBounds != anchor ||
+		cmds[0].Window.Placement != driver.WindowPlaceRight {
+		t.Fatalf("move to command = %+v", cmds)
+	}
+	w.dispatch(panel.t.id, driver.Event{Kind: driver.EventWindowPlacementFailed, Text: "unsupported"})
+	if placementErr == nil || placementErr.Error() != "unsupported" {
+		t.Fatalf("placement error = %v", placementErr)
+	}
+}
+
 func TestHotKeysDockAndLogin(t *testing.T) {
 	var cx0, owner *Scope
 	fired := 0

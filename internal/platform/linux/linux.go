@@ -91,11 +91,15 @@ type window struct {
 	surface uintptr // the NsgoView holding the root view
 	// primary is the backend's own surface. Opened surfaces share the GTK main
 	// loop, but closing one must not end the app.
-	primary    bool
-	kind       driver.SurfaceKind
-	hideOnBlur bool
-	visible    bool
-	focused    bool
+	primary         bool
+	kind            driver.SurfaceKind
+	hideOnBlur      bool
+	activates       bool
+	visible         bool
+	focused         bool
+	anchor          uint32
+	anchorBounds    driver.Bounds
+	windowPlacement driver.WindowPlacement
 	// settingsHandlers are the handlers setupSettings connects to GTK's settings, which outlive the window.
 	settingsHandlers []uint64
 	// embedded is set for a host's widget (NewView): the host owns the
@@ -360,7 +364,7 @@ func (w *window) startEngine(app engine.App, opts Options, size driver.Size) {
 
 // openSurface creates a window on GTK's existing main loop and attaches its
 // tree to the root engine. Panels use a borderless GTK window and can hide on
-// blur; tray anchoring and non-activating behavior remain separate work.
+// blur; X11 panels keep their requested screen placement without activation.
 func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	opts := w.opts
 	if cfg.Title != "" {
@@ -381,13 +385,13 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 		opts.Hidden = true
 	}
 	child := newWindow(opts, false)
-	child.kind, child.hideOnBlur, child.opts = cfg.Kind, cfg.HideOnBlur, opts
+	child.kind, child.hideOnBlur, child.activates, child.opts = cfg.Kind, cfg.HideOnBlur, cfg.Activates, opts
 	child.createWindow(opts)
 	child.setupSettings()
 	child.visible = !opts.Hidden
 	if cfg.Kind == driver.SurfacePanel {
-		// GTK has no non-activating panel equivalent. A borderless window
-		// still gives the panel its own keyboard focus and native surface.
+		// GTK has no compositor-independent non-activating panel primitive;
+		// the X11 path maps this borderless native surface without focus.
 		gtkWindowSetDecorated(child.win, 0)
 	}
 	if cfg.Frame.Width > 0 || cfg.Frame.Height > 0 {
@@ -399,7 +403,11 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	child.engine.Resize(size, driver.Geometry{})
 	child.engine.SetEnvironment(child.env)
 	if !opts.Hidden {
-		gtkWindowPresent(child.win)
+		if cfg.Kind == driver.SurfacePanel {
+			child.showPanel(0, driver.Bounds{}, driver.WindowPlaceDefault, cfg.Activates)
+		} else {
+			gtkWindowPresent(child.win)
+		}
 	}
 }
 
@@ -1226,26 +1234,38 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 			w.engine.Dispatch(driver.Event{Kind: driver.EventWindowClose})
 		}
 	case driver.WindowShow:
-		w.visible = true
 		w.focused = false
-		gtkWidgetSetVisible(w.win, 1)
-		// Anchor placement is not available through GTK's portable API;
-		// presenting still gives a panel keyboard focus.
-		gtkWindowPresent(w.win)
+		if w.kind == driver.SurfacePanel {
+			w.showPanel(c.Anchor, c.AnchorBounds, c.Placement, c.Activate)
+		} else {
+			w.visible = true
+			gtkWidgetSetVisible(w.win, 1)
+		}
 	case driver.WindowHide:
 		w.visible = false
 		gtkWidgetSetVisible(w.win, 0)
 	case driver.WindowSetFrame:
 		w.setFrame(c.Frame)
 	case driver.WindowOrderFront:
-		w.visible = true
 		w.focused = false
-		gtkWindowPresent(w.win)
+		if w.kind == driver.SurfacePanel {
+			w.showPanel(w.anchor, w.anchorBounds, w.windowPlacement, c.Activate)
+		} else {
+			w.visible = true
+			gtkWindowPresent(w.win)
+		}
 	case driver.WindowSetMenuBar:
 		w.chrome.menuBar, w.chrome.revealed = c.MenuBar, false
 		w.showMenuBar()
 	case driver.WindowSetConstraints:
 		w.setConstraints(c.Constraints)
+	case driver.WindowSetAnchor:
+		if w.kind == driver.SurfacePanel {
+			w.anchorBounds, w.windowPlacement = c.AnchorBounds, c.Placement
+			if w.visible && !w.placePanelAt(c.AnchorBounds, c.Placement) {
+				w.placementFailed("Linux cannot place a panel at a screen rectangle on this display")
+			}
+		}
 	case driver.WindowSetLevel:
 		// Stacking is the compositor's.
 	}

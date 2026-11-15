@@ -426,6 +426,8 @@ type (
 	ShareRequest = driver.ShareRequest
 	// WindowCommand is an ItemWindow's request.
 	WindowCommand = driver.WindowCommand
+	// WindowPlacement is the side of a screen rectangle where a panel goes.
+	WindowPlacement = driver.WindowPlacement
 	// WindowDrag marks a view as a handle that moves the desktop window, or
 	// keeps a view inside such a handle clickable.
 	WindowDrag = driver.WindowDrag

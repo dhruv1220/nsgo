@@ -25,6 +25,71 @@ type Bounds struct {
 	Size   Size
 }
 
+// WindowPlacement is the side of an anchor rectangle where a panel goes.
+// It is separate from core.Placement so the platform protocol does not
+// depend on core.
+type WindowPlacement uint8
+
+const (
+	WindowPlaceDefault WindowPlacement = iota
+	WindowPlaceBottom
+	WindowPlaceTop
+	WindowPlaceLeft
+	WindowPlaceRight
+)
+
+// PlaceWindow returns a panel's top-left corner and the side it used. It
+// prefers side, flips to the opposite side when that one fits, and clamps
+// the result to area when neither side fits.
+func PlaceWindow(anchor Bounds, size Size, area Bounds, side WindowPlacement) (Point, WindowPlacement) {
+	if side == WindowPlaceDefault {
+		side = WindowPlaceBottom
+	}
+	opposite := func(p WindowPlacement) WindowPlacement {
+		switch p {
+		case WindowPlaceTop:
+			return WindowPlaceBottom
+		case WindowPlaceBottom:
+			return WindowPlaceTop
+		case WindowPlaceLeft:
+			return WindowPlaceRight
+		case WindowPlaceRight:
+			return WindowPlaceLeft
+		default:
+			return WindowPlaceBottom
+		}
+	}
+	point := func(p WindowPlacement) Point {
+		const gap Points = 6
+		switch p {
+		case WindowPlaceTop:
+			return Point{X: anchor.Origin.X + (anchor.Size.Width-size.Width)/2, Y: anchor.Origin.Y - size.Height - gap}
+		case WindowPlaceLeft:
+			return Point{X: anchor.Origin.X - size.Width - gap, Y: anchor.Origin.Y + (anchor.Size.Height-size.Height)/2}
+		case WindowPlaceRight:
+			return Point{X: anchor.Origin.X + anchor.Size.Width + gap, Y: anchor.Origin.Y + (anchor.Size.Height-size.Height)/2}
+		default:
+			return Point{X: anchor.Origin.X + (anchor.Size.Width-size.Width)/2, Y: anchor.Origin.Y + anchor.Size.Height + gap}
+		}
+	}
+	fits := func(p Point) bool {
+		return p.X >= area.Origin.X && p.Y >= area.Origin.Y &&
+			p.X+size.Width <= area.Origin.X+area.Size.Width &&
+			p.Y+size.Height <= area.Origin.Y+area.Size.Height
+	}
+	chosen := point(side)
+	if !fits(chosen) {
+		if flipped := point(opposite(side)); fits(flipped) {
+			side, chosen = opposite(side), flipped
+		}
+	}
+	maxX := area.Origin.X + max(area.Size.Width-size.Width, 0)
+	maxY := area.Origin.Y + max(area.Size.Height-size.Height, 0)
+	chosen.X = min(max(chosen.X, area.Origin.X), maxX)
+	chosen.Y = min(max(chosen.Y, area.Origin.Y), maxY)
+	return chosen, side
+}
+
 // DisplayInfo is one physical display in the desktop's screen coordinate space.
 // Frame is its whole area; VisibleFrame is the area available to windows.
 // Scale is device pixels per point, and Main marks the primary display.

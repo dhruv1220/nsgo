@@ -129,12 +129,16 @@ func (s *surface) command(c *driver.WindowCommand) {
 		s.setLevel(c.Level)
 	case driver.WindowOrderFront:
 		if s.kind == driver.SurfacePanel {
-			s.showPanel(s.anchor)
+			s.showPanel(s.anchor, s.anchorBounds, s.placement, c.Activate)
 		} else {
 			s.orderFront()
 		}
 	case driver.WindowShow:
-		s.show(c.Anchor)
+		if s.kind == driver.SurfacePanel {
+			s.showPanel(c.Anchor, c.AnchorBounds, c.Placement, c.Activate)
+		} else {
+			s.show(c.Anchor)
+		}
 	case driver.WindowHide:
 		s.showFirst = false
 		if s.kind == driver.SurfacePanel {
@@ -158,6 +162,14 @@ func (s *surface) command(c *driver.WindowCommand) {
 		s.refresh()
 	case driver.WindowSetConstraints:
 		s.setConstraints(c.Constraints)
+	case driver.WindowSetAnchor:
+		if s.kind != driver.SurfacePanel {
+			break
+		}
+		s.anchorBounds, s.placement = c.AnchorBounds, c.Placement
+		if objc.Send[bool](s.window, sel("isVisible")) {
+			s.showPanel(s.anchor, s.anchorBounds, s.placement, false)
+		}
 	}
 }
 

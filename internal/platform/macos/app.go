@@ -66,9 +66,10 @@ func windowSurface(w objc.ID) *surface {
 	return nil
 }
 
-// classPanel is the class of panels: borderless windows that take the
-// keyboard without activating the app.
-var classPanel objc.Class
+// classPanel and classActivatingPanel are the two panel behaviors. The
+// former never becomes key, which keeps the app underneath's keyboard;
+// the latter is used only when PanelOptions.Activates asks for focus.
+var classPanel, classActivatingPanel objc.Class
 
 // Window style masks and levels.
 const (
@@ -109,7 +110,7 @@ func (o *surface) openSurface(cfg driver.SurfaceConfig) {
 	}
 	window.Send(sel("setReleasedWhenClosed:"), false)
 	s := newSurface(opts, false)
-	s.id, s.kind, s.hideOnBlur = cfg.ID, cfg.Kind, cfg.HideOnBlur
+	s.id, s.kind, s.hideOnBlur, s.activates = cfg.ID, cfg.Kind, cfg.HideOnBlur, cfg.Activates
 	s.window = window
 	s.setWindowDelegate()
 	window.Send(sel("setContentView:"), s.native)
@@ -139,14 +140,23 @@ func (o *surface) openSurface(cfg driver.SurfaceConfig) {
 // space.
 func newPanel(cfg driver.SurfaceConfig) objc.ID {
 	if classPanel == 0 {
+		no := func(objc.ID, objc.SEL) bool { return false }
 		yes := func(objc.ID, objc.SEL) bool { return true }
 		classPanel = register("NsgoPanel", apple.Class("NSPanel"), nil, []objc.MethodDef{
+			{Cmd: sel("canBecomeKeyWindow"), Fn: no},
+		})
+		classActivatingPanel = register("NsgoActivatingPanel", apple.Class("NSPanel"), nil, []objc.MethodDef{
 			{Cmd: sel("canBecomeKeyWindow"), Fn: yes},
 		})
 	}
-	p := objc.ID(classPanel).Send(selAlloc).Send(sel("initWithContentRect:styleMask:backing:defer:"),
+	class := classPanel
+	style := uint(styleTitled | styleNonactivating | maskFullSize)
+	if cfg.Activates {
+		class, style = classActivatingPanel, uint(styleTitled|maskFullSize)
+	}
+	p := objc.ID(class).Send(selAlloc).Send(sel("initWithContentRect:styleMask:backing:defer:"),
 		apple.Rect(0, 0, float64(cfg.Width), float64(cfg.Height)),
-		uint(styleTitled|styleNonactivating|maskFullSize), uint(2), false)
+		style, uint(2), false)
 	p.Send(sel("setTitlebarAppearsTransparent:"), true)
 	p.Send(sel("setTitleVisibility:"), titleHidden)
 	for i := 0; i < 3; i++ {
@@ -195,47 +205,56 @@ func (s *surface) attach(app *engine.Engine) {
 // ownHud is set once a window shows the performance monitor.
 var ownHud bool
 
-// show shows an opened surface's window: a panel under its anchor, a
+// show shows an opened surface's window: a panel under its anchor, or a
 // window without activating the app.
 func (s *surface) show(anchor uint32) {
 	if s.kind == driver.SurfacePanel {
-		s.showPanel(anchor)
+		s.showPanel(anchor, driver.Bounds{}, driver.WindowPlaceDefault, s.activates)
 		return
 	}
 	s.window.Send(sel("orderFront:"), objc.ID(0))
 }
 
-// showPanel shows a panel and gives it the keyboard: under tray icon
-// anchor, else in the upper middle of the screen with the mouse, as
-// Spotlight shows.
-func (s *surface) showPanel(anchor uint32) {
+// showPanel shows a panel under its tray icon or screen anchor, or in the
+// upper middle of the screen with the mouse, as Spotlight shows. activate
+// opts the panel into keyboard and app focus.
+func (s *surface) showPanel(anchor uint32, anchorBounds driver.Bounds, placement driver.WindowPlacement, activate bool) {
 	w := s.window
 	frame := objc.Send[apple.CGRect](w, sel("frame"))
 	var screen objc.ID
-	if tr := trays[anchor]; tr != nil && tr.item != 0 {
-		bar := tr.item.Send(sel("button")).Send(selWindow)
-		icon := objc.Send[apple.CGRect](bar, sel("frame"))
-		screen = bar.Send(sel("screen"))
-		frame.Origin.X = icon.Origin.X + icon.Size.Width/2 - frame.Size.Width/2
-		frame.Origin.Y = icon.Origin.Y - frame.Size.Height - 6
-	} else {
-		mouse := objc.Send[apple.CGPoint](objc.ID(apple.Class("NSEvent")), sel("mouseLocation"))
-		screens := objc.ID(apple.Class("NSScreen")).Send(sel("screens"))
-		for i := range objc.Send[int](screens, sel("count")) {
-			sc := screens.Send(sel("objectAtIndex:"), i)
-			r := objc.Send[apple.CGRect](sc, sel("frame"))
-			if mouse.X >= r.Origin.X && mouse.X < r.Origin.X+r.Size.Width && mouse.Y >= r.Origin.Y &&
-				mouse.Y < r.Origin.Y+r.Size.Height {
-				screen = sc
-				break
+	placed := false
+	if anchorBounds.Size.Width > 0 || anchorBounds.Size.Height > 0 {
+		if p, ok := s.panelFrame(anchorBounds, frame.Size, placement); ok {
+			frame.Origin = p
+			placed = true
+		}
+	}
+	if !placed {
+		if tr := trays[anchor]; tr != nil && tr.item != 0 {
+			bar := tr.item.Send(sel("button")).Send(selWindow)
+			icon := objc.Send[apple.CGRect](bar, sel("frame"))
+			screen = bar.Send(sel("screen"))
+			frame.Origin.X = icon.Origin.X + icon.Size.Width/2 - frame.Size.Width/2
+			frame.Origin.Y = icon.Origin.Y - frame.Size.Height - 6
+		} else {
+			mouse := objc.Send[apple.CGPoint](objc.ID(apple.Class("NSEvent")), sel("mouseLocation"))
+			screens := objc.ID(apple.Class("NSScreen")).Send(sel("screens"))
+			for i := range objc.Send[int](screens, sel("count")) {
+				sc := screens.Send(sel("objectAtIndex:"), i)
+				r := objc.Send[apple.CGRect](sc, sel("frame"))
+				if mouse.X >= r.Origin.X && mouse.X < r.Origin.X+r.Size.Width && mouse.Y >= r.Origin.Y &&
+					mouse.Y < r.Origin.Y+r.Size.Height {
+					screen = sc
+					break
+				}
 			}
+			if screen == 0 {
+				screen = objc.ID(apple.Class("NSScreen")).Send(sel("mainScreen"))
+			}
+			r := objc.Send[apple.CGRect](screen, sel("frame"))
+			frame.Origin.X = r.Origin.X + (r.Size.Width-frame.Size.Width)/2
+			frame.Origin.Y = r.Origin.Y + r.Size.Height*2/3 - frame.Size.Height/2
 		}
-		if screen == 0 {
-			screen = objc.ID(apple.Class("NSScreen")).Send(sel("mainScreen"))
-		}
-		r := objc.Send[apple.CGRect](screen, sel("frame"))
-		frame.Origin.X = r.Origin.X + (r.Size.Width-frame.Size.Width)/2
-		frame.Origin.Y = r.Origin.Y + r.Size.Height*2/3 - frame.Size.Height/2
 	}
 	if screen != 0 {
 		// Inside the screen's visible part.
@@ -244,8 +263,41 @@ func (s *surface) showPanel(anchor uint32) {
 		frame.Origin.Y = max(v.Origin.Y+8, min(frame.Origin.Y, v.Origin.Y+v.Size.Height-frame.Size.Height))
 	}
 	s.anchor = anchor
+	s.anchorBounds, s.placement = anchorBounds, placement
 	w.Send(sel("setFrameOrigin:"), frame.Origin)
-	w.Send(sel("makeKeyAndOrderFront:"), objc.ID(0))
+	if activate {
+		w.Send(sel("makeKeyAndOrderFront:"), objc.ID(0))
+	} else {
+		w.Send(sel("orderFrontRegardless"))
+	}
+}
+
+// panelFrame converts the app's top-left, y-down screen coordinates to
+// AppKit's bottom-left coordinates and keeps the panel in the display's
+// visible frame. The primary display is the first item in NSScreen's list,
+// matching driver.Environment.Displays.
+func (s *surface) panelFrame(anchor driver.Bounds, size apple.CGSize, placement driver.WindowPlacement) (apple.CGPoint, bool) {
+	infos := displays()
+	if len(infos) == 0 {
+		return apple.CGPoint{}, false
+	}
+	center := driver.Point{X: anchor.Origin.X + anchor.Size.Width/2, Y: anchor.Origin.Y + anchor.Size.Height/2}
+	index := 0
+	for i, d := range infos {
+		if d.Frame.Contains(center) {
+			index = i
+			break
+		}
+	}
+	area := infos[index].VisibleFrame
+	point, _ := driver.PlaceWindow(anchor, driver.Size{Width: driver.Points(size.Width), Height: driver.Points(size.Height)}, area, placement)
+	screens := screenFrames("frame")
+	if index >= len(screens) || len(screens) == 0 {
+		return apple.CGPoint{}, false
+	}
+	main := screens[0]
+	top := main.Origin.Y + main.Size.Height
+	return apple.CGPoint{X: main.Origin.X + float64(point.X), Y: top - float64(point.Y) - size.Height}, true
 }
 
 // hidePanel hides a panel; blurred says it lost the focus, which the app

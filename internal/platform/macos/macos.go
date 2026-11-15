@@ -199,11 +199,14 @@ type surface struct {
 	// tray is the tray icon a SurfaceTrayIcon draws, anchor the one a
 	// panel last showed under. hideOnBlur hides a panel as it loses the
 	// focus.
-	id         uint32
-	kind       driver.SurfaceKind
-	tray       uint32
-	anchor     uint32
-	hideOnBlur bool
+	id           uint32
+	kind         driver.SurfaceKind
+	tray         uint32
+	anchor       uint32
+	anchorBounds driver.Bounds
+	placement    driver.WindowPlacement
+	activates    bool
+	hideOnBlur   bool
 	// The app and how an embedded surface starts it once it is in a
 	// window; observed the window its observations follow.
 	app      engine.App
@@ -1805,7 +1808,7 @@ func (s *surface) apply(b *driver.MountBatch) {
 	if s.showFirst {
 		s.showFirst = false
 		if s.kind == driver.SurfacePanel {
-			s.showPanel(0)
+			s.showPanel(0, driver.Bounds{}, driver.WindowPlaceDefault, s.activates)
 		} else {
 			s.orderFront()
 		}

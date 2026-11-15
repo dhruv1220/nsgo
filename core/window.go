@@ -61,6 +61,10 @@ type PanelOptions struct {
 	// HideOnBlur hides the panel as it loses the focus, as a tray icon's
 	// panel or a launcher does.
 	HideOnBlur bool
+	// Activates lets the panel take the application's focus when it shows.
+	// The zero value keeps the panel non-activating, so a panel can be used
+	// beside another app's text field without stealing its keyboard.
+	Activates bool
 	// Material is the material behind the content (WindowMaterial).
 	Material WindowMaterial
 }
@@ -70,13 +74,17 @@ type PanelOptions struct {
 // Window, which OpenWindow returns where the platform opens no windows,
 // or once it closed.
 type Window struct {
-	t       *Tree
-	scope   *Scope
-	kind    driver.SurfaceKind
-	key     string
-	visible *Signal[bool]
-	closed  bool
-	closing []*closingHandler
+	t               *Tree
+	scope           *Scope
+	kind            driver.SurfaceKind
+	key             string
+	visible         *Signal[bool]
+	activates       bool
+	anchorBounds    Bounds
+	placement       Placement
+	closed          bool
+	closing         []*closingHandler
+	placementErrors []*placementErrorHandler
 	// onEnd hears that the platform ended an overlay (OverlayOptions.OnEnd), under endOwner.
 	onEnd    func(OverlayEnd)
 	endOwner *Scope
@@ -85,6 +93,11 @@ type Window struct {
 type closingHandler struct {
 	owner *Scope
 	fn    func(*WindowClosing)
+}
+
+type placementErrorHandler struct {
+	owner *Scope
+	fn    func(error)
 }
 
 // WindowClosing is a close the user asked for, as with the window's
@@ -143,7 +156,7 @@ func (cx *Scope) OpenPanel(opts PanelOptions, content func(cx *Scope) Node) *Win
 		opts.Width, opts.Height = 360, 420
 	}
 	return rt.openSurface(cx.current(), driver.SurfaceConfig{Kind: driver.SurfacePanel, Width: opts.Width,
-		Height: opts.Height, Hidden: true, HideOnBlur: opts.HideOnBlur, Material: opts.Material}, content)
+		Height: opts.Height, Hidden: true, HideOnBlur: opts.HideOnBlur, Activates: opts.Activates, Material: opts.Material}, content)
 }
 
 // openSurface opens a surface of cfg's kind showing content under owner:
@@ -155,7 +168,7 @@ func (rt *runtime) openSurface(owner *Scope, cfg driver.SurfaceConfig, content f
 	rt.surfaceID++
 	t := newTree(s, app.text, rt.surfaceID)
 	cfg.ID = t.id
-	w := &Window{t: t, scope: s, kind: cfg.Kind, visible: NewSignal(s, !cfg.Hidden)}
+	w := &Window{t: t, scope: s, kind: cfg.Kind, activates: cfg.Activates, visible: NewSignal(s, !cfg.Hidden)}
 	t.window = w
 	rt.surfaces = append(rt.surfaces, t)
 	// It starts in the app's environment until its platform reports its own.
@@ -220,13 +233,66 @@ func (w *Window) Show() {
 		return
 	}
 	w.visible.Set(true)
-	w.command(WindowCommand{Action: driver.WindowShow})
+	w.command(WindowCommand{Action: driver.WindowShow, AnchorBounds: w.anchorBounds,
+		Placement: driver.WindowPlacement(w.placement), Activate: w.activates})
 }
 
 // showAt shows a panel under tray icon id.
 func (w *Window) showAt(tray uint32) {
+	if w == nil || w.closed {
+		return
+	}
 	w.visible.Set(true)
-	w.command(WindowCommand{Action: driver.WindowShow, Anchor: tray})
+	w.anchorBounds, w.placement = Bounds{}, PlaceDefault
+	w.command(WindowCommand{Action: driver.WindowShow, Anchor: tray, Activate: w.activates})
+}
+
+// ShowAt shows a panel beside anchor in global screen coordinates. The
+// panel chooses the requested side when it fits and flips or clamps it to
+// the display's usable area otherwise. It never activates a non-activating
+// panel. A window that is not a panel returns an unavailable error.
+func (w *Window) ShowAt(anchor Bounds, placement Placement) error {
+	if w == nil || w.closed {
+		return nil
+	}
+	if w.kind != driver.SurfacePanel {
+		return Unavailable("only a panel can be placed beside a screen rectangle")
+	}
+	w.anchorBounds, w.placement = anchor, placement
+	w.visible.Set(true)
+	w.command(WindowCommand{Action: driver.WindowShow, AnchorBounds: anchor,
+		Placement: driver.WindowPlacement(placement), Activate: w.activates})
+	return nil
+}
+
+// MoveTo moves a visible panel beside anchor without hiding or activating
+// it. Calling it before ShowAt stores the requested placement for the next
+// show. A window that is not a panel returns an unavailable error.
+func (w *Window) MoveTo(anchor Bounds, placement Placement) error {
+	if w == nil || w.closed {
+		return nil
+	}
+	if w.kind != driver.SurfacePanel {
+		return Unavailable("only a panel can be placed beside a screen rectangle")
+	}
+	w.anchorBounds, w.placement = anchor, placement
+	w.command(WindowCommand{Action: driver.WindowSetAnchor, AnchorBounds: anchor,
+		Placement: driver.WindowPlacement(placement)})
+	return nil
+}
+
+// OnPlacementError runs fn when the platform cannot honor a panel's
+// requested screen placement, for example a Wayland compositor without a
+// layer-shell protocol. The handler belongs to cx and runs on its scope.
+func (w *Window) OnPlacementError(cx *Scope, fn func(error)) {
+	if w == nil || w.closed || cx == nil || fn == nil {
+		return
+	}
+	h := &placementErrorHandler{owner: cx.current(), fn: fn}
+	w.placementErrors = append(w.placementErrors, h)
+	h.owner.addCleanup(func() {
+		w.placementErrors = slices.DeleteFunc(w.placementErrors, func(o *placementErrorHandler) bool { return o == h })
+	})
 }
 
 // Hide hides the window, keeping it and what it shows.
@@ -256,7 +322,7 @@ func (w *Window) Focus() {
 		return
 	}
 	w.visible.Set(true)
-	w.command(WindowCommand{Action: driver.WindowOrderFront})
+	w.command(WindowCommand{Action: driver.WindowOrderFront, Activate: true})
 }
 
 // Close closes the window for good, as its owner going does, without
@@ -683,6 +749,13 @@ func (t *Tree) surfaceEvent(ev driver.Event) bool {
 	case driver.EventWindowHidden:
 		if w := t.window; w != nil && !w.closed {
 			t.within(w.scope, func() { w.visible.Set(false) })
+		}
+	case driver.EventWindowPlacementFailed:
+		if w := t.window; w != nil && !w.closed {
+			err := Unavailable(ev.Text)
+			for _, h := range slices.Clone(w.placementErrors) {
+				t.within(h.owner, func() { h.fn(err) })
+			}
 		}
 	case driver.EventWindowEnded:
 		if w := t.window; w != nil && !w.closed {

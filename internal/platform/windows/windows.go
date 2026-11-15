@@ -139,6 +139,7 @@ const (
 	wmDPIChanged    = 0x02E0
 	wmShowWindow    = 0x0018
 	wmActivateApp   = 0x001C
+	wmMouseActivate = 0x0021
 	wmKeyDown       = 0x0100
 	wmKeyUp         = 0x0101
 	wmChar          = 0x0102
@@ -165,8 +166,10 @@ const (
 	wsMaximizeBox      = 0x00010000
 	wsClipChildren     = 0x02000000
 	wsVisible          = 0x10000000
-	wsExNoRedirect     = 0x00200000           // no redirection bitmap, for a composition surface
-	wsExToolWindow     = 0x00000080           // no taskbar button or Alt+Tab entry
+	wsExNoRedirect     = 0x00200000 // no redirection bitmap, for a composition surface
+	wsExToolWindow     = 0x00000080 // no taskbar button or Alt+Tab entry
+	wsExNoActivate     = 0x08000000 // keeps a panel from activating its app
+	maNoActivate       = 3
 	cwUseDefault       = ^uintptr(0x7FFFFFFF) // CW_USEDEFAULT as a uintptr
 	gwlStyle           = ^uintptr(15)         // -16
 	swShow             = 5
@@ -347,10 +350,13 @@ type window struct {
 	kind       driver.SurfaceKind
 	destroying bool
 	hideOnBlur bool
+	activates  bool
 	visible    bool
 	focused    bool
 	// anchor is the tray icon a panel last showed under, 0 for none.
-	anchor uint32
+	anchor       uint32
+	anchorBounds driver.Bounds
+	placement    driver.WindowPlacement
 	// language is what the menus say (driver.ItemDirection).
 	language string
 	// rtl is the app's direction (driver.ItemDirection), which the menus
@@ -839,7 +845,7 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 		opts.Hidden = true
 	}
 	child := newWindow(opts)
-	child.opts, child.hostWindow, child.kind, child.hideOnBlur = opts, w, cfg.Kind, cfg.HideOnBlur
+	child.opts, child.hostWindow, child.kind, child.hideOnBlur, child.activates = opts, w, cfg.Kind, cfg.HideOnBlur, cfg.Activates
 	child.visible = !opts.Hidden
 	child.chrome.constraints = opts.Constraints
 	child.composeFor(opts.Material)
@@ -854,6 +860,9 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	if cfg.Kind != driver.SurfaceWindow {
 		// Panels, as tray flyouts, have no taskbar button or Alt+Tab entry.
 		ex |= wsExToolWindow
+		if cfg.Kind == driver.SurfacePanel && !cfg.Activates {
+			ex |= wsExNoActivate
+		}
 	}
 	frame := rect{Right: child.px(opts.Width), Bottom: child.px(opts.Height)}
 	if cfg.Kind == driver.SurfaceWindow {
@@ -911,8 +920,8 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	child.engine.SetEnvironment(child.env)
 	if !opts.Hidden {
 		if cfg.Kind == driver.SurfacePanel {
-			child.placePanel(0)
-			child.orderFront()
+			child.placePanel(0, driver.Bounds{}, driver.WindowPlaceDefault)
+			child.orderFront(child.activates)
 		} else {
 			showWindow.Call(hwnd, swShow)
 		}
@@ -2027,6 +2036,9 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		return 0
 	}
 	w.reportModality(message, wParam)
+	if message == wmMouseActivate && w.kind == driver.SurfacePanel && !w.activates {
+		return maNoActivate
+	}
 	// An alert takes the pointer and the keys while it shows.
 	if w.alert != nil {
 		switch message {

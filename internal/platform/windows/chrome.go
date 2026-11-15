@@ -282,9 +282,9 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 	case driver.WindowShow:
 		w.visible, w.focused = true, false
 		if w.kind == driver.SurfacePanel {
-			w.anchor = c.Anchor
-			w.placePanel(c.Anchor)
-			w.orderFront()
+			w.anchor, w.anchorBounds, w.placement = c.Anchor, c.AnchorBounds, c.Placement
+			w.placePanel(c.Anchor, c.AnchorBounds, c.Placement)
+			w.orderFront(c.Activate)
 		} else {
 			// Without taking the focus from another app (core.Window.Show).
 			showWindow.Call(w.hwnd, swShowNA)
@@ -299,9 +299,9 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 	case driver.WindowOrderFront:
 		w.visible, w.focused = true, false
 		if w.kind == driver.SurfacePanel {
-			w.placePanel(w.anchor)
+			w.placePanel(w.anchor, w.anchorBounds, w.placement)
 		}
-		w.orderFront()
+		w.orderFront(c.Activate)
 	case driver.WindowSetMenuBar:
 		w.setMenuBar(c.MenuBar)
 	case driver.WindowSetControls:
@@ -314,6 +314,13 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		w.setMaterial(c.Material)
 	case driver.WindowSetConstraints:
 		w.setConstraints(c.Constraints)
+	case driver.WindowSetAnchor:
+		if w.kind == driver.SurfacePanel {
+			w.anchorBounds, w.placement = c.AnchorBounds, c.Placement
+			if w.visible {
+				w.placePanel(w.anchor, w.anchorBounds, w.placement)
+			}
+		}
 	}
 }
 

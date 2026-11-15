@@ -144,8 +144,8 @@ const (
 	WindowSetFrame
 	// WindowSetLevel puts the window at Level.
 	WindowSetLevel
-	// WindowOrderFront brings the window to the front of its level,
-	// showing it, and activates the app.
+	// WindowOrderFront brings the window to the front of its level and shows
+	// it; Activate says whether a panel also activates the app.
 	WindowOrderFront
 	// WindowSetMenuBar says when Windows and Linux show the menu bar
 	// (MenuBar).
@@ -158,14 +158,17 @@ const (
 	// WindowSetConstraints limits the window's size and what the user may
 	// do to it (Constraints).
 	WindowSetConstraints
-	// WindowShow shows a hidden window without activating the app; a
-	// panel shows under tray icon Anchor, when set.
+	// WindowShow shows a hidden window; a panel shows under tray icon Anchor,
+	// when set, and Activate says whether it activates the app.
 	WindowShow
 	// WindowHide hides the window, keeping it and its views.
 	WindowHide
 	// WindowDestroy closes an opened surface's window for good: its tree
 	// is gone.
 	WindowDestroy
+	// WindowSetAnchor moves a visible panel beside AnchorBounds without
+	// changing its visibility or activation.
+	WindowSetAnchor
 )
 
 // SurfaceKind is what an opened surface shows in.
@@ -174,8 +177,8 @@ type SurfaceKind uint8
 const (
 	// SurfaceWindow is a window of the platform's own chrome.
 	SurfaceWindow SurfaceKind = iota
-	// SurfacePanel is a borderless window that floats over the others
-	// without activating the app: a tray icon's or a launcher's.
+	// SurfacePanel is a borderless window that floats over the others; it
+	// does not activate the app unless Activates asks it to.
 	SurfacePanel
 	// SurfaceTrayIcon is the view a tray icon draws itself with
 	// (TrayConfig.View), in the menu bar on macOS.
@@ -213,6 +216,9 @@ type SurfaceConfig struct {
 	// HideOnBlur hides a panel as it loses the focus, reported with
 	// EventWindowHidden.
 	HideOnBlur bool
+	// Activates lets a panel take the application's focus when it shows.
+	// The zero value keeps the panel non-activating.
+	Activates bool
 	// Tray is the tray icon a SurfaceTrayIcon draws.
 	Tray uint32
 }
@@ -249,6 +255,11 @@ type WindowCommand struct {
 	Constraints WindowConstraints
 	// Anchor is the tray icon WindowShow shows a panel under.
 	Anchor uint32
+	// AnchorBounds and Placement place a panel beside a screen rectangle.
+	AnchorBounds Bounds
+	Placement    WindowPlacement
+	// Activate overrides a panel's default activation for this command.
+	Activate bool
 }
 
 // WindowControls is how a hidden title bar shows the system's window
