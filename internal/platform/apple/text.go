@@ -631,7 +631,7 @@ func (TextEngine) Prepare(t *driver.AttributedText) driver.PreparedText {
 	p := &prepared{str: str, maxLines: t.MaxLines, ellipsize: t.Ellipsize,
 		shadow: t.Shadow, text: t.Text, toUTF8: toUTF8,
 		toUTF16: toUTF16, decos: decorations(t, toUTF16), atts: t.Attachments, fonts: fonts}
-	if oneLineFast && len(t.Attachments) == 0 && len(p.decos) == 0 && t.Style.LineHeight == 0 &&
+	if oneLineFast && isASCIILine(t.Text) && len(t.Attachments) == 0 && len(p.decos) == 0 && t.Style.LineHeight == 0 &&
 		!strings.ContainsAny(t.Text, "\n\r\t\v\f\u0085\u2028\u2029") {
 		p.oneLine, p.flush = true, flushOf(t.Style)
 	}
@@ -644,6 +644,16 @@ func (TextEngine) Prepare(t *driver.AttributedText) driver.PreparedText {
 		Release(f)
 	}
 	return p
+}
+
+// isASCIILine reports whether s is all ASCII, which a text's font draws without falling back to another for some of its characters: a line whose runs fall back, Japanese in Menlo say, is taller as a CTLine than the framesetter lays it out on some macOS versions, so only an ASCII text takes the one-line shortcut.
+func isASCIILine(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
 
 type prepared struct {
