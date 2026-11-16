@@ -2434,6 +2434,7 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		w.stopPerf()
 		delete(windows, hwnd)
 		w.hwnd = 0
+		w.updateAppSurface()
 		return 0
 	case wmMove:
 		for wv := range w.webs {

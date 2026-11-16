@@ -230,10 +230,28 @@ var appActive = sync.OnceValue(func() *bool {
 	return &active
 })
 
-// lifecycle is whether the app is in use: in the background while the
-// window, an embedded view's root window, is minimized or hidden, active
-// while the app is the active one.
+// lifecycle is whether the app is in use: in the background while the window, an embedded view's root window, is minimized or hidden, active while the app is the active one. The app's own surface, the hidden root window nsgo.Run(App) runs on, takes the lifecycle of the windows and panels it opened, as on macOS and Linux: in the background only while none of them shows.
 func (w *window) lifecycle() driver.Lifecycle {
+	l := w.windowLifecycle()
+	if w.primary && w.opts.Hidden {
+		for _, other := range windows {
+			if other.hostWindow == w && other.kind != driver.SurfaceTrayIcon && other.hwnd != 0 && !other.destroying {
+				l = min(l, other.windowLifecycle())
+			}
+		}
+	}
+	return l
+}
+
+// updateAppSurface reads the environment of the app's own surface again after one of the windows it opened changed or went, as its lifecycle follows theirs.
+func (w *window) updateAppSurface() {
+	if h := w.hostWindow; h != nil && h != w && h.primary && h.opts.Hidden && h.engine != nil && h.hwnd != 0 {
+		h.updateEnvironment()
+	}
+}
+
+// windowLifecycle is the lifecycle of the window itself, an embedded view's root window's.
+func (w *window) windowLifecycle() driver.Lifecycle {
 	root := w.owner()
 	if visible, _, _ := isWindowVisible.Call(root); visible == 0 || isIconicWindow(root) {
 		return driver.LifecycleBackground
@@ -257,6 +275,7 @@ func (w *window) updateEnvironment() {
 		w.darkTitleBar(w.shownDark())
 	}
 	w.engine.SetEnvironment(env)
+	w.updateAppSurface()
 }
 
 // darkTitleBar matches the title bar to the appearance, where DWM can.
