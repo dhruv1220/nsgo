@@ -75,19 +75,21 @@ func TestTestHostChoosesNativeMenus(t *testing.T) {
 	}
 }
 
-// TestTestHostCommitsCompositionBeforeBlur moves the focus from a field while an input method composes in it, by a click on another field and from the app, and checks that the field reports the committed text, then the composition's end, then its blur; a click in the composing field itself commits without a blur. A machine without an input method skips it.
+// TestTestHostCommitsCompositionBeforeBlur moves the focus from a field while an input method composes in it, by a click on another field, from the app and by disabling the field, and checks that the field reports the committed text, then the composition's end, then its blur; a click in the composing field itself and making it read-only commit without a blur. A machine without an input method skips it.
 func TestTestHostCommitsCompositionBeforeBlur(t *testing.T) {
 	if testing.Short() {
 		t.Skip("opens a window")
 	}
-	for by, want := range map[string]string{"click": "focus,change,end,blur", "app": "focus,change,end,blur", "same": "focus,change,end"} {
+	for by, want := range map[string]string{"click": "focus,change,end,blur", "app": "focus,change,end,blur", "disable": "focus,change,end,blur", "same": "focus,change,end", "readonly": "focus,change,end"} {
 		t.Run(by, func(t *testing.T) {
 			title := "nsgo-ime-blur-" + by
 			var root *core.Scope
 			second := &core.Ref{}
+			var disabled, readonly *core.Signal[bool]
 			app := func(cx *core.Scope) core.Node {
 				root = cx
 				value, events := core.NewSignal(cx, ""), core.NewSignal(cx, "")
+				disabled, readonly = core.NewSignal(cx, false), core.NewSignal(cx, false)
 				add := func(event string) {
 					events.Update(func(old string) string {
 						if old == "" {
@@ -99,7 +101,7 @@ func TestTestHostCommitsCompositionBeforeBlur(t *testing.T) {
 				cx.Effect(func() { cx.SetTitle(fmt.Sprintf("%s|%s|%s", title, value.Get(), events.Get())) })
 				field := core.Style{Width: driver.Pt(300), Height: driver.Pt(30)}
 				return core.View{Style: core.Style{Width: driver.Pt(320), Height: driver.Pt(120), Padding: driver.All(10), Gap: 10}, Children: []core.Node{
-					core.Input{Value: value.Get, AutoFocus: true, Style: field,
+					core.Input{Value: value.Get, AutoFocus: true, Disabled: disabled.Get, ReadonlyFunc: readonly.Get, Style: field,
 						OnChange: func(v string) { value.Set(v); add("change") },
 						OnCompositionChange: func(c core.Composition) {
 							if c.Composing {
@@ -135,6 +137,10 @@ func TestTestHostCommitsCompositionBeforeBlur(t *testing.T) {
 				}
 			case "app":
 				root.Post(second.Focus)
+			case "disable":
+				root.Post(func() { disabled.Set(true) })
+			case "readonly":
+				root.Post(func() { readonly.Set(true) })
 			}
 			order := func() (string, bool) {
 				parts := strings.SplitN(windowText(hwnd), "|", 3)

@@ -1115,6 +1115,10 @@ func (in *textInput) configure(c *driver.InputConfig) {
 		in.scroll = 0
 	}
 	releaseAll(&in.hint)
+	// A field that stops taking text, disabled or read-only, first commits what the IME composes in it, while its old config still lets the result in, as the blur below would for an editable field; the browser and AppKit keep that text too.
+	if in.focused && in.editable() && (c.Disabled || c.Readonly) {
+		in.w.notifyComposition(cpsComplete)
+	}
 	in.config = *c
 	in.fs.Config = *c
 	in.setSize(float32(c.Content.Size.Width), float32(c.Content.Size.Height))
