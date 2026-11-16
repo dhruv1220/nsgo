@@ -10,8 +10,7 @@ import (
 	"unicode/utf16"
 )
 
-// The COFF and resource constants windowsResource writes, from the PE
-// format specification.
+// The COFF and resource constants windowsResource writes, from the PE format specification.
 const (
 	rtIcon      = 3
 	rtGroupIcon = 14
@@ -20,8 +19,7 @@ const (
 	// from; Explorer shows the first group.
 	iconGroupID = 1
 	langEnUS    = 0x0409
-	// langUserDefault is MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), the
-	// user's default language.
+	// langUserDefault is MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), the user's default language.
 	langUserDefault = 0x0400
 )
 
@@ -29,31 +27,23 @@ const (
 type windowsVersion struct {
 	// Fixed is the version as four numbers, which Windows compares.
 	Fixed [4]uint16
-	// Version is the version as people read it, FileVersion and
-	// ProductVersion.
+	// Version is the version as people read it, FileVersion and ProductVersion.
 	Version string
-	// Exe is the executable's file name, InternalName and
-	// OriginalFilename.
+	// Exe is the executable's file name, InternalName and OriginalFilename.
 	Exe string
-	// Company and Copyright are CompanyName and LegalCopyright, left out
-	// when empty.
+	// Company and Copyright are CompanyName and LegalCopyright, left out when empty.
 	Company, Copyright string
 	// Tables name the app in each language, the source's first, each in a version resource of its own.
 	Tables []windowsVersionTable
 }
 
-// windowsVersionTable is the app's name in one language, its
-// ProductName and FileDescription.
+// windowsVersionTable is the app's name in one language, its ProductName and FileDescription.
 type windowsVersionTable struct {
 	Language uint16
 	Name     string
 }
 
-// windowsResource writes a COFF object with a .rsrc section holding an
-// icon group of PNG images, when there are images, and the version
-// resource, when there is one, which go build links into a Windows
-// executable. Both share the one object, as the linker takes .rsrc from
-// one object alone.
+// windowsResource writes a COFF object with a .rsrc section holding an icon group of PNG images, when there are images, and the version resource, when there is one, which go build links into a Windows executable. Both share the one object, as the linker takes .rsrc from one object alone.
 func windowsResource(goarch string, images [][]byte, sizes []int, version *windowsVersion) ([]byte, error) {
 	machine, reloc := uint16(0), uint16(0)
 	switch goarch {
@@ -70,9 +60,7 @@ func windowsResource(goarch string, images [][]byte, sizes []int, version *windo
 		return nil, errors.New("a Windows resource object needs an icon or a version")
 	}
 
-	// The resource tree has three levels: type, ID and language, each
-	// sorted by number, as the loader searches them. Every directory comes
-	// first, then the data entries, then the data.
+	// The resource tree has three levels: type, ID and language, each sorted by number, as the loader searches them. Every directory comes first, then the data entries, then the data.
 	type leaf struct {
 		lang uint32
 		data []byte
@@ -250,13 +238,10 @@ func versionInfo(v *windowsVersion, t windowsVersionTable) []byte {
 	}}.encode()
 }
 
-// versionNode is a node of a version resource: its length, its value's
-// length, its type, a UTF-16 key, the value and the children, each on a
-// 32-bit boundary.
+// versionNode is a node of a version resource: its length, its value's length, its type, a UTF-16 key, the value and the children, each on a 32-bit boundary.
 type versionNode struct {
 	key string
-	// text is a text value, whose length counts UTF-16 characters, else
-	// a binary one, counted in bytes.
+	// text is a text value, whose length counts UTF-16 characters, else a binary one, counted in bytes.
 	text     bool
 	value    []byte
 	children []versionNode
@@ -294,8 +279,7 @@ func utf16z(s string) []byte {
 	return b
 }
 
-// windowsVersionParts is a version as Windows' file versions take it, four
-// numbers: 1.2.0-beta.1 is 1.2.0.0.
+// windowsVersionParts is a version as Windows' file versions take it, four numbers: 1.2.0-beta.1 is 1.2.0.0.
 func windowsVersionParts(v string) [4]uint16 {
 	var out [4]uint16
 	for i, part := range strings.Split(strings.TrimPrefix(v, "v"), ".") {
@@ -314,10 +298,7 @@ func windowsVersionParts(v string) [4]uint16 {
 	return out
 }
 
-// windowsVersion is the version resource of the app's executables:
-// version, with build_number as the fourth number where it fits in one,
-// the app's name in each language its catalogs name it in, else name,
-// and the publisher and copyright nsgo.yaml gives.
+// windowsVersion is the version resource of the app's executables: version, with build_number as the fourth number where it fits in one, the app's name in each language its catalogs name it in, else name, and the publisher and copyright nsgo.yaml gives.
 func (p *project) windowsVersion() (*windowsVersion, error) {
 	v := &windowsVersion{
 		Fixed:     windowsVersionParts(p.Version),
@@ -344,8 +325,7 @@ func (p *project) windowsVersion() (*windowsVersion, error) {
 			continue
 		}
 		if !ok {
-			// A source language Windows has no ID for names its table
-			// language neutral.
+			// A source language Windows has no ID for names its table language neutral.
 			id = 0
 		}
 		if slices.ContainsFunc(v.Tables, func(t windowsVersionTable) bool { return t.Language == id }) {
@@ -364,9 +344,7 @@ func (p *project) windowsPublisher() string {
 	return p.Windows.Store.PublisherName
 }
 
-// windowsLanguageID is Windows' ID of a language tag, as 0x0409 for
-// en-US: of the language and region, else of the language and script,
-// else of the language alone, with Chinese by its script or region.
+// windowsLanguageID is Windows' ID of a language tag, as 0x0409 for en-US: of the language and region, else of the language and script, else of the language alone, with Chinese by its script or region.
 func windowsLanguageID(tag string) (uint16, bool) {
 	parts := strings.Split(strings.ToLower(strings.ReplaceAll(tag, "_", "-")), "-")
 	lang, script, region := parts[0], "", ""
@@ -399,8 +377,7 @@ func windowsLanguageID(tag string) (uint16, bool) {
 	return 0, false
 }
 
-// windowsLanguageIDs are Windows' language IDs, by language and region,
-// language and script, or language alone, lowercase.
+// windowsLanguageIDs are Windows' language IDs, by language and region, language and script, or language alone, lowercase.
 var windowsLanguageIDs = map[string]uint16{
 	"af": 0x0436, "am": 0x045e, "ar": 0x0401, "ar-eg": 0x0c01, "ar-sa": 0x0401,
 	"az": 0x042c, "az-latn": 0x042c, "ba": 0x046d, "be": 0x0423, "bg": 0x0402,

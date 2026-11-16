@@ -256,8 +256,7 @@ func nsisEscape(s string) string {
 // nsisString quotes s for NSIS.
 func nsisString(s string) string { return `"` + nsisEscape(s) + `"` }
 
-// nsisVersion is a version as Windows' file versions take it, as
-// VIProductVersion does (windowsVersionParts).
+// nsisVersion is a version as Windows' file versions take it, as VIProductVersion does (windowsVersionParts).
 func nsisVersion(v string) string {
 	p := windowsVersionParts(v)
 	return fmt.Sprintf("%d.%d.%d.%d", p[0], p[1], p[2], p[3])
