@@ -30,7 +30,8 @@ func TestInitTemplates(t *testing.T) {
 				t.Helper()
 				cmd := exec.Command("go", args...)
 				cmd.Dir = dir
-				cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOPROXY=off", "GOWORK=off")
+				// Out of any workspace, and with the module proxy on: a fresh runner's cache lacks go.mod files that tidy reads for modules the build never compiles, such as the old golang.org/x/sys esbuild requires.
+				cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
 				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("go %v: %v\n%s", args, err, out)
 				}
