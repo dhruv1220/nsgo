@@ -788,48 +788,56 @@ func (w *window) menuKeys(entries []driver.MenuEntry) {
 	}
 }
 
-// menuMnemonic returns the access key of a menu label. An explicit Windows
-// marker wins; otherwise the first letter or digit keeps plain cross-platform
-// labels usable from Alt without requiring an ampersand in every catalog.
-func menuMnemonic(label string) rune {
-	for i, r := range label {
-		if r != '&' {
-			continue
-		}
-		if i+1 < len(label) && label[i+1] == '&' {
-			continue
-		}
-		n := label[i+1:]
-		for _, next := range n {
-			if unicode.IsLetter(next) || unicode.IsDigit(next) {
-				return unicode.ToLower(next)
-			}
-			break
-		}
+// menuPopups reports whether the window shows its application menu as a popup, having one and a hidden title bar, which Windows draws no menu bar in, full screen or not. A hidden root offers no menu, as in showMenuBar.
+func (w *window) menuPopups() bool {
+	c := &w.chrome
+	return c.menu != nil && c.titleBar == driver.TitleBarHidden && !(w.primary && w.opts.Hidden)
+}
+
+// popupApplicationMenu shows entries of the application menu as a popup from the window's top leading corner, where a menu bar's menus drop from, with its first item selected, as the keys that open it open a bar's menu. It replaces a context menu tracking, as popupMenu does.
+func (w *window) popupApplicationMenu(entries []driver.MenuEntry) {
+	var at driver.Point
+	if w.rtl {
+		var client rect
+		getClientRect.Call(w.hwnd, uintptr(unsafe.Pointer(&client)))
+		at = w.point(client.Right, 0)
 	}
+	if w.popupTracking {
+		endMenu.Call()
+	}
+	w.popups = append(w.popups, popupRequest{entries: entries, at: at, keyboard: true})
+	postMessageW.Call(w.hwnd, wmPopup, 0, 0)
+}
+
+// menuChar takes the character of Alt with a key (WM_SYSCHAR) in a window whose menu pops up: the top-level menu it is the mnemonic of opens, or a command there is chosen, as a menu bar's would. It reports whether one was; DefWindowProc keeps the others, such as Alt+Space's window menu. WM_SYSCHAR is the keyboard layout's character, so a label in any script matches.
+func (w *window) menuChar(char uintptr) bool {
+	if !w.menuPopups() {
+		return false
+	}
+	key := unicode.ToLower(rune(char))
+	for i := range w.chrome.menu {
+		e := &w.chrome.menu[i]
+		if e.Separator || e.Disabled || unsupported(e.Role) || menuMnemonic(menutext.Label(w.language, e, "")) != key {
+			continue
+		}
+		if len(e.Items) > 0 {
+			w.popupApplicationMenu(e.Items)
+		} else {
+			w.chooseMenu(menuRef{e.ID, e.Role, e.NotInText})
+		}
+		return true
+	}
+	return false
+}
+
+// menuMnemonic returns the key that opens a top-level menu with Alt: its label's first letter or digit, lowercased, as NSGo's labels mark no access key ('&' shows as itself); zero when it has neither.
+func menuMnemonic(label string) rune {
 	for _, r := range label {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			return unicode.ToLower(r)
 		}
 	}
 	return 0
-}
-
-// popupMnemonic opens the top-level menu selected by an Alt access key.
-func (w *window) popupMnemonic(vk uintptr) bool {
-	key := unicode.ToLower(rune(vk))
-	for _, e := range w.chrome.menu {
-		if e.Disabled || menuMnemonic(menutext.Label(w.language, &e, "")) != key {
-			continue
-		}
-		entries := e.Items
-		if len(entries) == 0 {
-			entries = []driver.MenuEntry{e}
-		}
-		w.popupMenu(entries, driver.Point{}, 0)
-		return true
-	}
-	return false
 }
 
 // showMenuBar shows the application menu as the window's menu bar, unless the title bar is hidden, the window is in full screen, the bar hides until Alt shows it or the window is a hidden root.

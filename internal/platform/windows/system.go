@@ -60,6 +60,7 @@ const (
 	wmPopup        = 0x8000 + 6 // a context menu waits
 	wmFolderChange = 0x8000 + 8 // the folder dialog opened another folder
 	wmSysKeyUp     = 0x0105
+	wmSysChar      = 0x0106
 
 	wmEnterMenuLoop = 0x0211
 	wmExitMenuLoop  = 0x0212
@@ -859,6 +860,8 @@ type popupRequest struct {
 	id      uint32
 	screen  bool
 	tray    uint32
+	// keyboard opens it with its first item selected, as a menu bar's menu opened from the keyboard is.
+	keyboard bool
 }
 
 // popupMenu queues a context menu: TrackPopupMenuEx's loop must not run
@@ -919,6 +922,10 @@ func (w *window) showPopup() {
 			setForegroundWindow.Call(owner)
 		}
 		w.popupTracking, w.popupShown = true, p.entries
+		if p.keyboard {
+			// The menu's loop takes the thread's key messages, so a Down queued before it starts selects the first item.
+			postMessageW.Call(w.hwnd, wmKeyDown, vkDown, 0)
+		}
 		chosen, _, _ := trackPopupMenuEx.Call(menu, w.popupFlags(), uintptr(at.X), uintptr(at.Y), owner, 0)
 		if p.screen {
 			postMessageW.Call(owner, wmNull, 0, 0)
@@ -1180,14 +1187,13 @@ func (w *window) setMenuBar(mode driver.MenuBarMode) {
 	w.showMenuBar()
 }
 
-// menuBarKey follows the keys that show a hidden menu bar. With a hidden
-// title bar, Alt and F10 open the application menu as a popup because there
-// is no native bar to reveal; Alt plus a top-level mnemonic opens that menu's
-// submenu directly. It reports whether it took the key.
+// menuBarKey follows the keys that show a hidden menu bar: Alt pressed and released alone toggles it, and is kept from DefWindowProc, which would enter menu mode; Alt with a mnemonic and F10 show it for the menu DefWindowProc then opens. A window whose menu pops up (menuPopups) follows menuPopupKey instead. It reports whether it took the key.
 func (w *window) menuBarKey(message uint32, vk uintptr, lParam uintptr) bool {
+	if w.menuPopups() {
+		return w.menuPopupKey(message, vk, lParam)
+	}
 	c := &w.chrome
-	hidden := c.titleBar == driver.TitleBarHidden && !c.fullScreen
-	if c.menu == nil || !hidden && c.menuBar != driver.MenuBarAutoHide {
+	if c.menuBar != driver.MenuBarAutoHide || c.menu == nil {
 		return false
 	}
 	switch {
@@ -1199,26 +1205,40 @@ func (w *window) menuBarKey(message uint32, vk uintptr, lParam uintptr) bool {
 		alone := c.altAlone
 		c.altAlone = false
 		if alone {
-			if hidden {
-				w.popupMenu(c.menu, driver.Point{}, 0)
-				return true
-			}
 			c.revealed = !c.revealed
 			w.showMenuBar()
 			return true
 		}
 	case message == wmSysKeyDown:
 		c.altAlone = false
-		if hidden && vk != vkF10 && keyDown(vkMenu) && w.popupMnemonic(vk) {
-			return true
-		}
 		if (vk == vkF10 || keyDown(vkMenu)) && !c.revealed && !c.menuOpen {
-			if hidden {
-				w.popupMenu(c.menu, driver.Point{}, 0)
-				return true
-			}
 			c.menuOpen = true
 			w.showMenuBar()
+		}
+	}
+	return false
+}
+
+// menuPopupKey opens the application menu of a window with no menu bar as a popup, on Alt pressed and released alone and on F10, which it keeps from DefWindowProc's menu mode. Shift+F10 stays the context menu's key, and Alt with another key stays DefWindowProc's, such as Alt+F4 and Alt+Space, or menuChar's mnemonic. It reports whether it took the key.
+func (w *window) menuPopupKey(message uint32, vk uintptr, lParam uintptr) bool {
+	c := &w.chrome
+	switch {
+	case message == wmSysKeyDown && vk == vkMenu:
+		if !repeated(lParam) {
+			c.altAlone = true
+		}
+	case message == wmSysKeyUp && vk == vkMenu:
+		alone := c.altAlone
+		c.altAlone = false
+		if alone {
+			w.popupApplicationMenu(c.menu)
+			return true
+		}
+	case message == wmSysKeyDown:
+		c.altAlone = false
+		if vk == vkF10 && !repeated(lParam) && !keyDown(vkShift) {
+			w.popupApplicationMenu(c.menu)
+			return true
 		}
 	}
 	return false
@@ -1240,8 +1260,9 @@ func (w *window) menuLoop(enter bool, popup bool) {
 	}
 }
 
-// hideMenuBar hides a shown menu bar again after a press in the window.
+// hideMenuBar hides a shown menu bar again after a press in the window. A press with Alt down, such as Alt+click, makes Alt no longer alone, so its release opens no menu.
 func (w *window) hideMenuBar() {
+	w.chrome.altAlone = false
 	if c := &w.chrome; c.menuBar == driver.MenuBarAutoHide && c.revealed {
 		c.revealed = false
 		w.showMenuBar()

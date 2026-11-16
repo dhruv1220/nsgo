@@ -11,9 +11,11 @@ func TestMenuMnemonic(t *testing.T) {
 	}{
 		{"File", 'f'},
 		{"Édit", 'é'},
-		{"E&xit", 'x'},
-		{"Rock && Roll", 'r'},
-		{"A && Beta", 'a'},
+		{"Файл", 'ф'},
+		// NSGo's labels mark no access key: '&' shows as itself.
+		{"E&xit", 'e'},
+		{"&Help", 'h'},
+		{"(Beta) Tools", 'b'},
 		{"123", '1'},
 		{"---", 0},
 	} {

@@ -2356,6 +2356,10 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		if wParam == vkLeft && !repeated(lParam) {
 			w.back()
 		}
+	case wmSysChar:
+		if w.menuChar(wParam) {
+			return 0
+		}
 	case wmAppCommand:
 		if lParam>>16&0x0fff == appCommandBack {
 			w.back()

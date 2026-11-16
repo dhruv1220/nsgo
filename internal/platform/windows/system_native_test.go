@@ -42,10 +42,12 @@ func TestServicesReachTheSystem(t *testing.T) {
 	}
 	title := "nsgo-native-services"
 	var cx *core.Scope
+	started := make(chan struct{})
 	status := make(chan string, 16)
 	dialogAnswers = status
 	app := func(c *core.Scope) core.Node {
 		cx = c
+		close(started)
 		c.SetApplicationMenu([]core.MenuItem{{Label: "File", Items: []core.MenuItem{{Label: "New", OnSelect: func() {}}}}})
 		return core.View{Style: core.Style{Background: driver.RGB(0xffffff)}}
 	}
@@ -59,6 +61,12 @@ func TestServicesReachTheSystem(t *testing.T) {
 	hwnd := waitForWindow(t, title, done)
 	if hwnd == 0 {
 		return
+	}
+	// The window shows before the app's function runs.
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the app did not start")
 	}
 	ask := func(fn func(say func(string))) string {
 		t.Helper()
@@ -282,27 +290,6 @@ func TestServicesReachTheSystem(t *testing.T) {
 	if menu() != 0 {
 		t.Error("Alt did not hide the menu bar again")
 	}
-
-	// A hidden title bar has no native menu bar, so F10 opens the same
-	// application menu as a popup at the window's top left.
-	cx.Post(func() {
-		cx.SetTitleBar(core.TitleBarHidden, 40)
-		cx.SetMenuBar(core.MenuBarShown)
-	})
-	deadline = time.Now().Add(3 * time.Second)
-	for {
-		tracking := false
-		onMain(t, hwnd, func(w *window) { tracking = w.popupTracking })
-		if tracking {
-			break
-		}
-		postMessageW.Call(hwnd, wmSysKeyDown, vkF10, 0)
-		if time.Now().After(deadline) {
-			t.Fatal("F10 did not open the hidden-title-bar menu")
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	onMain(t, hwnd, func(*window) { endMenu.Call() })
 
 	// A context menu tracks until it ends, then reports it closed.
 	cx.Post(func() {

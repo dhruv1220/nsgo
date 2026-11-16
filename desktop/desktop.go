@@ -88,10 +88,7 @@ func IsAvailable(cx *core.Scope) bool {
 // SetTitle sets the window's title on desktops and the page's on the web.
 func SetTitle(cx *core.Scope, title string) { cx.SetTitle(title) }
 
-// SetTitleBar hides the system's title bar so the app can draw its own
-// height points tall (0: the platform's height), or restores it. The
-// platform centers its window controls in that height. TitleBar then
-// reports the area they keep.
+// SetTitleBar hides the system's title bar so the app can draw its own height points tall (0: the platform's height), or restores it. The platform centers its window controls in that height. TitleBar then reports the area they keep. A window with a hidden title bar has no menu bar on Windows and Linux; on Windows, Alt and F10 open the application menu as a popup from the window's top corner instead, and Alt with a top-level item's first letter opens that item's menu.
 func SetTitleBar(cx *core.Scope, style TitleBarStyle, height core.Points) {
 	cx.SetTitleBar(style, height)
 }
@@ -184,7 +181,5 @@ func SetWindowConstraints(cx *core.Scope, c WindowConstraints) { cx.SetWindowCon
 // brings it to the front of its level and activates the app.
 func OrderFront(cx *core.Scope) { cx.OrderFront() }
 
-// SetMenuBar says when Windows and Linux show the menu bar the window
-// draws for the application menu; macOS's is the system's and always
-// shows.
+// SetMenuBar says when Windows and Linux show the menu bar the window draws for the application menu, which a window with a hidden title bar has none of (SetTitleBar); macOS's is the system's and always shows.
 func SetMenuBar(cx *core.Scope, mode MenuBarMode) { cx.SetMenuBar(mode) }
