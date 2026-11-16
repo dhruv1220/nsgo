@@ -746,10 +746,7 @@ func (t *Tree) SetEnvironment(env Environment) {
 // Size returns the surface size.
 func (t *Tree) Size() Size { return t.size }
 
-// Language returns the language the app shows on this surface. It is the
-// catalog language matched to the surface's locale, or empty for an app
-// without catalogs. The engine uses it when configuring platform services
-// that must be set before the app's first window is shown.
+// Language returns the language the app shows (Env.Language): of its catalogs' languages, the one that suits the locale best, "" for an app without catalogs. The engine reads it for platform services that take a language only as they start, as WinSparkle does.
 func (t *Tree) Language() string { return t.root.Env().Language() }
 
 // Changed reports whether a Commit would produce items.

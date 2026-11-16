@@ -16,7 +16,7 @@ NSH's `nsh/updater` downloads, verifies and swaps in the next version itself. NS
 | Target | Updater |
 | --- | --- |
 | macOS | Sparkle's `SPUStandardUpdaterController`, started when Info.plist names a feed. Installing, it quits the app as `Quit` does |
-| Windows | WinSparkle from beside the executable; before it initializes, NSGo selects the app's resolved catalog language when WinSparkle ships that translation, and its shutdown request closes the main window as `Quit` does |
+| Windows | WinSparkle from beside the executable. It starts once the app has mounted, in the language the app shows (`updates.WinSparkleLanguage`): English or a translation WinSparkle ships, else the Windows UI language, WinSparkle's default. It takes the language only before it starts, so one the app switches to later shows from the next launch. Its shutdown request closes the main window as `Quit` does |
 | Linux, Android | `internal/platform/updates` reads the target's appcast with the backend's HTTP client, verifies the package's SHA-256 and Ed25519 signature, then `updater` stages it and hands it to the platform installer |
 | iOS | The App Store's lookup by the bundle's ID in the locale's country, against `CFBundleShortVersionString` |
 
@@ -69,6 +69,7 @@ Linux cannot tell a distribution's package from a downloaded one, so its package
 - `updater`'s alerts and schedule are tested with `nsgotest`; the appcast reader, version order, App Store answers and the installer rules run headless, and the tool's tests cover channels, flags and signed appcasts.
 - End to end against a local appcast (2026-11-11), with a copy of the tool that took an `http` feed, Sparkle on macOS downloaded 0.2.0 in the background and installed it, ad hoc signed, as 0.1.0 quit.
 - WinSparkle on Windows 11 x64 offered 0.2.0, verified the download, ran the setup with `/S /RELAUNCH` and started 0.2.0 (2026-11-11).
+- WinSparkle on an English Windows 11 x64 spoke the language an app forced as it mounted: Simplified and Traditional Chinese, Brazilian Portuguese and Japanese (2026-11-16). wxWidgets matches the language set only in lower case (`zh_cn`), which `TestWinSparkleLanguage` keeps.
 - Linux under Wayland offered 0.2.0 in `updater`'s alert as the app started, and with `SNAP` set asked nothing. iOS's check reaches the App Store from the simulator, and a development build on an iPhone, whose receipt is `sandboxReceipt`, checked nothing.
 - Android's emulators, API 29 and 34, checked an APK installed by adb or the package installer and left one installed as Google Play's alone; Android refuses cleartext, so an appcast has not been read there.
 - Headless tests cover installing on Linux and Android: only signed packages are offered, a download is verified before it is staged, Linux asks `dpkg-query` and `pacman` who owns the app and runs `pkexec` (in a Debian container), Android hands the APK to its installer, a failure offers the page, the install finishes after the scope that offered it is disposed, one runs at a time, and staged packages are removed. No device has installed an update this way yet.

@@ -127,14 +127,20 @@ func TestLanguageReadsTheMountedApp(t *testing.T) {
 		cx.SetLocale("zh-CN")
 		return core.Text{Content: "text"}
 	}, Options{Size: driver.Size{Width: 100, Height: 100}, Environment: driver.Environment{Locale: "en-US"}})
-	defer e.Close()
-	select {
-	case <-p.mounted:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for the first commit")
-	}
+	// Asked as the platform starts, before the first commit arrives: Language waits for the mount.
 	if got := e.Language(); got != "zh-Hans" {
 		t.Fatalf("Language() = %q, want zh-Hans", got)
+	}
+	e.Close()
+	got := make(chan string, 1)
+	go func() { got <- e.Language() }()
+	select {
+	case lang := <-got:
+		if lang != "" {
+			t.Fatalf("Language() after Close = %q, want \"\"", lang)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Language() after Close did not return")
 	}
 }
 

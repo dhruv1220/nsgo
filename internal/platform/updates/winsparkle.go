@@ -6,56 +6,56 @@ import (
 	"golang.org/x/text/language"
 )
 
-// WinSparkleLanguage maps an app catalog language to a translation bundled
-// with WinSparkle. An empty result leaves WinSparkle's default language in
-// place, which is its English UI for languages it does not translate.
+// WinSparkleLanguage maps the catalog language an app shows to the name WinSparkle's win_sparkle_set_lang takes for a translation WinSparkle 0.9.4 ships, or to "en" for English, the language its own strings are written in. An empty result, for an app without catalogs or a language WinSparkle does not translate, leaves WinSparkle to follow the Windows UI language, as it does when no language is set: once one is set, WinSparkle shows English rather than that default when it lacks the translation.
+//
+// The names are in lower case, as zh_cn: wxWidgets lists the translations WinSparkle.dll holds by their resource names, which it lowers, and compares the language set with them case-sensitively, so zh_CN, as the translation's file is named, finds none and shows English.
 func WinSparkleLanguage(tag string) string {
 	t, err := language.Parse(strings.TrimSpace(tag))
 	if err != nil || t.IsRoot() {
 		return ""
 	}
+	// Script and Region infer the likely ones a tag leaves out: zh is Hans, zh-TW Hant and pt BR, as CLDR says.
 	base, _ := t.Base()
 	script, _ := t.Script()
 	region, _ := t.Region()
 	switch base.String() {
+	case "en":
+		return "en"
 	case "zh":
-		if script.String() == "Hans" || region.String() == "CN" || region.String() == "SG" {
-			return "zh_CN"
-		}
-		if script.String() == "Hant" || region.String() == "TW" || region.String() == "HK" || region.String() == "MO" {
-			return "zh_TW"
+		switch script.String() {
+		case "Hans":
+			return "zh_cn"
+		case "Hant":
+			return "zh_tw"
 		}
 		return ""
 	case "pt":
-		if region.String() == "BR" {
-			return "pt_BR"
-		}
 		if region.String() == "PT" {
-			return "pt_PT"
+			return "pt_pt"
 		}
-		return ""
+		return "pt_br"
 	case "sr":
 		if script.String() == "Latn" {
 			return "sr@latin"
 		}
 		return "sr"
+	case "no":
+		// Norwegian's written Bokmål, the translation WinSparkle has.
+		return "nb"
 	case "ca":
-		return "ca_ES"
+		return "ca_es"
 	case "fy":
-		return "fy_NL"
+		return "fy_nl"
 	case "gl":
-		return "gl_ES"
-	default:
-		if _, ok := winSparkleTranslations[base.String()]; ok {
-			return base.String()
-		}
-		return ""
+		return "gl_es"
 	}
+	if _, ok := winSparkleTranslations[base.String()]; ok {
+		return base.String()
+	}
+	return ""
 }
 
-// winSparkleTranslations is the set of language-only translation files
-// shipped by WinSparkle. Regional languages are handled above because their
-// file names carry the region or script.
+// winSparkleTranslations are the translations WinSparkle 0.9.4 ships named by language alone (its translations directory); those named with a region or script are mapped above.
 var winSparkleTranslations = map[string]struct{}{
 	"af": {}, "ar": {}, "be": {}, "bg": {}, "bs": {}, "co": {}, "cs": {},
 	"da": {}, "de": {}, "el": {}, "es": {}, "et": {}, "eu": {}, "fi": {},

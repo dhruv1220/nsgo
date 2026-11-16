@@ -249,8 +249,7 @@ func (p *project) sparklePlist(target string) string {
 // pinned is a release of an updater nsgo bundles, by its SHA-256.
 type pinned struct{ name, url, sha256 string }
 
-// The updaters nsgo bundles: Sparkle in macOS packages and WinSparkle in
-// Windows ones, under their MIT licenses.
+// The updaters nsgo bundles: Sparkle in macOS packages and WinSparkle in Windows ones, under their MIT licenses. Moving WinSparkle to another release means checking its translations against internal/platform/updates' WinSparkleLanguage.
 var (
 	sparkleRelease = pinned{"Sparkle-2.10.1.tar.xz",
 		"https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz",

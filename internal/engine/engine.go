@@ -252,8 +252,7 @@ type runner struct {
 	// quitted is closed once the OnQuit handlers returned.
 	quitted chan struct{}
 	once    sync.Once
-	// tree is the first surface's graph. It is read only on the engine
-	// goroutine, through methods that post a function there.
+	// tree is the first surface's graph, which only the engine's goroutine reads: Language posts a function there.
 	tree *core.Tree
 }
 
@@ -683,10 +682,7 @@ func (e *Engine) Sync() {
 	}
 }
 
-// Language returns the language the app shows on its first surface. It
-// waits for work already queued on the engine, so callers see locale choices
-// made while the app mounted. The returned string is empty when the app has
-// no catalog.
+// Language returns the language the app shows on its first surface (core.Env.Language), "" for an app without catalogs. It waits for what is already queued on the engine, the app's mount included, so it sees a locale the app set as it mounted; it returns "" once the engine has ended.
 func (e *Engine) Language() string {
 	done := make(chan string, 1)
 	e.push(message{fn: func() {
