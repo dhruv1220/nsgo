@@ -26,7 +26,9 @@ func TestDiagonalCursors(t *testing.T) {
 }
 
 // TestSpanCursorGoesAheadOfItsText finds a span's cursor over its characters, and the text's own cursor over the others.
-func TestSpanCursorGoesAheadOfItsText(t *testing.T) { onMain(func() { spanCursorGoesAheadOfItsText(t) }) }
+func TestSpanCursorGoesAheadOfItsText(t *testing.T) {
+	onMain(func() { spanCursorGoesAheadOfItsText(t) })
+}
 
 func spanCursorGoesAheadOfItsText(t *testing.T) {
 	loadAppKit()
