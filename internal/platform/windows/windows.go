@@ -166,10 +166,11 @@ const (
 	wsMaximizeBox      = 0x00010000
 	wsClipChildren     = 0x02000000
 	wsVisible          = 0x10000000
-	wsExNoRedirect     = 0x00200000 // no redirection bitmap, for a composition surface
-	wsExToolWindow     = 0x00000080 // no taskbar button or Alt+Tab entry
-	wsExNoActivate     = 0x08000000 // keeps a panel from activating its app
-	maNoActivate       = 3
+	wsExNoRedirect     = 0x00200000           // no redirection bitmap, for a composition surface
+	wsExToolWindow     = 0x00000080           // no taskbar button or Alt+Tab entry
+	wsExNoActivate     = 0x08000000           // a click does not activate the window
+	wsExTopmost        = 0x00000008           // above every window that is not topmost
+	maNoActivate       = 3                    // MA_NOACTIVATE: a click goes to the window without activating it
 	cwUseDefault       = ^uintptr(0x7FFFFFFF) // CW_USEDEFAULT as a uintptr
 	gwlStyle           = ^uintptr(15)         // -16
 	swShow             = 5
@@ -350,10 +351,10 @@ type window struct {
 	kind       driver.SurfaceKind
 	destroying bool
 	hideOnBlur bool
-	activates  bool
+	noActivate bool
 	visible    bool
 	focused    bool
-	// anchor is the tray icon a panel last showed under, 0 for none.
+	// anchor is the tray icon a panel last showed under, 0 for none, and anchorBounds and placement where core.Window.ShowAt last placed it, placement WindowPlaceDefault for nowhere. noActivate keeps a panel from ever taking the focus.
 	anchor       uint32
 	anchorBounds driver.Bounds
 	placement    driver.WindowPlacement
@@ -845,7 +846,7 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 		opts.Hidden = true
 	}
 	child := newWindow(opts)
-	child.opts, child.hostWindow, child.kind, child.hideOnBlur, child.activates = opts, w, cfg.Kind, cfg.HideOnBlur, cfg.Activates
+	child.opts, child.hostWindow, child.kind, child.hideOnBlur, child.noActivate = opts, w, cfg.Kind, cfg.HideOnBlur, cfg.NoActivate
 	child.visible = !opts.Hidden
 	child.chrome.constraints = opts.Constraints
 	child.composeFor(opts.Material)
@@ -860,8 +861,9 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	if cfg.Kind != driver.SurfaceWindow {
 		// Panels, as tray flyouts, have no taskbar button or Alt+Tab entry.
 		ex |= wsExToolWindow
-		if cfg.Kind == driver.SurfacePanel && !cfg.Activates {
-			ex |= wsExNoActivate
+		if cfg.Kind == driver.SurfacePanel && cfg.NoActivate {
+			// One that never takes the focus stays above the window it serves, which keeps it.
+			ex |= wsExNoActivate | wsExTopmost
 		}
 	}
 	frame := rect{Right: child.px(opts.Width), Bottom: child.px(opts.Height)}
@@ -921,7 +923,7 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	if !opts.Hidden {
 		if cfg.Kind == driver.SurfacePanel {
 			child.placePanel(0, driver.Bounds{}, driver.WindowPlaceDefault)
-			child.orderFront(child.activates)
+			child.orderFront()
 		} else {
 			showWindow.Call(hwnd, swShow)
 		}
@@ -2036,7 +2038,7 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		return 0
 	}
 	w.reportModality(message, wParam)
-	if message == wmMouseActivate && w.kind == driver.SurfacePanel && !w.activates {
+	if message == wmMouseActivate && w.kind == driver.SurfacePanel && w.noActivate {
 		return maNoActivate
 	}
 	// An alert takes the pointer and the keys while it shows.

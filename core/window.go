@@ -61,10 +61,8 @@ type PanelOptions struct {
 	// HideOnBlur hides the panel as it loses the focus, as a tray icon's
 	// panel or a launcher does.
 	HideOnBlur bool
-	// Activates lets the panel take the application's focus when it shows.
-	// The zero value keeps the panel non-activating, so a panel can be used
-	// beside another app's text field without stealing its keyboard.
-	Activates bool
+	// NoActivate keeps the panel from ever taking the keyboard or activating the app, shown, focused or clicked, so the app the user types in keeps its focus and caret, as an input method's candidate window or an on-screen keyboard needs. Focus and Toggle then only bring it to the front, and HideOnBlur never hides it, as it never has the focus to lose. Linux keeps it from the focus on X11 alone; a Wayland compositor gives it the focus as it shows.
+	NoActivate bool
 	// Material is the material behind the content (WindowMaterial).
 	Material WindowMaterial
 }
@@ -74,14 +72,14 @@ type PanelOptions struct {
 // Window, which OpenWindow returns where the platform opens no windows,
 // or once it closed.
 type Window struct {
-	t               *Tree
-	scope           *Scope
-	kind            driver.SurfaceKind
-	key             string
-	visible         *Signal[bool]
-	activates       bool
+	t       *Tree
+	scope   *Scope
+	kind    driver.SurfaceKind
+	key     string
+	visible *Signal[bool]
+	// anchorBounds and placement are where ShowAt or MoveTo last asked a panel to go, placement WindowPlaceDefault for none: every later show, focus and toggle keeps them.
 	anchorBounds    Bounds
-	placement       Placement
+	placement       driver.WindowPlacement
 	closed          bool
 	closing         []*closingHandler
 	placementErrors []*placementErrorHandler
@@ -156,7 +154,7 @@ func (cx *Scope) OpenPanel(opts PanelOptions, content func(cx *Scope) Node) *Win
 		opts.Width, opts.Height = 360, 420
 	}
 	return rt.openSurface(cx.current(), driver.SurfaceConfig{Kind: driver.SurfacePanel, Width: opts.Width,
-		Height: opts.Height, Hidden: true, HideOnBlur: opts.HideOnBlur, Activates: opts.Activates, Material: opts.Material}, content)
+		Height: opts.Height, Hidden: true, HideOnBlur: opts.HideOnBlur, NoActivate: opts.NoActivate, Material: opts.Material}, content)
 }
 
 // openSurface opens a surface of cfg's kind showing content under owner:
@@ -168,7 +166,7 @@ func (rt *runtime) openSurface(owner *Scope, cfg driver.SurfaceConfig, content f
 	rt.surfaceID++
 	t := newTree(s, app.text, rt.surfaceID)
 	cfg.ID = t.id
-	w := &Window{t: t, scope: s, kind: cfg.Kind, activates: cfg.Activates, visible: NewSignal(s, !cfg.Hidden)}
+	w := &Window{t: t, scope: s, kind: cfg.Kind, visible: NewSignal(s, !cfg.Hidden)}
 	t.window = w
 	rt.surfaces = append(rt.surfaces, t)
 	// It starts in the app's environment until its platform reports its own.
@@ -227,30 +225,26 @@ func (w *Window) command(c WindowCommand) {
 	t.changed = true
 }
 
-// Show shows the window without taking the focus from another app.
+// Show shows the window: a window without taking the focus from another app; a panel where ShowAt or MoveTo last placed it, else at its platform's default spot, taking the keyboard, without activating the app where the platform can, unless PanelOptions.NoActivate keeps it from the keyboard.
 func (w *Window) Show() {
 	if w == nil || w.closed {
 		return
 	}
 	w.visible.Set(true)
-	w.command(WindowCommand{Action: driver.WindowShow, AnchorBounds: w.anchorBounds,
-		Placement: driver.WindowPlacement(w.placement), Activate: w.activates})
+	w.command(WindowCommand{Action: driver.WindowShow, AnchorBounds: w.anchorBounds, Placement: w.placement})
 }
 
-// showAt shows a panel under tray icon id.
+// showAt shows a panel under tray icon id, forgetting where ShowAt placed it.
 func (w *Window) showAt(tray uint32) {
 	if w == nil || w.closed {
 		return
 	}
 	w.visible.Set(true)
-	w.anchorBounds, w.placement = Bounds{}, PlaceDefault
-	w.command(WindowCommand{Action: driver.WindowShow, Anchor: tray, Activate: w.activates})
+	w.anchorBounds, w.placement = Bounds{}, driver.WindowPlaceDefault
+	w.command(WindowCommand{Action: driver.WindowShow, Anchor: tray})
 }
 
-// ShowAt shows a panel beside anchor in global screen coordinates. The
-// panel chooses the requested side when it fits and flips or clamps it to
-// the display's usable area otherwise. It never activates a non-activating
-// panel. A window that is not a panel returns an unavailable error.
+// ShowAt shows a panel beside anchor, a rectangle in the desktop's screen coordinates (those of Env.Displays and SetWindowFrame) such as a text caret's, on placement's side of it, below for PlaceDefault: it flips to the opposite side when only that one fits on the display that holds anchor's center, and is clamped into that display's visible frame when neither does. A zero-sized anchor is a point, such as the pointer's. Show, Focus and Toggle keep the placement until a tray icon shows the panel under itself. It returns an unavailable error for a window that is not a panel; a platform that cannot place it, Linux on Wayland, reports so to OnPlacementError and leaves it hidden.
 func (w *Window) ShowAt(anchor Bounds, placement Placement) error {
 	if w == nil || w.closed {
 		return nil
@@ -258,16 +252,13 @@ func (w *Window) ShowAt(anchor Bounds, placement Placement) error {
 	if w.kind != driver.SurfacePanel {
 		return Unavailable("only a panel can be placed beside a screen rectangle")
 	}
-	w.anchorBounds, w.placement = anchor, placement
+	w.anchorBounds, w.placement = anchor, windowPlacement(placement)
 	w.visible.Set(true)
-	w.command(WindowCommand{Action: driver.WindowShow, AnchorBounds: anchor,
-		Placement: driver.WindowPlacement(placement), Activate: w.activates})
+	w.command(WindowCommand{Action: driver.WindowShow, AnchorBounds: w.anchorBounds, Placement: w.placement})
 	return nil
 }
 
-// MoveTo moves a visible panel beside anchor without hiding or activating
-// it. Calling it before ShowAt stores the requested placement for the next
-// show. A window that is not a panel returns an unavailable error.
+// MoveTo places a panel beside anchor as ShowAt does, without showing, hiding or focusing it: a panel that shows moves there at once, as one following a caret does, and a hidden one goes there when it next shows. It returns an unavailable error for a window that is not a panel.
 func (w *Window) MoveTo(anchor Bounds, placement Placement) error {
 	if w == nil || w.closed {
 		return nil
@@ -275,15 +266,26 @@ func (w *Window) MoveTo(anchor Bounds, placement Placement) error {
 	if w.kind != driver.SurfacePanel {
 		return Unavailable("only a panel can be placed beside a screen rectangle")
 	}
-	w.anchorBounds, w.placement = anchor, placement
-	w.command(WindowCommand{Action: driver.WindowSetAnchor, AnchorBounds: anchor,
-		Placement: driver.WindowPlacement(placement)})
+	w.anchorBounds, w.placement = anchor, windowPlacement(placement)
+	w.command(WindowCommand{Action: driver.WindowSetAnchor, AnchorBounds: w.anchorBounds, Placement: w.placement})
 	return nil
 }
 
-// OnPlacementError runs fn when the platform cannot honor a panel's
-// requested screen placement, for example a Wayland compositor without a
-// layer-shell protocol. The handler belongs to cx and runs on its scope.
+// windowPlacement is placement for the platform, which takes WindowPlaceDefault for a panel ShowAt never placed: a default placement is below.
+func windowPlacement(placement Placement) driver.WindowPlacement {
+	switch placement {
+	case PlaceTop:
+		return driver.WindowPlaceTop
+	case PlaceLeft:
+		return driver.WindowPlaceLeft
+	case PlaceRight:
+		return driver.WindowPlaceRight
+	default:
+		return driver.WindowPlaceBottom
+	}
+}
+
+// OnPlacementError runs fn, under cx, when the platform cannot place the panel where ShowAt or MoveTo asked, as Linux cannot on Wayland, whose compositor places windows itself: the panel stays hidden and the app may show something else instead.
 func (w *Window) OnPlacementError(cx *Scope, fn func(error)) {
 	if w == nil || w.closed || cx == nil || fn == nil {
 		return
@@ -316,13 +318,13 @@ func (w *Window) Toggle() {
 	}
 }
 
-// Focus shows the window in front of the others and activates the app.
+// Focus shows the window in front of the others and activates the app; a panel with PanelOptions.NoActivate comes to the front without the keyboard or activating it.
 func (w *Window) Focus() {
 	if w == nil || w.closed {
 		return
 	}
 	w.visible.Set(true)
-	w.command(WindowCommand{Action: driver.WindowOrderFront, Activate: true})
+	w.command(WindowCommand{Action: driver.WindowOrderFront})
 }
 
 // Close closes the window for good, as its owner going does, without
@@ -752,6 +754,8 @@ func (t *Tree) surfaceEvent(ev driver.Event) bool {
 		}
 	case driver.EventWindowPlacementFailed:
 		if w := t.window; w != nil && !w.closed {
+			// The platform left the panel hidden.
+			t.within(w.scope, func() { w.visible.Set(false) })
 			err := Unavailable(ev.Text)
 			for _, h := range slices.Clone(w.placementErrors) {
 				t.within(h.owner, func() { h.fn(err) })

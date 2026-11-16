@@ -129,13 +129,13 @@ func (s *surface) command(c *driver.WindowCommand) {
 		s.setLevel(c.Level)
 	case driver.WindowOrderFront:
 		if s.kind == driver.SurfacePanel {
-			s.showPanel(s.anchor, s.anchorBounds, s.placement, c.Activate)
+			s.showPanel(s.anchor, s.anchorBounds, s.placement)
 		} else {
 			s.orderFront()
 		}
 	case driver.WindowShow:
 		if s.kind == driver.SurfacePanel {
-			s.showPanel(c.Anchor, c.AnchorBounds, c.Placement, c.Activate)
+			s.showPanel(c.Anchor, c.AnchorBounds, c.Placement)
 		} else {
 			s.show(c.Anchor)
 		}
@@ -167,8 +167,9 @@ func (s *surface) command(c *driver.WindowCommand) {
 			break
 		}
 		s.anchorBounds, s.placement = c.AnchorBounds, c.Placement
-		if objc.Send[bool](s.window, sel("isVisible")) {
-			s.showPanel(s.anchor, s.anchorBounds, s.placement, false)
+		// Moving a panel that shows leaves the key window as it is.
+		if c.Placement != driver.WindowPlaceDefault && objc.Send[bool](s.window, sel("isVisible")) {
+			s.window.Send(sel("setFrameOrigin:"), placePanel(c.AnchorBounds, objc.Send[apple.CGRect](s.window, sel("frame")).Size, c.Placement))
 		}
 	}
 }

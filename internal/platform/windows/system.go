@@ -46,7 +46,6 @@ const (
 	swShowNormal = 1
 
 	hwndBottom    = 1
-	hwndTop       = 0
 	hwndTopmost   = ^uintptr(0) // -1
 	hwndNoTopmost = ^uintptr(1) // -2
 
@@ -1086,39 +1085,9 @@ func (w *window) setLevel(level driver.WindowLevel) {
 	}
 }
 
-// placePanel moves a panel beside a screen rectangle, or under its tray
-// icon. A panel with neither uses the pointer's monitor as its default spot.
-func (w *window) placePanel(anchor uint32, bounds driver.Bounds, side driver.WindowPlacement) {
-	if bounds.Size.Width > 0 || bounds.Size.Height > 0 {
-		placements := monitorLayout()
-		center := driver.Point{X: bounds.Origin.X + bounds.Size.Width/2, Y: bounds.Origin.Y + bounds.Size.Height/2}
-		var chosen *displayPlacement
-		for i := range placements {
-			if placements[i].display.Frame.Contains(center) {
-				chosen = &placements[i]
-				break
-			}
-		}
-		if chosen == nil && len(placements) > 0 {
-			chosen = &placements[0]
-		}
-		if chosen == nil {
-			if w.engine != nil {
-				w.engine.Dispatch(driver.Event{Kind: driver.EventWindowPlacementFailed, Text: "Windows has no display on which to place the panel"})
-			}
-			return
-		}
-		width, height, ok := w.panelPixels(chosen.monitor)
-		if !ok {
-			if w.engine != nil {
-				w.engine.Dispatch(driver.Event{Kind: driver.EventWindowPlacementFailed, Text: "Windows could not measure the panel"})
-			}
-			return
-		}
-		size := driver.Size{Width: driver.Points(float64(width) / chosen.scale), Height: driver.Points(float64(height) / chosen.scale)}
-		point, _ := driver.PlaceWindow(bounds, size, chosen.display.VisibleFrame, side)
-		x, y := chosen.pixel(point.X, point.Y)
-		w.movePanel(x, y, width, height)
+// placePanel moves a panel beside the rectangle beside on side when side is set (core.Window.ShowAt), inside the work area of the monitor that holds its center, else beside tray icon anchor, else, with no anchor or none the shell places, to the upper middle of the monitor with the pointer, as macOS shows it.
+func (w *window) placePanel(anchor uint32, beside driver.Bounds, side driver.WindowPlacement) {
+	if side != driver.WindowPlaceDefault && w.placeBeside(beside, side) {
 		return
 	}
 	if anchor != 0 && w.placeAtTray(anchor) {
@@ -1203,24 +1172,45 @@ func (w *window) placeAtTray(id uint32) bool {
 	return true
 }
 
-// orderFront shows the window, restored when minimized, in front and
-// focused.
-func (w *window) orderFront(activate bool) {
+// placeBeside moves a panel beside at, a rectangle in Env.Displays' points, on side, sized at the scale of the monitor it goes on; false where there is no monitor or the panel has no size yet.
+func (w *window) placeBeside(at driver.Bounds, side driver.WindowPlacement) bool {
+	monitors := monitorLayout()
+	if len(monitors) == 0 {
+		return false
+	}
+	center := driver.Point{X: at.Origin.X + at.Size.Width/2, Y: at.Origin.Y + at.Size.Height/2}
+	on := monitors[0]
+	for _, m := range monitors {
+		if m.display.Frame.Contains(center) {
+			on = m
+			break
+		}
+	}
+	width, height, ok := w.panelPixels(on.monitor)
+	if !ok {
+		return false
+	}
+	size := driver.Size{Width: driver.Points(float64(width) / on.scale), Height: driver.Points(float64(height) / on.scale)}
+	p, _ := driver.PlaceWindow(at, size, on.display.VisibleFrame, side)
+	x, y := on.pixel(p.X, p.Y)
+	w.movePanel(x, y, width, height)
+	return true
+}
+
+// orderFront shows the window, restored when minimized, in front and focused. A panel that never takes the focus (SurfaceConfig.NoActivate) shows at the top of the topmost windows instead, leaving the foreground window and its keyboard focus as they are.
+func (w *window) orderFront() {
+	if w.kind == driver.SurfacePanel && w.noActivate {
+		showWindow.Call(w.hwnd, swShowNA)
+		setWindowPos.Call(w.hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
+		return
+	}
 	if isIconicWindow(w.hwnd) {
 		showWindow.Call(w.hwnd, swRestore)
 	} else {
-		if activate {
-			showWindow.Call(w.hwnd, swShow)
-		} else {
-			showWindow.Call(w.hwnd, swShowNA)
-		}
+		showWindow.Call(w.hwnd, swShow)
 	}
 	bringWindowToTop.Call(w.hwnd)
-	if activate {
-		setForegroundWindow.Call(w.hwnd)
-	} else {
-		setWindowPos.Call(w.hwnd, hwndTop, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
-	}
+	setForegroundWindow.Call(w.hwnd)
 }
 
 // setMenuBar says when the menu bar shows.

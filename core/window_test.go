@@ -258,39 +258,118 @@ func TestTrayAndPanel(t *testing.T) {
 	}
 }
 
-func TestPanelPlacementCommands(t *testing.T) {
-	var panel *Window
+func TestPanelPlacement(t *testing.T) {
+	var panel, settings *Window
 	var owner *Scope
 	w := newWindows(t, func(cx *Scope) {
 		owner = cx
 		cx.SetShutdownMode(ShutdownOnExplicit)
-		panel = cx.OpenPanel(PanelOptions{}, func(cx *Scope) Node { return Text{Content: "panel"} })
+		panel = cx.OpenPanel(PanelOptions{NoActivate: true}, func(cx *Scope) Node { return Text{Content: "panel"} })
+		cx.OpenPanel(PanelOptions{}, func(cx *Scope) Node { return Text{Content: "plain"} })
+		settings = cx.OpenWindow(WindowOptions{Title: "Settings"}, func(cx *Scope) Node { return Text{Content: "settings"} })
+		cx.NewTray(TrayOptions{Icon: []byte{1}, Panel: panel})
 	})
-	w.take(0, driver.ItemOpenSurface)
-	var placementErr error
-	panel.OnPlacementError(owner, func(err error) { placementErr = err })
-	anchor := Bounds{Origin: Point{X: 100, Y: 200}, Size: Size{Width: 40, Height: 20}}
-	if err := panel.ShowAt(anchor, PlaceTop); err != nil {
+	opened := w.take(0, driver.ItemOpenSurface)
+	if len(opened) != 3 || !opened[0].Surface.NoActivate || opened[1].Surface.NoActivate {
+		t.Fatalf("NoActivate does not reach the platform: %+v", opened)
+	}
+	last := func(want driver.WindowAction) driver.WindowCommand {
+		t.Helper()
+		w.commit()
+		cmds := w.take(panel.t.id, driver.ItemWindow)
+		if len(cmds) != 1 || cmds[0].Window.Action != want {
+			t.Fatalf("commands %+v, want one of action %d", cmds, want)
+		}
+		return *cmds[0].Window
+	}
+	var failures []error
+	panel.OnPlacementError(owner, func(err error) { failures = append(failures, err) })
+
+	// MoveTo before a show only keeps the placement, which the next show uses.
+	caret := Bounds{Origin: Point{X: 100, Y: 200}, Size: Size{Width: 1, Height: 18}}
+	if err := panel.MoveTo(caret, PlaceTop); err != nil {
 		t.Fatal(err)
 	}
-	w.commit()
-	cmds := w.take(panel.t.id, driver.ItemWindow)
-	if len(cmds) != 1 || cmds[0].Window.Action != driver.WindowShow || cmds[0].Window.AnchorBounds != anchor ||
-		cmds[0].Window.Placement != driver.WindowPlaceTop || cmds[0].Window.Activate {
-		t.Fatalf("show at command = %+v", cmds)
+	if c := last(driver.WindowSetAnchor); c.AnchorBounds != caret || c.Placement != driver.WindowPlaceTop || panel.Visible() {
+		t.Fatalf("MoveTo sent %+v, visible %v", c, panel.Visible())
 	}
-	if err := panel.MoveTo(anchor, PlaceRight); err != nil {
+	panel.Show()
+	if c := last(driver.WindowShow); c.AnchorBounds != caret || c.Placement != driver.WindowPlaceTop || !panel.Visible() {
+		t.Fatalf("Show after MoveTo sent %+v", c)
+	}
+	// A point is an anchor too, and PlaceDefault places below it.
+	pointer := Bounds{Origin: Point{X: 300, Y: 40}}
+	if err := panel.ShowAt(pointer, PlaceDefault); err != nil {
 		t.Fatal(err)
 	}
-	w.commit()
-	cmds = w.take(panel.t.id, driver.ItemWindow)
-	if len(cmds) != 1 || cmds[0].Window.Action != driver.WindowSetAnchor || cmds[0].Window.AnchorBounds != anchor ||
-		cmds[0].Window.Placement != driver.WindowPlaceRight {
-		t.Fatalf("move to command = %+v", cmds)
+	if c := last(driver.WindowShow); c.AnchorBounds != pointer || c.Placement != driver.WindowPlaceBottom {
+		t.Fatalf("ShowAt a point sent %+v", c)
 	}
+	if err := panel.MoveTo(caret, PlaceRight); err != nil {
+		t.Fatal(err)
+	}
+	if c := last(driver.WindowSetAnchor); c.AnchorBounds != caret || c.Placement != driver.WindowPlaceRight {
+		t.Fatalf("MoveTo sent %+v", c)
+	}
+	// Hiding and toggling keep the placement for the platform's own show.
+	panel.Toggle()
+	last(driver.WindowHide)
+	panel.Toggle()
+	last(driver.WindowOrderFront)
+	panel.Hide()
+	last(driver.WindowHide)
+	panel.Show()
+	if c := last(driver.WindowShow); c.AnchorBounds != caret || c.Placement != driver.WindowPlaceRight {
+		t.Fatalf("Show after a toggle sent %+v", c)
+	}
+	// A tray icon shows the panel under itself, forgetting the placement.
+	panel.Hide()
+	last(driver.WindowHide)
+	w.dispatch(0, driver.Event{Kind: driver.EventTray, Count: 1})
+	if c := last(driver.WindowShow); c.Anchor != 1 || c.Placement != driver.WindowPlaceDefault {
+		t.Fatalf("a tray click sent %+v", c)
+	}
+	panel.Hide()
+	last(driver.WindowHide)
+	panel.Show()
+	if c := last(driver.WindowShow); c.Placement != driver.WindowPlaceDefault || c.AnchorBounds != (Bounds{}) {
+		t.Fatalf("Show after the tray's sent %+v", c)
+	}
+
+	// A platform that cannot place the panel leaves it hidden and says so.
+	if err := panel.ShowAt(caret, PlaceBottom); err != nil {
+		t.Fatal(err)
+	}
+	last(driver.WindowShow)
 	w.dispatch(panel.t.id, driver.Event{Kind: driver.EventWindowPlacementFailed, Text: "unsupported"})
-	if placementErr == nil || placementErr.Error() != "unsupported" {
-		t.Fatalf("placement error = %v", placementErr)
+	if len(failures) != 1 || failures[0].Error() != "unsupported" || ErrorCode(failures[0]) != CodeUnavailable || panel.Visible() {
+		t.Fatalf("placement failures %v, visible %v", failures, panel.Visible())
+	}
+
+	// Only panels are placed.
+	for _, err := range []error{settings.ShowAt(caret, PlaceBottom), settings.MoveTo(caret, PlaceBottom)} {
+		if ErrorCode(err) != CodeUnavailable {
+			t.Errorf("placing a window answers %v", err)
+		}
+	}
+	w.commit()
+	if cmds := w.take(settings.t.id, driver.ItemWindow); len(cmds) != 0 {
+		t.Errorf("placing a window sent %+v", cmds)
+	}
+	var none *Window
+	if err := none.ShowAt(caret, PlaceBottom); err != nil {
+		t.Errorf("a nil window answers %v", err)
+	}
+	none.OnPlacementError(owner, func(error) {})
+
+	// A handler goes with its owner.
+	child := owner.Child()
+	heard := 0
+	panel.OnPlacementError(child, func(error) { heard++ })
+	child.Dispose()
+	w.dispatch(panel.t.id, driver.Event{Kind: driver.EventWindowPlacementFailed, Text: "again"})
+	if heard != 0 || len(failures) != 2 {
+		t.Errorf("a disposed owner's handler heard %d failures; the app's heard %d", heard, len(failures))
 	}
 }
 

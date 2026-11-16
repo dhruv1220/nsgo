@@ -100,7 +100,7 @@ func (w *window) showAlertWindow(s *shownAlert) {
 	s.layout(driver.Size{Width: alertMaxW + 2*margin})
 	w.placeNew(alertMaxW+2*margin, driver.Points(s.card.bottom-s.card.top)+2*margin, true)
 	w.alertWindow = true
-	w.orderFront(true)
+	w.orderFront()
 }
 
 // answerAlert closes the alert with the action at index, -1 for none.

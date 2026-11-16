@@ -25,12 +25,11 @@ type Bounds struct {
 	Size   Size
 }
 
-// WindowPlacement is the side of an anchor rectangle where a panel goes.
-// It is separate from core.Placement so the platform protocol does not
-// depend on core.
+// WindowPlacement is the side of an anchor rectangle a panel goes on (core.Window.ShowAt), kept apart from core.Placement so that the platforms do not depend on core.
 type WindowPlacement uint8
 
 const (
+	// WindowPlaceDefault places the panel at no rectangle.
 	WindowPlaceDefault WindowPlacement = iota
 	WindowPlaceBottom
 	WindowPlaceTop
@@ -38,55 +37,41 @@ const (
 	WindowPlaceRight
 )
 
-// PlaceWindow returns a panel's top-left corner and the side it used. It
-// prefers side, flips to the opposite side when that one fits, and clamps
-// the result to area when neither side fits.
+// panelGap is the space between a panel and the rectangle it is placed beside.
+const panelGap Points = 6
+
+// PlaceWindow returns the top-left corner of a panel of size placed beside anchor in area, a display's visible frame, and the side it took: side, below for WindowPlaceDefault, unless the panel overflows area there and fits on the opposite side. Along the side it is centered on anchor, and either way it is kept inside area, at its top-left corner when it is larger.
 func PlaceWindow(anchor Bounds, size Size, area Bounds, side WindowPlacement) (Point, WindowPlacement) {
-	if side == WindowPlaceDefault {
+	at := func(p WindowPlacement) Point {
+		switch p {
+		case WindowPlaceTop:
+			return Point{X: anchor.Origin.X + (anchor.Size.Width-size.Width)/2, Y: anchor.Origin.Y - size.Height - panelGap}
+		case WindowPlaceLeft:
+			return Point{X: anchor.Origin.X - size.Width - panelGap, Y: anchor.Origin.Y + (anchor.Size.Height-size.Height)/2}
+		case WindowPlaceRight:
+			return Point{X: anchor.Origin.X + anchor.Size.Width + panelGap, Y: anchor.Origin.Y + (anchor.Size.Height-size.Height)/2}
+		default:
+			return Point{X: anchor.Origin.X + (anchor.Size.Width-size.Width)/2, Y: anchor.Origin.Y + anchor.Size.Height + panelGap}
+		}
+	}
+	// fits says whether the panel at p stays in area across the side it is on; along the side it is clamped anyway.
+	fits := func(p WindowPlacement, at Point) bool {
+		if p == WindowPlaceLeft || p == WindowPlaceRight {
+			return at.X >= area.Origin.X && at.X+size.Width <= area.Origin.X+area.Size.Width
+		}
+		return at.Y >= area.Origin.Y && at.Y+size.Height <= area.Origin.Y+area.Size.Height
+	}
+	if side == WindowPlaceDefault || side > WindowPlaceRight {
 		side = WindowPlaceBottom
 	}
-	opposite := func(p WindowPlacement) WindowPlacement {
-		switch p {
-		case WindowPlaceTop:
-			return WindowPlaceBottom
-		case WindowPlaceBottom:
-			return WindowPlaceTop
-		case WindowPlaceLeft:
-			return WindowPlaceRight
-		case WindowPlaceRight:
-			return WindowPlaceLeft
-		default:
-			return WindowPlaceBottom
-		}
+	opposite := map[WindowPlacement]WindowPlacement{WindowPlaceBottom: WindowPlaceTop, WindowPlaceTop: WindowPlaceBottom,
+		WindowPlaceLeft: WindowPlaceRight, WindowPlaceRight: WindowPlaceLeft}[side]
+	chosen := at(side)
+	if flipped := at(opposite); !fits(side, chosen) && fits(opposite, flipped) {
+		side, chosen = opposite, flipped
 	}
-	point := func(p WindowPlacement) Point {
-		const gap Points = 6
-		switch p {
-		case WindowPlaceTop:
-			return Point{X: anchor.Origin.X + (anchor.Size.Width-size.Width)/2, Y: anchor.Origin.Y - size.Height - gap}
-		case WindowPlaceLeft:
-			return Point{X: anchor.Origin.X - size.Width - gap, Y: anchor.Origin.Y + (anchor.Size.Height-size.Height)/2}
-		case WindowPlaceRight:
-			return Point{X: anchor.Origin.X + anchor.Size.Width + gap, Y: anchor.Origin.Y + (anchor.Size.Height-size.Height)/2}
-		default:
-			return Point{X: anchor.Origin.X + (anchor.Size.Width-size.Width)/2, Y: anchor.Origin.Y + anchor.Size.Height + gap}
-		}
-	}
-	fits := func(p Point) bool {
-		return p.X >= area.Origin.X && p.Y >= area.Origin.Y &&
-			p.X+size.Width <= area.Origin.X+area.Size.Width &&
-			p.Y+size.Height <= area.Origin.Y+area.Size.Height
-	}
-	chosen := point(side)
-	if !fits(chosen) {
-		if flipped := point(opposite(side)); fits(flipped) {
-			side, chosen = opposite(side), flipped
-		}
-	}
-	maxX := area.Origin.X + max(area.Size.Width-size.Width, 0)
-	maxY := area.Origin.Y + max(area.Size.Height-size.Height, 0)
-	chosen.X = min(max(chosen.X, area.Origin.X), maxX)
-	chosen.Y = min(max(chosen.Y, area.Origin.Y), maxY)
+	chosen.X = max(min(chosen.X, area.Origin.X+area.Size.Width-size.Width), area.Origin.X)
+	chosen.Y = max(min(chosen.Y, area.Origin.Y+area.Size.Height-size.Height), area.Origin.Y)
 	return chosen, side
 }
 

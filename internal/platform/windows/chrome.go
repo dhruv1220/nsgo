@@ -283,8 +283,8 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		w.visible, w.focused = true, false
 		if w.kind == driver.SurfacePanel {
 			w.anchor, w.anchorBounds, w.placement = c.Anchor, c.AnchorBounds, c.Placement
-			w.placePanel(c.Anchor, c.AnchorBounds, c.Placement)
-			w.orderFront(c.Activate)
+			w.placePanel(w.anchor, w.anchorBounds, w.placement)
+			w.orderFront()
 		} else {
 			// Without taking the focus from another app (core.Window.Show).
 			showWindow.Call(w.hwnd, swShowNA)
@@ -301,7 +301,7 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		if w.kind == driver.SurfacePanel {
 			w.placePanel(w.anchor, w.anchorBounds, w.placement)
 		}
-		w.orderFront(c.Activate)
+		w.orderFront()
 	case driver.WindowSetMenuBar:
 		w.setMenuBar(c.MenuBar)
 	case driver.WindowSetControls:
@@ -317,8 +317,9 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 	case driver.WindowSetAnchor:
 		if w.kind == driver.SurfacePanel {
 			w.anchorBounds, w.placement = c.AnchorBounds, c.Placement
-			if w.visible {
-				w.placePanel(w.anchor, w.anchorBounds, w.placement)
+			// Moving a panel that shows changes neither the z-order nor the focus.
+			if w.visible && w.placement != driver.WindowPlaceDefault {
+				w.placeBeside(w.anchorBounds, w.placement)
 			}
 		}
 	}
