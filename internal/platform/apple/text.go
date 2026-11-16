@@ -681,8 +681,18 @@ func (p *prepared) fitsOneLine(width float64) bool {
 		p.line = ctLineCreateWithAttrString(p.str)
 		// As a frame measures it, without its trailing spaces.
 		p.lineWidth = ctLineGetTypographicBounds(p.line, &p.ascent, &descent, &leading) - ctLineTrailingWhitespace(p.line)
+		// A frame treats typographic leading differently on its last
+		// line. In particular, CJK fallback fonts may report several
+		// points here which the framesetter leaves out entirely. Keep
+		// those texts on the framesetter for both measuring and drawing.
+		if leading != 0 {
+			p.oneLine = false
+			Release(p.line)
+			p.line = 0
+			return false
+		}
 		// A frame puts a line's baseline on a whole point.
-		p.lineHeight = math.Round(p.ascent) + descent + leading
+		p.lineHeight = math.Round(p.ascent) + descent
 	}
 	return p.lineWidth <= width
 }

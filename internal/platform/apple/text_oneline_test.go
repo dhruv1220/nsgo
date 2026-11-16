@@ -38,6 +38,22 @@ func TestOneLineMatchesTheFramesetter(t *testing.T) {
 	}
 }
 
+// Fonts with typographic leading do not contribute it to a frame's last
+// line as CTLineGetTypographicBounds does. Test them explicitly rather
+// than depending on the machine's choice of a CJK fallback for Menlo.
+func TestOneLineWithLeadingMatchesTheFramesetter(t *testing.T) {
+	defer func() { oneLineFast = true }()
+	for _, family := range []string{"Hiragino Sans GB", "Heiti SC", "Thonburi", "Devanagari Sangam MN"} {
+		for _, text := range []string{"abc", "日本語のテキスト", "ภาษาไทย", "हिन्दी"} {
+			for _, lines := range []int{0, 1} {
+				at := driver.AttributedText{Text: text, MaxLines: lines,
+					Style: driver.TextStyle{Font: driver.Font{Family: family, Size: 12, Weight: 400}, Color: driver.RGB(0)}}
+				compareOneLine(t, fmt.Sprintf("%s/%q/%d", family, text, lines), &at)
+			}
+		}
+	}
+}
+
 func compareOneLine(t *testing.T, name string, at *driver.AttributedText) {
 	t.Helper()
 	type result struct {
