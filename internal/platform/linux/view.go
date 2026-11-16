@@ -285,7 +285,8 @@ func (w *window) updatePointerCursor() {
 		text = hit(root, w.lastPointer, func(v *view) bool { return v.kind == driver.KindText })
 	}
 	c, ok := driver.CursorAuto, false
-	if text != nil {
+	// A text whose spans name no cursor keeps its layout untouched: glyphAt would make one it has not drawn.
+	if text != nil && driver.HasSpanCursor(text.spans) {
 		if l, isText := text.text.(*textLayout); isText {
 			if b, shown := w.surfaceBounds(text); shown {
 				c, ok = driver.SpanCursor(text.spans, l.glyphAt(w.lastPointer.X-b.Origin.X-text.content.Origin.X,
