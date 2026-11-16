@@ -36,7 +36,7 @@ Prefer what a user sees, text and roles, and set `TestID` on elements where text
 - Keyboard and text: `Focus`, `Type`, `Clear`, `Submit`, `KeyPress`, `Paste`, `Select`, `Compose`.
 - Menus and system UI: `ChooseMenu`, `ChoosePopup`, `ClosePopup`, `HeaderBack`, `Answer` for alerts (start with `nsgotest.PendingAlerts()`), `GrantPermission`, `DropFiles`.
 - Reading: `Find`, `Exists`, `Enabled`, `Query`, `Texts`, `Dump`, and `FindMounted` for views outside the window.
-- Waiting: every step settles until animations end; `WaitFor`, `WaitForGone` and `WaitUntil` wait for what arrives later, such as a `cx.Post` from a goroutine. `Advance` and `FastForward` move the clock; never `time.Sleep`.
+- Waiting: every step settles until animations end; `WaitFor`, `WaitForGone` and `WaitUntil` wait for what arrives later, such as a `cx.Post` from a goroutine. `Advance` and `FastForward` move the clock, which `cx.Now()` reads, so time what the app measures itself, such as a gesture's speed, with `cx.Now()` rather than `time.Now()`; never `time.Sleep`.
 - Options of `Start`: `nsgotest.Size(w, h)` (390 by 844 points by default), `Storage(map)` for saved state, `Environment(core.Environment{...})` for an appearance, a locale or a safe area, and `app.SetEnvironment` to change it later, `Host` for an embedding host.
 
 ## Tests without the network
