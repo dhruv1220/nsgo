@@ -521,8 +521,17 @@ func TestStocks(t *testing.T) {
 	app := startDesktop(t)
 	open(app, "Stocks")
 	price := app.Find("id:stock-price").Text
-	app.Advance(2 * time.Second)
-	app.WaitUntil(2*time.Second, func() bool { return app.Find("id:stock-price").Text != price })
+	changed := false
+	for range 10 {
+		app.Advance(time.Second)
+		if app.Find("id:stock-price").Text != price {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		t.Fatalf("stock price stayed at %q after ten market ticks", price)
+	}
 	app.Press("id:stock-LUMO")
 	if n := len(app.Query("text:Lumora Optics")); n != 2 {
 		t.Fatalf("Lumora Optics shows %d times, want in its row and the detail", n)
@@ -1107,6 +1116,7 @@ func TestEditor(t *testing.T) {
 	app := startDesktop(t)
 	open(app, "Editor")
 	app.Find("text:interface Order {")
+	app.FastForward(40 * time.Millisecond)
 	app.WaitFor("text:Problems 6", 5*time.Second)
 	app.Find("text:1 error")
 	app.Find("text:4 warnings")

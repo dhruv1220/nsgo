@@ -1133,12 +1133,19 @@ func (s *languageServer) current() *lspModel {
 	return m
 }
 
-// lspAsk asks the server on a goroutine of its own and hands the answer
-// to the engine latency later, as a server's round trip does.
+// lspAsk asks the server on a goroutine of its own and hands the answer to the engine latency later on the graph's clock, as a server's round trip does: the work starts at once, off the graph, and the answer waits for both it and the latency. On the graph's clock a test's manual clock decides when the latency has passed, and the app's clock the rest of the time.
 func lspAsk[T any](cx *core.Scope, s *languageServer, latency time.Duration, work func(m *lspModel) T, answer func(T)) {
-	go func() {
-		v := work(s.current())
-		time.Sleep(latency)
-		cx.Post(func() { answer(v) })
-	}()
+	done := make(chan T, 1)
+	go func() { done <- work(s.current()) }()
+	reply := func() {
+		go func() {
+			v := <-done
+			cx.Post(func() { answer(v) })
+		}()
+	}
+	if latency <= 0 {
+		reply()
+		return
+	}
+	cx.AfterFunc(latency, reply)
 }
