@@ -647,7 +647,7 @@ func Run(app engine.App, opts Options) {
 	}
 	if opts.test == nil {
 		// Language waits for the app's mount, so WinSparkle starts in the language the app shows.
-		startWinSparkle(opts.Updates, hwnd, w.engine.Language())
+		startWinSparkle(opts.Updates, hwnd, w.engine.Language)
 	}
 
 	var m msg

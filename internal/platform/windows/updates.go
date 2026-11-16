@@ -35,8 +35,8 @@ var (
 	})
 )
 
-// startWinSparkle starts WinSparkle on c's appcast, for the app's main window hwnd, in lang, the language the mounted app shows (engine.Language), which WinSparkle takes only before win_sparkle_init.
-func startWinSparkle(c updates.Config, hwnd uintptr, lang string) {
+// startWinSparkle starts WinSparkle on c's appcast, for the app's main window hwnd, in the language lang returns, the one the mounted app shows (engine.Language), which WinSparkle takes only before win_sparkle_init. lang waits for the app's mount on the UI thread, so it is asked only once WinSparkle is about to start: an app without updates, or without WinSparkle.dll, does not wait.
+func startWinSparkle(c updates.Config, hwnd uintptr, lang func() string) {
 	if c.Feed == "" {
 		return
 	}
@@ -79,7 +79,7 @@ func startWinSparkle(c updates.Config, hwnd uintptr, lang string) {
 		call("win_sparkle_set_app_build_version", wstr(c.Build))
 	}
 	// Unset, WinSparkle follows the Windows UI language; set to one it lacks, it would say English instead.
-	if name := updates.WinSparkleLanguage(lang); name != "" {
+	if name := updates.WinSparkleLanguage(lang()); name != "" {
 		call("win_sparkle_set_lang", cstr(name))
 	}
 	call("win_sparkle_set_registry_path", cstr(registry))
