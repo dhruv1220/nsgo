@@ -30,10 +30,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install GTK 4 and a virtual display
+      - name: Install GTK 4, HTTP transport and a virtual display
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev xvfb
+          sudo apt-get install -y libgtk-4-dev libsoup-3.0-0 xvfb
+      - name: Download the module graph for offline template tests
+        run: go mod download all
       - name: Vet
         run: go tool nsgo check
       - name: Test instance isolation and file handoff
