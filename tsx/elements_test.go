@@ -373,6 +373,28 @@ mount(App);`)
 	}
 }
 
+// A dialog shadows the page's keymap bindings, but not one bound with overModals.
+func TestKeymapOverModals(t *testing.T) {
+	app := run(t, `import { mount, signal, keymap, View, Text } from "nsgo";
+import { Dialog } from "nsgo/base";
+function App() {
+	const log = signal("");
+	keymap.bind("space", () => log.set(log() + "space;"));
+	keymap.bind("f1", () => log.set(log() + "f1;"), { overModals: true });
+	return <View>
+		<Text testID="log">{() => "log " + log()}</Text>
+		<Dialog open={true}><Text testID="dialog">In the dialog</Text></Dialog>
+	</View>;
+}
+mount(App);`, nsgotest.Environment(core.Environment{OS: core.OSMacOS}))
+	app.Find("id:dialog")
+	app.Key("space")
+	app.Key("f1")
+	if got := app.Find("id:log").Text; got != "log f1;" {
+		t.Errorf("under the dialog: %q, want %q", got, "log f1;")
+	}
+}
+
 func TestHostCallsPostsAndEvents(t *testing.T) {
 	h := core.NewHost()
 	_ = h.SetParams(map[string]any{"user": "ada"})
