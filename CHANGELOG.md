@@ -21,7 +21,7 @@ NSGo's first release is a cross-platform native UI framework written in Go. Writ
 - Pointer, touch, keyboard, gesture and TV remote input, file drops and screen reader support.
 - Navigation stacks, tab bars, sheets, predictive back on Android and browser history on the web.
 - Platform services such as notifications, permissions, biometrics, pickers, sharing, haptics, speech recognition and keep-awake.
-- Desktop apps with windows, panels, menus, custom title bars, tray icons, global shortcuts and one-instance launches scoped by app and profile (#332).
+- Desktop apps with windows, panels, menus, custom title bars, tray icons, global shortcuts, one-instance launches scoped by app and profile (#332), and document associations (#331 by @houko).
 - `base`, unstyled components from buttons and menus to a million-row `DataTable`, charts, flow diagrams, a dock, a command palette and a camera that pans and zooms any content.
 - Code `Editor`, `DiffView`, `RichEditor`, Markdown `TextView` with TeX formulas and Mermaid diagrams, and a Ghostty-based terminal.
 - `ui`, styled components on `base`, with sidebars, settings forms, a file picker and chat views.

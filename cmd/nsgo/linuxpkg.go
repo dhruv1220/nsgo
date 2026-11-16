@@ -87,7 +87,7 @@ func linuxPackageFiles(p *project, dir string) ([]linuxPackageEntry, error) {
 		rel = filepath.ToSlash(rel)
 		// What the packages put where desktops look for it, and the
 		// packages themselves, stay out of /opt.
-		if !d.IsDir() && !strings.Contains(rel, "/") && (rel == p.ID+".desktop" || rel == p.ID+".png" || isLinuxPackage(rel)) {
+		if !d.IsDir() && !strings.Contains(rel, "/") && (rel == p.ID+".desktop" || rel == p.ID+".png" || rel == p.ID+".mime.xml" || isLinuxPackage(rel)) {
 			return nil
 		}
 		name := opt + "/" + rel
@@ -128,7 +128,11 @@ func linuxPackageFiles(p *project, dir string) ([]linuxPackageEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	entry := desktopData{Name: p.Name, Exec: "/" + opt + "/" + p.Name, ID: p.ID, WMClass: p.Name}
+	types, definitions, err := p.linuxFileTypes()
+	if err != nil {
+		return nil, err
+	}
+	entry := desktopData{Name: p.Name, Exec: "/" + opt + "/" + p.Name, ID: p.ID, WMClass: p.Name, MIMETypes: types}
 	if n != nil {
 		entry.Name = n.names[n.source]
 		for _, lang := range n.languages()[1:] {
@@ -140,6 +144,9 @@ func linuxPackageFiles(p *project, dir string) ([]linuxPackageEntry, error) {
 		return nil, err
 	}
 	add("usr/share/applications/"+p.ID+".desktop", desktop.Bytes(), 0o644)
+	if len(definitions) > 0 {
+		add("usr/share/mime/packages/"+p.ID+".xml", definitions, 0o644)
+	}
 	img, err := p.iconImage()
 	if err != nil {
 		return nil, err
@@ -217,10 +224,16 @@ func debPackage(p *project, files []linuxPackageEntry, arch string) ([]byte, err
 	control := fmt.Sprintf("Package: %s\nVersion: %s\nArchitecture: %s\nMaintainer: %s\nInstalled-Size: %d\n"+
 		"Depends: libgtk-4-1\nRecommends: libwebkitgtk-6.0-4\nSection: misc\nPriority: optional\nDescription: %s\n",
 		p.packageSlug(), debVersion(p.Version), debArch[arch], p.maintainer(), (linuxPackageSize(files)+1023)/1024, name)
-	controlTar, err := tarGz([]linuxPackageEntry{
+	controlFiles := []linuxPackageEntry{
 		{name: "control", data: []byte(control), mode: 0o644},
 		{name: "md5sums", data: md5sums.Bytes(), mode: 0o644},
-	}, "./")
+	}
+	if len(p.FileTypes) > 0 {
+		for _, script := range []string{"postinst", "postrm"} {
+			controlFiles = append(controlFiles, linuxPackageEntry{name: script, data: []byte(linuxCacheScript), mode: 0o755})
+		}
+	}
+	controlTar, err := tarGz(controlFiles, "./")
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +270,9 @@ func archPackage(p *project, files []linuxPackageEntry, arch string) ([]byte, er
 		"depend = gtk4\noptdepend = webkitgtk-6.0: web views\n",
 		slug, slug, archVersion(p.Version), name, time.Now().Unix(), p.maintainer(), linuxPackageSize(files), archLinuxArch[arch])
 	entries := append([]linuxPackageEntry{{name: ".PKGINFO", data: []byte(info), mode: 0o644}}, files...)
+	if len(p.FileTypes) > 0 {
+		entries = append(entries, linuxPackageEntry{name: ".INSTALL", data: []byte(archCacheScript), mode: 0o644})
+	}
 	return tarGz(entries, "")
 }
 
