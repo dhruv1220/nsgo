@@ -181,6 +181,7 @@ Popups are placed against what their trigger holds (`Overlay.AnchorContent`), th
 - Nodes move on the platform's frame clock: each node's place is an animated value, and the edges' canvas binds every point of a route to its ends' places while they move (`route.at`), each point following the end it is nearer along the route, so no commit runs per frame. At rest the drawing binds nothing.
 - Dashes are the canvas's own, a piece per straight run and bend, each piece's offset anchored to the plane, so edges sharing a track dash in step.
 - Nodes take the keyboard and assistive technology's presses themselves; what a node holds takes no pointer.
+- It reads no theme: a `Look`'s zero colors, the selection ring and the empty text take the text color the view has. The edges' canvas paints them from its view (`FillFromView`, `StrokeFromView` with `PaintCurrentColor`, faded by the drawing's alpha), since a color recorded into a drawing cannot be `CurrentColor`.
 
 `ui/flow.Diagram` is `View` in the theme's colors, the accent's selection ring and focus ring, and `Card`, a node's default face, its border a `CardVariant`. `ui/flow.View` puts a `Diagram` on a camera of its own with an overlay in its corner, the chart TSX registers as `Flow`.
 

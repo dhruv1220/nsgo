@@ -35,7 +35,9 @@ func (v *view) edgeCanvas() core.Node {
 		StyleFunc: func() core.Style {
 			v.laidOut.Get()
 			return core.Style{Position: core.Absolute, Left: core.Pt(-canvasBleed), Top: core.Pt(-canvasBleed),
-				Width: core.Pt(core.Points(v.result.width) + 2*canvasBleed), Height: core.Pt(core.Points(v.result.height) + 2*canvasBleed)}
+				Width: core.Pt(core.Points(v.result.width) + 2*canvasBleed), Height: core.Pt(core.Points(v.result.height) + 2*canvasBleed),
+				// A Look's zero fields draw in the text color (ink), which the canvas's own paints take whatever paints the views around it set.
+				Fill: core.PaintCurrentColor, Stroke: core.PaintCurrentColor}
 		},
 		Draw: func(d *core.Drawing, _ core.Size) {
 			v.laidOut.Get()
@@ -60,21 +62,19 @@ func (v *view) edgeCanvas() core.Node {
 					if r == nil || (emphasized[e.source] || emphasized[e.target]) != (pass == 1) {
 						continue
 					}
-					color, width := e.color, e.width
+					color, width := look.line, e.width
 					if width <= 0 {
 						width = defaultEdgeWidth
 					}
 					if pass == 1 {
 						width += .5
-						if color == 0 {
-							color = look.Emphasis
-						}
+						color = look.emphasis
 					}
-					if color == 0 {
-						color = look.Line
+					if e.color != 0 {
+						color = ink{color: e.color, alpha: 1}
 					}
 					if v.nodes[e.source].muted || v.nodes[e.target].muted {
-						color = color.Faded(mutedEdgeOpacity)
+						color = color.faded(mutedEdgeOpacity)
 					}
 					r.draw(d, float32(width), color, e.dashed)
 				}
@@ -184,7 +184,7 @@ func (r *route) quadTo(d *core.Drawing, c point, cw float64, p point, w float64)
 }
 
 // draw strokes the route with rounded bends, ending in an arrowhead.
-func (r *route) draw(d *core.Drawing, width float32, c core.Color, dashed bool) {
+func (r *route) draw(d *core.Drawing, width float32, c ink, dashed bool) {
 	points := r.points
 	n := len(points)
 	end, before := points[n-1], points[n-2]
@@ -199,7 +199,8 @@ func (r *route) draw(d *core.Drawing, width float32, c core.Color, dashed bool) 
 	line[n-1] = point{end.x - ux*head*.8, end.y - uy*head*.8}
 	weights := append([]float64(nil), r.weights...)
 	r.shifted(d, 0, func() {
-		d.SetStrokeColor(c).SetLineWidth(width)
+		c.stroke(d)
+		d.SetLineWidth(width)
 		if dashed {
 			r.dashes(d, line, weights)
 		} else {
@@ -217,7 +218,9 @@ func (r *route) draw(d *core.Drawing, width float32, c core.Color, dashed bool) 
 	// The arrowhead moves with the target; the stroke's round joins soften
 	// its points.
 	r.shifted(d, 1, func() {
-		d.SetFillColor(c).SetStrokeColor(c).SetLineWidth(1)
+		c.fill(d)
+		c.stroke(d)
+		d.SetLineWidth(1)
 		d.BeginPath().MoveTo(float32(end.x), float32(end.y)).
 			LineTo(float32(end.x-ux*head-uy*arrowHalfWidth), float32(end.y-uy*head+ux*arrowHalfWidth)).
 			LineTo(float32(end.x-ux*head+uy*arrowHalfWidth), float32(end.y-uy*head-ux*arrowHalfWidth)).
@@ -279,7 +282,7 @@ func (r *route) dashes(d *core.Drawing, line []point, weights []float64) {
 
 // label draws an edge's label in a pill on the middle of the route's
 // longest segment.
-func (r *route) label(d *core.Drawing, text string, look Look, alpha float32) {
+func (r *route) label(d *core.Drawing, text string, look inks, alpha float32) {
 	points := r.points
 	best, length := 1, -1.0
 	for k := 1; k < len(points); k++ {
@@ -293,13 +296,14 @@ func (r *route) label(d *core.Drawing, text string, look Look, alpha float32) {
 	m := d.TextMetrics(text, labelFont)
 	tw, th := float64(m.Width), float64(m.LineHeight)
 	box := struct{ x, y, w, h float32 }{float32(x - tw/2 - labelPadX), float32(y - th/2 - labelPadY), float32(tw + 2*labelPadX), float32(th + 2*labelPadY)}
-	fade := func(c core.Color) core.Color { return c.Faded(alpha) }
 	r.shifted(d, w, func() {
 		d.BeginPath().RoundRect(box.x, box.y, box.w, box.h, box.h/2)
-		d.SetFillColor(fade(look.LabelBackground)).Fill()
-		d.SetStrokeColor(fade(look.LabelBorder)).SetLineWidth(1).Stroke()
-		d.SetFillColor(fade(look.Label)).SetTextBaseline(core.BaselineTop).
-			FillText(text, box.x+labelPadX, box.y+labelPadY, labelFont)
+		look.labelBackground.faded(alpha).fill(d)
+		d.Fill()
+		look.labelBorder.faded(alpha).stroke(d)
+		d.SetLineWidth(1).Stroke()
+		look.label.faded(alpha).fill(d)
+		d.SetTextBaseline(core.BaselineTop).FillText(text, box.x+labelPadX, box.y+labelPadY, labelFont)
 	})
 }
 
@@ -319,5 +323,45 @@ func corners(points []point, weights []float64, bend func(a, control, b point, w
 		wb := weights[k] + (weights[k+1]-weights[k])*r/out
 		bend(point{at.x - (at.x-prev.x)/in*r, at.y - (at.y-prev.y)/in*r}, at,
 			point{at.x + (next.x-at.x)/out*r, at.y + (next.y-at.y)/out*r}, wa, weights[k], wb)
+	}
+}
+
+// ink is what the edge canvas paints a part with: color at alpha, where color core.CurrentColor is the canvas's text color, which it takes from its view (Drawing.FillFromView) as a recorded color cannot.
+type ink struct {
+	color core.Color
+	alpha float32
+}
+
+// inks are a Look's colors as the edge canvas paints them.
+type inks struct {
+	line, emphasis, label, labelBackground, labelBorder ink
+}
+
+// faded returns k with its opacity scaled by f.
+func (k ink) faded(f float32) ink {
+	if k.color == core.CurrentColor {
+		k.alpha *= f
+	} else {
+		k.color = k.color.Faded(f)
+	}
+	return k
+}
+
+// fill and stroke make k the paint of the fills or strokes that follow; each sets the drawing's alpha, which a current color fades by.
+func (k ink) fill(d *core.Drawing) {
+	d.SetAlpha(k.alpha)
+	if k.color == core.CurrentColor {
+		d.FillFromView(core.PaintCurrentColor)
+	} else {
+		d.SetFillColor(k.color)
+	}
+}
+
+func (k ink) stroke(d *core.Drawing) {
+	d.SetAlpha(k.alpha)
+	if k.color == core.CurrentColor {
+		d.StrokeFromView(core.PaintCurrentColor)
+	} else {
+		d.SetStrokeColor(k.color)
 	}
 }

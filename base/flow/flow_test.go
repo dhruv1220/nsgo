@@ -206,3 +206,92 @@ func TestViewShownAgainKeepsItsSizes(t *testing.T) {
 		t.Fatalf("diagram shown again measured %d sizes, had %d", len(state.sizes), sizes)
 	}
 }
+
+// edgeInks returns the colors and alphas the edge canvas under the diagram strokes and fills with, in the order it paints.
+func edgeInks(t *testing.T, app *nsgotest.App) (strokes, fills []ink) {
+	t.Helper()
+	var canvas *nsgotest.View
+	var find func(v *nsgotest.View)
+	find = func(v *nsgotest.View) {
+		if v.Kind == driver.KindCanvas && canvas == nil {
+			canvas = v
+		}
+		for _, c := range v.Children {
+			find(c)
+		}
+	}
+	find(app.Find("label:Pipeline"))
+	if canvas == nil || len(canvas.Ops) == 0 {
+		t.Fatalf("no edge canvas drew\n%s", app.Dump())
+	}
+	alpha := float32(1)
+	for _, op := range canvas.Ops {
+		switch op.Kind {
+		case driver.DrawAlpha:
+			alpha = op.A
+		case driver.DrawStrokeColor:
+			strokes = append(strokes, ink{op.Color, alpha})
+		case driver.DrawFillColor:
+			fills = append(fills, ink{op.Color, alpha})
+		}
+	}
+	return strokes, fills
+}
+
+func near(a, b float32) bool { return math.Abs(float64(a-b)) < 1e-3 }
+
+// A view with no Look draws its edges and labels in the text color it has, faded, whatever paints the views around it set: base reads no theme, and a recorded CurrentColor would draw nothing.
+func TestViewDrawsInTheTextColor(t *testing.T) {
+	var state State
+	text := core.RGB(0x2050a0)
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		return core.View{Style: core.Style{Color: text, Stroke: core.PaintColor(core.RGB(0xff0000)), Fill: core.PaintColor(core.RGB(0x00ff00))},
+			Children: []core.Node{View{Label: "Pipeline", State: &state, Data: sample}}}
+	}, nsgotest.Size(900, 700), nsgotest.Environment(driver.Environment{ReduceMotion: true, Idiom: driver.IdiomDesktop}))
+	app.Settle()
+	strokes, fills := edgeInks(t, app)
+	want := map[string]float32{"line": .35, "muted line": .35 * mutedEdgeOpacity, "label": .55, "label border": .2}
+	found := map[string]bool{}
+	for _, k := range append(strokes, fills...) {
+		if k.color == core.Transparent {
+			continue
+		}
+		if k.color != text {
+			t.Fatalf("painted %08x at %v, want the text color %08x", k.color, k.alpha, text)
+		}
+		for name, a := range want {
+			if near(k.alpha, a) {
+				found[name] = true
+			}
+		}
+	}
+	for name, a := range want {
+		if !found[name] {
+			t.Errorf("nothing painted as a %s, at alpha %v: strokes %v, fills %v", name, a, strokes, fills)
+		}
+	}
+	transparent := false
+	for _, k := range fills {
+		transparent = transparent || k.color == core.Transparent
+	}
+	if !transparent {
+		t.Errorf("the label's background is not clear: fills %v", fills)
+	}
+}
+
+// A Look's colors draw as they are, at full alpha.
+func TestViewDrawsItsLook(t *testing.T) {
+	var state State
+	look := Look{Line: core.RGB(0x111111), Emphasis: core.RGB(0x222222), Label: core.RGB(0x333333), LabelBackground: core.RGB(0x444444), LabelBorder: core.RGB(0x555555)}
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		return View{Label: "Pipeline", State: &state, Data: sample, LookFunc: func() Look { return look }}
+	}, nsgotest.Size(900, 700), nsgotest.Environment(driver.Environment{ReduceMotion: true, Idiom: driver.IdiomDesktop}))
+	app.Settle()
+	strokes, fills := edgeInks(t, app)
+	allowed := map[core.Color]bool{look.Line: true, look.Line.Faded(mutedEdgeOpacity): true, look.Label: true, look.LabelBackground: true, look.LabelBorder: true}
+	for _, k := range append(strokes, fills...) {
+		if !allowed[k.color] || k.alpha != 1 {
+			t.Fatalf("painted %08x at %v; want the look's colors at alpha 1: strokes %v, fills %v", k.color, k.alpha, strokes, fills)
+		}
+	}
+}
