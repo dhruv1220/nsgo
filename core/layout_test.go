@@ -425,6 +425,46 @@ func TestTextRoundsUpToADevicePixel(t *testing.T) {
 	}
 }
 
+// fixedEngine measures every text at one size, as a platform's engine reports what its layout measured, fractions kept.
+type fixedEngine struct{ size Size }
+
+func (e fixedEngine) Prepare(t *driver.AttributedText) driver.PreparedText {
+	return fixedText{ApproxTextEngine{}.Prepare(t), e.size}
+}
+
+type fixedText struct {
+	driver.PreparedText
+	size Size
+}
+
+func (f fixedText) Measure(Points) Size { return f.size }
+
+// TestAMeasuredTextRoundsUpToADevicePixel is the text engines' contract: they return the fractional size they measured, and the core alone rounds it up, to a device pixel rather than a whole point.
+func TestAMeasuredTextRoundsUpToADevicePixel(t *testing.T) {
+	for _, c := range []struct {
+		ratio  float32
+		pixels Size // the frame's size in device pixels
+	}{
+		{1, Size{Width: 101, Height: 21}},
+		{1.5, Size{Width: 151, Height: 31}},
+		{2, Size{Width: 201, Height: 41}},
+		{3, Size{Width: 301, Height: 61}},
+	} {
+		h := newHost(t, Size{Width: 400, Height: 400}, nil)
+		h.tree = NewTree(h.root, fixedEngine{Size{Width: 100.2, Height: 20.3}})
+		h.tree.Resize(Size{Width: 400, Height: 400}, Geometry{})
+		h.tree.Mount(func(cx *Scope) Node {
+			return View{Style: Style{AlignItems: AlignStart}, Children: []Node{Text{TestID: "text", Content: "measured"}}}
+		})
+		h.tree.SetEnvironment(Environment{PixelRatio: c.ratio})
+		h.commit()
+		f := h.find("text").frame.Size
+		if w, ht := float64(f.Width*Points(c.ratio)), float64(f.Height*Points(c.ratio)); math.Abs(w-float64(c.pixels.Width)) > 1e-3 || math.Abs(ht-float64(c.pixels.Height)) > 1e-3 {
+			t.Errorf("at %v pixels a point, a text measured 100.2 by 20.3 is laid out %v, %v by %v pixels; want %v", c.ratio, f, w, ht, c.pixels)
+		}
+	}
+}
+
 func TestFramesMovedByWholePixelsAreNotSentAgain(t *testing.T) {
 	const ratio = 2.625
 	var top *Signal[Points]

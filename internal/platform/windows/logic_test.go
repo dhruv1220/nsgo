@@ -611,6 +611,33 @@ func TestPlainTextMeasuresTheLinesItDraws(t *testing.T) {
 	}
 }
 
+// TestMeasuredWidthsKeepTheirFractions checks that a text measures what DirectWrite does, fractions kept for the core to round up to a device pixel, and that a box of the measured width so rounded, at any scale, draws the text on the line it measured.
+func TestMeasuredWidthsKeepTheirFractions(t *testing.T) {
+	w := testWindow()
+	style := driver.TextStyle{Font: driver.Font{Family: "Segoe UI", Size: 13, Weight: 400}, Color: driver.RGB(0)}
+	fractional := false
+	for _, text := range []string{"Hello world", "1810.HK", "-9.27%", "Reaches the system through"} {
+		p := w.Prepare(&driver.AttributedText{Text: text, Style: style})
+		natural := p.Measure(driver.Auto)
+		fractional = fractional || float64(natural.Width) != math.Ceil(float64(natural.Width))
+		for _, ratio := range []float64{0, 1, 1.25, 1.5, 2} {
+			width := natural.Width
+			if ratio > 0 {
+				width = driver.Points(math.Ceil(float64(natural.Width)*ratio-1e-3) / ratio)
+			}
+			l := p.Layout(driver.Size{Width: width, Height: natural.Height}).(*textLayout)
+			if len(l.lines) != 1 {
+				t.Errorf("%q, %v wide, drew %d lines %v wide (%v pixels a point)", text, natural.Width, len(l.lines), width, ratio)
+			}
+			l.Release()
+		}
+		p.Release()
+	}
+	if !fractional {
+		t.Error("every text measured a whole number of points: the engine rounded before the core")
+	}
+}
+
 // TestFallbackFontsDrawMissingGlyphs checks that DirectWrite sets a rune
 // the text's font lacks in a family that has it, so it takes that
 // family's width rather than the missing-glyph box's.
