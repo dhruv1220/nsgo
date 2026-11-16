@@ -6,6 +6,8 @@ Text in NSGo: how the core prepares, lays out and reports text, how fields edit 
 
 A platform's `TextEngine` runs on the engine goroutine in three phases. `Prepare` shapes the text once, `PreparedText.Measure` answers layout at any width, and `PreparedText.Layout` lays it out at its final size. The core releases prepared text when it changes or its node goes.
 
+`Measure` returns what the platform's layout measured, fractions kept, and the core alone rounds it up to a device pixel ([layout](core.md#commit)), so a whole point does not add up to a point to every text on a 2x screen (`TestAMeasuredTextRoundsUpToADevicePixel`). CoreText puts a frame's lines on whole points, so Apple's heights are whole points, those it works out itself for a text cut to its line limit or empty as well; its widths, DirectWrite's sizes and the web's keep their fractions. Linux still measures in whole points ([roadmap](../roadmap.md)).
+
 The `TextLayout` travels in `ItemText`; the main thread draws it and releases the one it replaces. Apple's engine keeps fonts, style attributes and frame paths in bounded process-wide caches, and a prepared text keeps its measured size per width.
 
 A text that fits on one line, without breaks, attachments, drawn decorations or a line height, is typeset once as a `CTLine` and drawn as one, where a framesetter typeset it again for every size asked and every frame: a table's cells prepare in half the time. Its size, baseline and alignment are the frame's (`TestOneLineMatchesTheFramesetter` compares pixels, lines and carets); the framesetter is made only for the rest. The web measures such texts on a canvas ([performance](performance.md#keeping-frames-cheap)).
