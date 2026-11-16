@@ -423,17 +423,14 @@ type PickFilesOptions struct {
 	// MaxPicked).
 	Multiple bool
 	Limit    int
-	// Title says what the picker is for; an empty title keeps the system's.
-	Title string
-	// Button labels the button that picks; an empty label keeps the system's.
-	Button string
-	// TypesName names Types in the picker's filter menu where it has one.
-	TypesName string
-	// Start is the folder the picker opens in when it exists.
-	Start string
-	// Types are the files offered: media types (application/pdf),
-	// families (image/*) and extensions (.zip); none offers every file.
+	// Types are the files offered: media types (application/pdf), families (image/*) and extensions (.zip); none offers every file.
 	Types []string
+	// TypesName names Types in the type menu of the pickers that have one, Windows' and Linux's; "" shows the English "Files", or on Windows "All files" where every file is offered.
+	TypesName string
+	// Title, Button and Start are hints a platform without the setting ignores, each "" for the system's own: Title says what the picker is for, as its title or, on macOS, whose sheets have none, its message; Button labels the button that picks; Start is the absolute path of the folder it opens in, ignored where no such folder exists. macOS, Windows and Linux take all three, iOS only Start, Android and the web none.
+	Title  string
+	Button string
+	Start  string
 }
 
 // request is o as the platform carries it out.
@@ -501,12 +498,10 @@ type PickDirectoriesOptions struct {
 	// to MaxPicked).
 	Multiple bool
 	Limit    int
-	// Title says what the picker is for; an empty title keeps the system's.
-	Title string
-	// Button labels the button that picks; an empty label keeps the system's.
+	// Title, Button and Start are hints as in PickFilesOptions.
+	Title  string
 	Button string
-	// Start is the folder the picker opens in when it exists.
-	Start string
+	Start  string
 }
 
 // PickDirectories shows the system's folder picker and calls done with

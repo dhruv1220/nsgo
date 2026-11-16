@@ -1271,3 +1271,21 @@ func TestTaskProgressOfSurfacesWithoutAButtonShowsOnTheAppsWindows(t *testing.T)
 		t.Errorf("a cleared window shows %+v, want the app's again", opened.shownProgress())
 	}
 }
+
+// TestFileFilterNamesTheTypes checks the file dialog's type menu: the app's name for its types, the old English words without one, and every file where a type has no extensions.
+func TestFileFilterNamesTheTypes(t *testing.T) {
+	for _, c := range []struct {
+		r             driver.FilesRequest
+		name, pattern string
+	}{
+		{driver.FilesRequest{Types: []string{".mp4", ".mkv"}, TypesName: "视频"}, "视频", "*.mkv;*.mp4"},
+		{driver.FilesRequest{Types: []string{".zip"}}, "Files", "*.zip"},
+		{driver.FilesRequest{}, "All files", "*.*"},
+		{driver.FilesRequest{TypesName: "Anything"}, "Anything", "*.*"},
+		{driver.FilesRequest{Types: []string{"application/x-nsgo-unknown"}}, "All files", "*.*"},
+	} {
+		if name, pattern := fileFilter(c.r); name != c.name || pattern != c.pattern {
+			t.Errorf("fileFilter(%+v) = %q, %q, want %q, %q", c.r, name, pattern, c.name, c.pattern)
+		}
+	}
+}

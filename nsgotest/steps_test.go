@@ -569,3 +569,27 @@ func TestAwakeHoldsNameWhatEachReleaseEnds(t *testing.T) {
 		t.Fatalf("releases %v of holds %+v, want the player's", app.AwakeReleases, app.AwakeHolds)
 	}
 }
+
+// TestPicksRecordTheirHints checks that a test sees the title, button label, type name and starting folder an app asked its pickers for.
+func TestPicksRecordTheirHints(t *testing.T) {
+	var files, dirs int
+	app := Start(t, func(cx *core.Scope) core.Node {
+		return core.View{TestID: "b", Style: core.Style{Height: core.Pt(20)}, OnPress: func(core.PressEvent) {
+			cx.PickFiles(core.PickFilesOptions{Multiple: true, Types: []string{".mp4"}, TypesName: "视频", Title: "选择视频", Button: "打开", Start: "/videos"}, func([]core.File, error) { files++ })
+			cx.PickDirectories(core.PickDirectoriesOptions{Title: "导入资料库", Button: "导入", Start: "/library"}, func([]core.Directory, error) { dirs++ })
+		}}
+	})
+	app.Press("id:b")
+	if files != 1 || dirs != 1 {
+		t.Fatalf("answered %d file and %d folder picks, want one each", files, dirs)
+	}
+	if len(app.FilePicks) != 1 || len(app.DirectoryPicks) != 1 {
+		t.Fatalf("recorded %d file and %d folder picks, want one each", len(app.FilePicks), len(app.DirectoryPicks))
+	}
+	if f := app.FilePicks[0]; f.Title != "选择视频" || f.Button != "打开" || f.TypesName != "视频" || f.Start != "/videos" || !slices.Equal(f.Types, []string{".mp4"}) {
+		t.Errorf("file pick %+v lost its hints", f)
+	}
+	if d := app.DirectoryPicks[0]; d.Title != "导入资料库" || d.Button != "导入" || d.Start != "/library" || d.Limit != 1 {
+		t.Errorf("folder pick %+v lost its hints", d)
+	}
+}

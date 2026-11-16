@@ -363,8 +363,7 @@ func (s *surface) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	s.presentDocuments(picker, documentRequest{id: id, limit: r.Limit, folders: true})
 }
 
-// setDocumentStart asks UIKit to open an existing local folder first. Older
-// systems or a missing path simply keep the document picker's default.
+// setDocumentStart opens a document picker in start when it is a folder on disk, leaving UIKit's own folder otherwise.
 func setDocumentStart(picker objc.ID, start string) {
 	if start == "" {
 		return

@@ -5,7 +5,6 @@ package windows
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -775,15 +774,13 @@ func (w *window) leaveVirtualFolder() {
 	d.call(fileDialogSetFileName, uintptr(unsafe.Pointer(&empty)))
 }
 
-// comFilterSpec is COMDLG_FILTERSPEC, the name and pattern shown by an
-// IFileDialog filter menu.
+// comFilterSpec is COMDLG_FILTERSPEC, the name and pattern shown by an IFileDialog filter menu.
 type comFilterSpec struct {
 	name    *uint16
 	pattern *uint16
 }
 
-// fileDialog shows the modern Windows file picker, which supports the title,
-// accept label, filter name and initial folder hints.
+// fileDialog returns the paths of the files chosen in Windows' open dialog (IFileOpenDialog), at most r.Limit, with r's title, button label, type menu and starting folder; none when it was cancelled.
 func (w *window) fileDialog(r driver.FilesRequest) ([]string, error) {
 	if err := initCOM(); err != nil {
 		return nil, err
@@ -800,8 +797,8 @@ func (w *window) fileDialog(r driver.FilesRequest) ([]string, error) {
 	if r.Limit > 1 {
 		options |= fosAllowMultiSelect
 	}
-	if failed(dialog.call(fileDialogSetOptions, uintptr(options))) {
-		return nil, errors.New("could not configure file dialog")
+	if hr := dialog.call(fileDialogSetOptions, uintptr(options)); failed(hr) {
+		return nil, hresultError("file dialog options", hr)
 	}
 	if r.Title != "" {
 		dialog.call(fileDialogSetTitle, uintptr(unsafe.Pointer(wide(r.Title))))
@@ -809,28 +806,10 @@ func (w *window) fileDialog(r driver.FilesRequest) ([]string, error) {
 	if r.Button != "" {
 		dialog.call(fileDialogSetOkButtonLabel, uintptr(unsafe.Pointer(wide(r.Button))))
 	}
-	exts, every := r.Extensions()
-	if r.TypesName != "" || len(exts) > 0 || every {
-		name := r.TypesName
-		if name == "" {
-			name = "Files"
-		}
-		pattern := "*.*"
-		if !every && len(exts) > 0 {
-			var b strings.Builder
-			for i, ext := range exts {
-				if i > 0 {
-					b.WriteByte(';')
-				}
-				b.WriteString("*.")
-				b.WriteString(ext)
-			}
-			pattern = b.String()
-		}
-		filter := comFilterSpec{name: wide(name), pattern: wide(pattern)}
-		if failed(dialog.call(fileDialogSetFileTypes, 1, uintptr(unsafe.Pointer(&filter)))) {
-			return nil, errors.New("could not configure file types")
-		}
+	name, pattern := fileFilter(r)
+	filter := comFilterSpec{name: wide(name), pattern: wide(pattern)}
+	if hr := dialog.call(fileDialogSetFileTypes, 1, uintptr(unsafe.Pointer(&filter))); failed(hr) {
+		return nil, hresultError("file dialog types", hr)
 	}
 	setDialogFolder(dialog, r.Start)
 	hr := dialog.call(fileDialogShow, w.owner())
@@ -855,13 +834,38 @@ func (w *window) fileDialog(r driver.FilesRequest) ([]string, error) {
 	return dialogResults(dialog, r.Limit)
 }
 
-// setDialogFolder applies an existing local folder to an IFileDialog.
+// fileFilter is the one entry of the file dialog's type menu: r's extensions under TypesName, else "Files", or every file under TypesName, else "All files", when a type has no extensions.
+func fileFilter(r driver.FilesRequest) (name, pattern string) {
+	exts, every := r.Extensions()
+	name = r.TypesName
+	if every {
+		if name == "" {
+			name = "All files"
+		}
+		return name, "*.*"
+	}
+	if name == "" {
+		name = "Files"
+	}
+	for i, ext := range exts {
+		if i > 0 {
+			pattern += ";"
+		}
+		pattern += "*." + ext
+	}
+	return name, pattern
+}
+
+// setDialogFolder opens an IFileDialog in start when it is a folder on disk, which the shell names only by an absolute path.
 func setDialogFolder(dialog *comObject, start string) {
 	if start == "" {
 		return
 	}
-	info, err := os.Stat(start)
-	if err != nil || !info.IsDir() {
+	start, err := filepath.Abs(start)
+	if err != nil {
+		return
+	}
+	if info, err := os.Stat(start); err != nil || !info.IsDir() {
 		return
 	}
 	var item *comObject
@@ -872,6 +876,7 @@ func setDialogFolder(dialog *comObject, start string) {
 	}
 }
 
+// shellItemPath is the file system path of a shell item the dialog answered with.
 func shellItemPath(item *comObject) (string, error) {
 	var path *uint16
 	if hr := item.call(shellItemGetName, sigdnFileSysPath, uintptr(unsafe.Pointer(&path))); failed(hr) || path == nil {
@@ -880,6 +885,7 @@ func shellItemPath(item *comObject) (string, error) {
 	return takeString(path), nil
 }
 
+// dialogResults are the paths of the items chosen in a multiple-selection dialog, at most limit.
 func dialogResults(dialog *comObject, limit int) ([]string, error) {
 	var items *comObject
 	if hr := dialog.call(fileDialogGetResults, uintptr(unsafe.Pointer(&items))); failed(hr) || items == nil {
@@ -904,9 +910,7 @@ func dialogResults(dialog *comObject, limit int) ([]string, error) {
 	return paths, nil
 }
 
-// folderDialog returns the paths of the folders chosen in Windows' open
-// dialog for folders (IFileOpenDialog), at most limit; none when it was
-// cancelled. The comdlg32 dialogs pick only files.
+// folderDialog returns the paths of the folders chosen in Windows' open dialog for folders (IFileOpenDialog), at most r.Limit, with r's title, button label and starting folder; none when it was cancelled.
 func (w *window) folderDialog(r driver.DirectoriesRequest) ([]string, error) {
 	if err := initCOM(); err != nil {
 		return nil, err

@@ -423,8 +423,7 @@ func (w *window) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	})
 }
 
-// configureFileDialog applies the hints GtkFileDialog supports. A missing
-// start folder is ignored so the desktop chooses its normal location.
+// configureFileDialog gives a GtkFileDialog the request's title, accept label and initial folder, leaving GTK's own where a hint is empty or the folder does not exist.
 func configureFileDialog(dialog uintptr, title, button, start string) {
 	if title != "" {
 		gtkFileDialogSetTitle(dialog, cstr(title))

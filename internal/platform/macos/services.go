@@ -298,8 +298,7 @@ func (s *surface) pickDirectories(r driver.DirectoriesRequest, id uint32) {
 	done.Release()
 }
 
-// configureOpenPanel applies the optional presentation hints shared by file
-// and folder panels. Invalid start paths are left to AppKit's default folder.
+// configureOpenPanel gives a file or folder panel the request's message, prompt and starting folder, leaving AppKit's own where a hint is empty or the folder does not exist.
 func configureOpenPanel(panel objc.ID, title, button, start string) {
 	if title != "" {
 		panel.Send(sel("setMessage:"), apple.NSString(title))
