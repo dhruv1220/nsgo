@@ -52,6 +52,12 @@ func TestOnlyMovesSetsJustTransformAndOpacity(t *testing.T) {
 // the origin still and turn no further than Core Animation can tween. A
 // new target goes on from the angle reached, not the last one drawn.
 func TestTransformTransitionTurnsAroundTheOrigin(t *testing.T) {
+	// Keep the media clock fixed while inspecting the native animation:
+	// scheduling delays must not advance the angle under test.
+	clock := caCurrentMediaTime
+	now := clock()
+	caCurrentMediaTime = func() float64 { return now }
+	t.Cleanup(func() { caCurrentMediaTime = clock })
 	layer := objc.ID(objc.GetClass("CALayer")).Send(selNew)
 	defer layer.Send(selRelease)
 	defer ForgetTransform(layer)
@@ -92,7 +98,7 @@ func TestTransformTransitionTurnsAroundTheOrigin(t *testing.T) {
 	}
 
 	// Halfway through its hour, the turn goes back.
-	moves[layer].begin -= moves[layer].duration / 2
+	now += transition.Duration.Seconds() / 2
 	back := closed
 	back.Transition = transition
 	StyleLayer(layer, &open, &back, 0)
