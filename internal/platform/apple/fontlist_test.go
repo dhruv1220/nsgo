@@ -53,3 +53,69 @@ func TestStyledFacesOfNamedFamilies(t *testing.T) {
 		t.Errorf("the system's bold sets in %s", got)
 	}
 }
+
+func TestStyledFacesOfFallbackFamilies(t *testing.T) {
+	font := Font(driver.Font{Family: "Menlo, Times New Roman", Size: 12, Weight: 700, Italic: true})
+	defer Release(font)
+	desc := ctFontCopyFontDescriptor(font)
+	defer Release(desc)
+	cascade := ctFontDescriptorCopyAttr(desc, attrCascadeList)
+	defer Release(cascade)
+	if n := cfArrayGetCount(cascade); n != 1 {
+		t.Fatalf("cascade has %d entries, want Times New Roman", n)
+	}
+	fallback := ctFontCreateWithDescriptor(cfArrayGetValueAtIndex(cascade, 0), 12, 0)
+	defer Release(fallback)
+	name := ctFontCopyPostScriptName(fallback)
+	defer Release(name)
+	if got := GoString(objc.ID(name)); !strings.Contains(got, "TimesNewRomanPS-BoldItalic") {
+		t.Fatalf("styled fallback face is %s, want Times New Roman bold italic", got)
+	}
+}
+
+// TestListsFallBackInTheStyledFace lays out characters the first family lacks and checks the face CoreText sets them in is the later family's at the weight and slant asked for, as that family alone would be.
+func TestListsFallBackInTheStyledFace(t *testing.T) {
+	for _, c := range []struct {
+		list, fallback, text string
+		weight               driver.FontWeight
+		italic               bool
+	}{
+		{"Menlo, Hiragino Sans", "Hiragino Sans", "a中", 700, false},
+		{"system-ui, Hiragino Sans", "Hiragino Sans", "a中", 700, false},
+		{"Didot, Times New Roman", "Times New Roman", "aЖ", driver.FontWeightNormal, true},
+	} {
+		if f := familyFont(driver.Family{Name: c.fallback}, 12); f == 0 {
+			t.Logf("%s is not installed", c.fallback)
+			continue
+		} else {
+			Release(f)
+		}
+		alone := Font(driver.Font{Family: c.fallback, Size: 12, Weight: c.weight, Italic: c.italic})
+		name := ctFontCopyPostScriptName(alone)
+		want := GoString(objc.ID(name))
+		Release(name)
+		Release(alone)
+		st := driver.TextStyle{Font: driver.Font{Family: c.list, Size: 12, Weight: c.weight, Italic: c.italic}, Color: driver.RGB(0)}
+		faces := runFaces(st, c.text)
+		if len(faces) != 2 || faces[1] != want {
+			t.Errorf("%q at %d, italic %v: runs set in %v, want the second in %s", c.list, c.weight, c.italic, faces, want)
+		}
+	}
+}
+
+// runFaces returns the PostScript names of the faces text's runs are set in.
+func runFaces(st driver.TextStyle, text string) []string {
+	str := attributed(&driver.AttributedText{Text: text, Style: st}, nil, nil)
+	defer Release(str)
+	line := ctLineCreateWithAttrString(str)
+	defer Release(line)
+	var out []string
+	runs := ctLineGetGlyphRuns(line)
+	for i := range cfArrayGetCount(runs) {
+		font := cfDictionaryGetValue(ctRunGetAttributes(cfArrayGetValueAtIndex(runs, i)), attrFont)
+		name := ctFontCopyPostScriptName(font)
+		out = append(out, GoString(objc.ID(name)))
+		Release(name)
+	}
+	return out
+}

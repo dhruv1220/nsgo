@@ -263,6 +263,31 @@ func listedFont(f driver.Font) uintptr {
 	return out
 }
 
+// styledCascade returns a new cascade list of cascade's families with traits, the weight and slant asked for: listedFont's entries name the regular faces they were made from, which CoreText would otherwise use for every character the first family lacks.
+func styledCascade(cascade, traits uintptr) uintptr {
+	descriptors := make([]uintptr, cfArrayGetCount(cascade))
+	for i := range descriptors {
+		old := cfArrayGetValueAtIndex(cascade, i)
+		family := ctFontDescriptorCopyAttr(old, attrFamilyName)
+		var attrs uintptr
+		if family == 0 || strings.HasPrefix(GoString(objc.ID(family)), ".") {
+			// The system's UI fonts take the traits onto their own descriptor, as buildFace does.
+			attrs = dictionary([]uintptr{attrTraits}, []uintptr{traits})
+			descriptors[i] = ctFontDescriptorCopyAttrs(old, attrs)
+		} else {
+			attrs = dictionary([]uintptr{attrFamilyName, attrTraits}, []uintptr{family, traits})
+			descriptors[i] = ctFontDescriptorCreateWithAttrs(attrs)
+		}
+		Release(attrs)
+		Release(family)
+	}
+	list := cfArray(descriptors)
+	for _, descriptor := range descriptors {
+		Release(descriptor)
+	}
+	return list
+}
+
 // familyFont returns a new CTFont of a family, 0 for a named one the
 // system does not have: CTFontCreateWithName answers those with another.
 func familyFont(family driver.Family, size driver.Points) uintptr {
@@ -319,16 +344,26 @@ func buildFace(f driver.Font) uintptr {
 	traits := dictionary([]uintptr{attrWeight, attrSymbolic, attrWidth}, []uintptr{weight, sym, width})
 	desc := ctFontCopyFontDescriptor(base)
 	family := ctFontCopyFamilyName(base)
-	var styled, attrs, cascade uintptr
+	// A list's later families take the weight and slant too.
+	var cascade uintptr
+	if list := ctFontDescriptorCopyAttr(desc, attrCascadeList); list != 0 {
+		cascade = styledCascade(list, traits)
+		Release(list)
+	}
+	var styled, attrs uintptr
 	if strings.HasPrefix(GoString(objc.ID(family)), ".") {
 		// The system's UI fonts take the traits onto their own descriptor.
-		attrs = dictionary([]uintptr{attrTraits}, []uintptr{traits})
+		keys, values := []uintptr{attrTraits}, []uintptr{traits}
+		if cascade != 0 {
+			keys, values = append(keys, attrCascadeList), append(values, cascade)
+		}
+		attrs = dictionary(keys, values)
 		styled = ctFontDescriptorCopyAttrs(desc, attrs)
 	} else {
 		// A named face's descriptor keeps its face over the traits, so the
 		// face is matched in its family, its fallbacks kept.
 		keys, values := []uintptr{attrFamilyName, attrTraits}, []uintptr{family, traits}
-		if cascade = ctFontDescriptorCopyAttr(desc, attrCascadeList); cascade != 0 {
+		if cascade != 0 {
 			keys, values = append(keys, attrCascadeList), append(values, cascade)
 		}
 		attrs = dictionary(keys, values)
