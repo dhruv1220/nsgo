@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
@@ -33,6 +34,58 @@ func TestOneLineMatchesTheFramesetter(t *testing.T) {
 						compareOneLine(t, name, &at)
 					}
 				}
+			}
+		}
+	}
+}
+
+// TestTextsMeasureWhatTheFramesetterDoes checks that a text measures the size CoreText's framesetter suggests, its width's fraction kept, on a line of its own or wrapped: the core rounds sizes up to a device pixel, and a whole point here would add up to a point to every text on a 2x screen.
+func TestTextsMeasureWhatTheFramesetterDoes(t *testing.T) {
+	defer func() { oneLineFast = true }()
+	for _, fast := range []bool{false, true} {
+		oneLineFast = fast
+		for _, text := range []string{"abc", "Hello world", "-9.27%", "two\nlines", strings.Repeat("word ", 20)} {
+			at := driver.AttributedText{Text: text, Style: driver.TextStyle{Font: driver.Font{Size: 13, Weight: 400}, Color: driver.RGB(0)}}
+			p := TextEngine{}.Prepare(&at)
+			for _, width := range []driver.Points{driver.Auto, 100} {
+				w := float64(unbounded)
+				if !width.IsAuto() {
+					w = float64(width)
+				}
+				fs := ctFramesetterSuggestSize(p.(*prepared).framesetter(), 0, 0, 0, w, unbounded, 0)
+				want := driver.Size{Width: driver.Points(fs.Width), Height: driver.Points(fs.Height)}
+				if got := p.Measure(width); got != want {
+					t.Errorf("fast=%v: %q at %v measures %v, want the framesetter's %v", fast, text, width, got, want)
+				}
+			}
+			p.Release()
+		}
+	}
+}
+
+// TestALimitedTextIsAsTallAsItsLinesUncut checks that a text cut to its line limit, whose height the engine works out from the frame's lines, is as tall as the framesetter makes those lines uncut, and an empty text with a line height as tall as a line: a label must not change its height as its text grows past its limit or empties.
+func TestALimitedTextIsAsTallAsItsLinesUncut(t *testing.T) {
+	measure := func(text string, lines int, st driver.TextStyle) driver.Size {
+		p := TextEngine{}.Prepare(&driver.AttributedText{Text: text, Style: st, MaxLines: lines})
+		defer p.Release()
+		return p.Measure(100)
+	}
+	for _, st := range []driver.TextStyle{
+		{Font: driver.Font{Size: 13, Weight: 400}},
+		{Font: driver.Font{Family: "Times New Roman", Size: 19, Weight: 400}},
+		{Font: driver.Font{Size: 15, Weight: 400}, LineHeight: 20.3},
+	} {
+		st.Color = driver.RGB(0)
+		for _, lines := range []int{1, 2, 3} {
+			cut := measure(strings.Repeat("word ", 30), lines, st)
+			uncut := measure(strings.TrimSuffix(strings.Repeat("word\n", lines), "\n"), 0, st)
+			if cut.Height != uncut.Height {
+				t.Errorf("%v: cut to %d line(s), %v tall; the lines uncut %v", st.Font, lines, cut.Height, uncut.Height)
+			}
+		}
+		if st.LineHeight > 0 {
+			if empty, line := measure("", 0, st), measure("word", 0, st); empty.Height != line.Height {
+				t.Errorf("%v: an empty text %v tall, a line %v", st.Font, empty.Height, line.Height)
 			}
 		}
 	}

@@ -716,10 +716,8 @@ func (p *prepared) fitsOneLine(width float64) bool {
 		p.line = ctLineCreateWithAttrString(p.str)
 		// As a frame measures it, without its trailing spaces.
 		p.lineWidth = ctLineGetTypographicBounds(p.line, &p.ascent, &descent, &leading) - ctLineTrailingWhitespace(p.line)
-		// A frame puts a one-line baseline on a whole point and reports the
-		// resulting box rounded up. Keep the fast path identical to that
-		// framesetter result; wrapped text keeps the fractional measurement.
-		p.lineHeight = math.Ceil(math.Round(p.ascent) + descent + leading - 1e-3)
+		// A frame puts a line's baseline on a whole point.
+		p.lineHeight = framedHeight(math.Round(p.ascent) + descent + leading)
 	}
 	return p.lineWidth <= width
 }
@@ -761,7 +759,7 @@ func (p *prepared) Measure(maxWidth driver.Points) driver.Size {
 // measure is Measure without the cache.
 func (p *prepared) measure(maxWidth driver.Points) driver.Size {
 	if p.emptyHeight > 0 {
-		return driver.Size{Height: driver.Points(p.emptyHeight)}
+		return driver.Size{Height: driver.Points(framedHeight(p.emptyHeight))}
 	}
 	w := float64(unbounded)
 	if !maxWidth.IsAuto() {
@@ -775,12 +773,15 @@ func (p *prepared) measure(maxWidth driver.Points) driver.Size {
 		defer Release(frame)
 		if lines := ctFrameGetLines(frame); cfArrayGetCount(lines) > p.maxLines {
 			size := firstLines(frame, lines, p.maxLines, tall)
-			return driver.Size{Width: driver.Points(size.Width), Height: driver.Points(size.Height)}
+			return driver.Size{Width: driver.Points(size.Width), Height: driver.Points(framedHeight(size.Height))}
 		}
 	}
 	size := ctFramesetterSuggestSize(p.framesetter(), 0, 0, 0, w, unbounded, 0)
 	return driver.Size{Width: driver.Points(size.Width), Height: driver.Points(size.Height)}
 }
+
+// framedHeight rounds a height measured outside a framesetter up to a whole point, as a framesetter sizes a frame: CoreText puts lines on whole points, so its heights are whole points while its widths keep their fractions, which the core rounds up to a device pixel. A text cut to its line limit is then as tall as its lines uncut.
+func framedHeight(h float64) float64 { return math.Ceil(h - 1e-3) }
 
 // firstLines returns the size of a frame's first n lines.
 func firstLines(frame, lines uintptr, n int, frameHeight float64) CGSize {
