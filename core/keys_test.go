@@ -288,3 +288,27 @@ func TestKeysFollowTheTopScreen(t *testing.T) {
 	pushed.Set(false)
 	press("list down")
 }
+
+// A modal that binds nothing still takes the page's bindings out of the keymap as it mounts, and puts them back as it goes.
+func TestKeymapFollowsAModalThatBindsNothing(t *testing.T) {
+	var open *Signal[bool]
+	h := newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
+		open = NewSignal(cx, false)
+		cx.OnKey("space", func() {})
+		return View{Children: []Node{
+			Text{Content: "page"},
+			Show{When: open.Get, Then: func(*Scope) Node { return Modal{Children: []Node{Text{Content: "dialog"}}} }},
+		}}
+	})
+	if keys, _ := sentKeys(h.commit()); !slices.Equal(keys, []string{"space"}) {
+		t.Fatalf("before the modal: keymap = %q", keys)
+	}
+	open.Set(true)
+	if keys, sent := sentKeys(h.commit()); !sent || len(keys) != 0 {
+		t.Fatalf("with the modal: keymap = %q (sent %v), want an empty one", keys, sent)
+	}
+	open.Set(false)
+	if keys, sent := sentKeys(h.commit()); !sent || !slices.Equal(keys, []string{"space"}) {
+		t.Fatalf("after the modal: keymap = %q (sent %v), want the page's space", keys, sent)
+	}
+}
