@@ -57,6 +57,8 @@ type Options struct {
 	Hidden bool
 	// ID names the app's directories and storage (engine.AppDirs).
 	ID string
+	// Name is the app's name, nsgo.yaml's (core.App().Name), "" where the tool set none; unlike Title, a surface's windows keep it.
+	Name string
 	// Components are the native components Native elements name.
 	Components driver.NativeComponents
 	// Fonts are font files under the app's resources, registered before

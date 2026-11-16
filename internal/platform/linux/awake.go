@@ -100,7 +100,7 @@ func (w *window) keepAwake(id uint32, req driver.KeepAwake) {
 	}
 	bindGlobalHotKeys()
 	awakeTaken.Store(true)
-	key, appID := awakeKey{w, id}, w.opts.ID
+	key, appID, appName := awakeKey{w, id}, w.opts.ID, w.opts.Name
 	portalQueue() <- func() {
 		if _, ok := awake.holds[key]; ok {
 			return
@@ -112,7 +112,7 @@ func (w *window) keepAwake(id uint32, req driver.KeepAwake) {
 		g := awakeGroupOf(req.Display)
 		g.refs++
 		if g.refs == 1 {
-			g.end = inhibitAwake(appID, w.opts.Title, req)
+			g.end = inhibitAwake(appID, appName, req)
 		}
 	}
 }
