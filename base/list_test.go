@@ -8,6 +8,7 @@ import (
 
 	"github.com/nsgo-dev/nsgo/base"
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/driver"
 	"github.com/nsgo-dev/nsgo/nsgotest"
 )
 
@@ -112,9 +113,7 @@ func TestListTypeahead(t *testing.T) {
 	cursor("Apricot")
 }
 
-// TestListSelectionChange reports only choices made through the list's user
-// actions, while an app can still move its Selection without reporting a
-// second choice.
+// TestListSelectionChange reports the rows a press or a key chooses, once each, and none of the app's own writes to the Selection.
 func TestListSelectionChange(t *testing.T) {
 	var sel *base.Selection
 	var changes [][]any
@@ -124,15 +123,79 @@ func TestListSelectionChange(t *testing.T) {
 		l.OnSelectionChange = func(s *base.Selection) { changes = append(changes, s.Keys()) }
 		return l
 	})
-	app.Press("label:Apple")
-	app.Key("down")
-	app.Post(func() { sel.Set("Cherry") })
-	app.Settle()
-	if want := [][]any{{"Apple"}, {"Apricot"}}; !slices.EqualFunc(changes, want, func(a, b []any) bool { return slices.Equal(a, b) }) {
-		t.Fatalf("selection changes are %v, want %v", changes, want)
+	step := selectionSteps(t, &sel, &changes)
+	step("a press", func() { app.Press("label:Apple") }, "Apple")
+	step("down", func() { app.Key("down") }, "Apricot")
+	step("space on the chosen row", func() { app.Key("space") })
+	app.Advance(time.Second)
+	step("typeahead", func() { app.Key("c") }, "Cherry")
+	app.Advance(time.Second)
+	step("a press on the chosen row", func() { app.Press("label:Cherry") })
+	step("the app's Set", post(app, func() { sel.Set("Banana") }))
+	step("the app's Toggle", post(app, func() { sel.Toggle("Apple") }))
+	step("the app's Clear", post(app, sel.Clear))
+}
+
+// TestListMultipleSelectionChange reports each press, modified press and key that changes a multiple selection's rows once, after the selection holds them.
+func TestListMultipleSelectionChange(t *testing.T) {
+	var sel *base.Selection
+	var changes [][]any
+	app := startDesktop(t, func(cx *core.Scope) core.Node {
+		sel = base.NewSelection(cx, true)
+		l := rowsOf(sel, nil)
+		l.OnSelectionChange = func(s *base.Selection) { changes = append(changes, s.Keys()) }
+		return l
+	})
+	press := func(label string, mods driver.Modifiers) func() {
+		return func() {
+			row := app.Find("label:" + label)
+			if !row.Events.Has(driver.EventPress) {
+				t.Fatalf("row %s takes no press", label)
+			}
+			app.Report(driver.Event{Kind: driver.EventPress, ID: row.ID, Count: 1, Modifiers: mods})
+		}
 	}
-	if got := sel.Keys(); !slices.Equal(got, []any{"Cherry"}) {
-		t.Fatalf("app selection is %v, want Cherry", got)
+	step := selectionSteps(t, &sel, &changes)
+	step("a press", func() { app.Press("label:Apple") }, "Apple")
+	step("a Mod press", press("Cherry", driver.Modifiers{Platform: true}), "Apple", "Cherry")
+	step("a Control press", press("Apricot", driver.Modifiers{Control: true}), "Apple", "Cherry", "Apricot")
+	step("a Shift press", press("Banana", driver.Modifiers{Shift: true}), "Apricot", "Banana")
+	step("down", func() { app.Key("down") }, "Blueberry")
+	step("shift+down", func() { app.Key("shift+down") }, "Blueberry", "Cherry")
+	step("mod+a", func() { app.Key("mod+a") }, "Apple", "Apricot", "Banana", "Blueberry", "Cherry")
+	step("mod+a with every row chosen", func() { app.Key("mod+a") })
+	step("space", func() { app.Key("space") }, "Apple", "Apricot", "Banana", "Blueberry")
+	app.Advance(time.Second)
+	step("typeahead", func() { app.Key("b") }, "Banana")
+	step("a Mod press after typeahead", press("Apricot", driver.Modifiers{Platform: true}), "Banana", "Apricot")
+	step("a Shift press that only reorders the rows", press("Banana", driver.Modifiers{Shift: true}))
+	step("the app's SetRange", post(app, func() { sel.SetRange("Apple", "Banana", "Apple", "Apricot", "Banana") }))
+	step("the app's Toggle", post(app, func() { sel.Toggle("Cherry") }))
+}
+
+// post returns a step that runs fn on the app's goroutine, as the app's own write, and settles.
+func post(app *nsgotest.App, fn func()) func() {
+	return func() {
+		app.Post(fn)
+		app.Settle()
+	}
+}
+
+// selectionSteps returns a step that runs do and checks that it reported want, the rows *sel then holds, once, or with no want nothing.
+func selectionSteps(t *testing.T, sel **base.Selection, changes *[][]any) func(name string, do func(), want ...any) {
+	return func(name string, do func(), want ...any) {
+		t.Helper()
+		n := len(*changes)
+		do()
+		got := (*changes)[n:]
+		switch {
+		case want == nil && len(got) > 0:
+			t.Fatalf("%s reported %v", name, got)
+		case want != nil && (len(got) != 1 || !slices.Equal(got[0], want)):
+			t.Fatalf("%s reported %v, want %v once", name, got, want)
+		case want != nil && !slices.Equal((*sel).Keys(), want):
+			t.Fatalf("after %s the selection is %v, want %v", name, (*sel).Keys(), want)
+		}
 	}
 }
 

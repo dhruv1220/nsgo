@@ -30,8 +30,7 @@ type List struct {
 	// rows as it scrolls, so read row's index as a signal.
 	Row       func(cx *core.Scope, row core.ListRow) core.Node
 	Selection *Selection
-	// OnSelectionChange receives the Selection after a press or a key changed
-	// it. It does not run when the app changes Selection itself.
+	// OnSelectionChange receives the Selection once a press, a key or typeahead has changed which rows it holds. It does not run when the app changes Selection itself, nor when only the cursor moves or the rows stay the same, such as a press on the row already chosen alone.
 	OnSelectionChange func(s *Selection)
 	// OnActivate receives the row Enter or a double click activates, or
 	// on touch screens a tap in a list that is not Multiple.
@@ -167,16 +166,34 @@ func (k *listKeys) extendTo(i int) {
 	s.SetRange(anchor, k.key(i), keys...)
 }
 
-// changeSelection reports an effective selection write made for a user
-// action. The Selection methods themselves stay silent so app-controlled
-// writes do not look like user choices.
+// changeSelection runs fn, a user's change to the selection, and reports it to OnSelectionChange when the chosen rows differ after it. The Selection methods themselves stay silent, so the app's own writes do not look like the user's choices.
 func (k *listKeys) changeSelection(fn func()) {
 	s := k.list.Selection
 	before := s.Keys()
 	fn()
-	if k.list.OnSelectionChange != nil && !slices.Equal(before, s.Keys()) {
+	if k.list.OnSelectionChange != nil && !sameRows(before, s.Keys()) {
 		k.list.OnSelectionChange(s)
 	}
+}
+
+// sameRows reports whether a and b, keys a Selection holds and so without repeats, are the same rows in any order.
+func sameRows(a, b []any) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if slices.Equal(a, b) {
+		return true
+	}
+	in := make(map[any]struct{}, len(a))
+	for _, key := range a {
+		in[key] = struct{}{}
+	}
+	for _, key := range b {
+		if _, ok := in[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // step moves the cursor by delta rows, from the first row when it is on

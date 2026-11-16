@@ -50,6 +50,8 @@ ui.List{
 }
 ```
 
+`OnSelectionChange` runs after a press, a key or typeahead changes which rows are chosen, and not when the app sets the `Selection` itself, so a detail pane can follow the user's choice while the app moves the selection to an item opened some other way.
+
 `TapSelects` makes a tap on a phone select rather than activate. `RowLabel` is what assistive technology reads and what typeahead matches.
 
 ## Loading and scrolling

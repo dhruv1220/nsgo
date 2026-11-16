@@ -17,18 +17,18 @@ func fruits(n int) []string {
 	return out
 }
 
-// TestListSelects chooses a row by a press and moves the choice with the
-// keys, activating the cursor's row with Enter, and the list builds only
-// the rows near what shows.
+// TestListSelects chooses a row by a press and moves the choice with the keys, reporting each choice to OnSelectionChange, activating the cursor's row with Enter, and the list builds only the rows near what shows.
 func TestListSelects(t *testing.T) {
 	each(t, func(t *testing.T, e core.Environment) {
 		rows := fruits(500)
 		var sel *Selection
 		activated := -1
+		var changes []any
 		app, p := start(t, e, func(cx *core.Scope) core.Node {
 			sel = NewSelection(cx, false)
 			return List{TestID: "list", Label: "Fruits", Count: func() int { return len(rows) }, Key: func(i int) any { return rows[i] },
 				RowLabel: func(i int) string { return rows[i] }, Selection: sel, OnActivate: func(i int) { activated = i },
+				OnSelectionChange: func(s *Selection) { changes = append(changes, s.Keys()...) },
 				Row: func(cx *core.Scope, r core.ListRow) core.Node {
 					return core.Text{ContentFunc: func() string { return rows[r.Index()] }}
 				}, Style: core.Style{Height: core.Pt(300)}}
@@ -44,6 +44,9 @@ func TestListSelects(t *testing.T) {
 		app.Key("down")
 		if got := sel.Keys(); !slices.Equal(got, []any{"Fruit 4"}) || !app.Find("label:Fruit 4").Props.Selected {
 			t.Fatalf("after two downs the selection is %v, want Fruit 4", got)
+		}
+		if want := []any{"Fruit 2", "Fruit 3", "Fruit 4"}; !slices.Equal(changes, want) {
+			t.Fatalf("OnSelectionChange heard %v, want %v", changes, want)
 		}
 		app.Key("end")
 		app.Settle()

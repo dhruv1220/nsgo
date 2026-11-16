@@ -51,6 +51,8 @@ ui.List{
 }
 ```
 
+`OnSelectionChange` 在点击、按键或 typeahead 改变选中的行之后运行，应用自己设置 `Selection` 时不运行；这样详情面板可以跟随用户的选择，而应用把选择移到从别处打开的项目时不会被当作用户的选择。
+
 `TapSelects` 让手机上的点击只选择而不激活。`RowLabel` 是辅助技术朗读的内容，也是 typeahead 匹配的文字。
 
 ## 加载与滚动

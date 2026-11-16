@@ -17,15 +17,15 @@ func NewSelection(cx *core.Scope, multiple bool) *Selection { return base.NewSel
 // ringed. Give it a height, or let it fill what the app sizes.
 type List struct {
 	Count func() int
-	// Key, Row, Selection, OnActivate, TapSelects, RowLabel and Columns
-	// are base.List's.
-	Key        func(i int) any
-	Row        func(cx *core.Scope, row core.ListRow) core.Node
-	Selection  *Selection
-	OnActivate func(i int)
-	TapSelects bool
-	RowLabel   func(i int) string
-	Columns    int
+	// Key, Row, Selection, OnSelectionChange, OnActivate, TapSelects, RowLabel and Columns are base.List's.
+	Key               func(i int) any
+	Row               func(cx *core.Scope, row core.ListRow) core.Node
+	Selection         *Selection
+	OnSelectionChange func(s *Selection)
+	OnActivate        func(i int)
+	TapSelects        bool
+	RowLabel          func(i int) string
+	Columns           int
 	// EstimatedSize is a row's expected height, a row's height when 0.
 	EstimatedSize core.Points
 	Gap           core.Points
@@ -81,7 +81,7 @@ func (l List) Render(cx *core.Scope) core.Node {
 	if size == 0 {
 		size = RowHeight
 	}
-	return base.List{Count: l.Count, Key: l.Key, Row: l.Row, Selection: l.Selection, OnActivate: l.OnActivate, TapSelects: l.TapSelects,
+	return base.List{Count: l.Count, Key: l.Key, Row: l.Row, Selection: l.Selection, OnSelectionChange: l.OnSelectionChange, OnActivate: l.OnActivate, TapSelects: l.TapSelects,
 		RowLabel: l.RowLabel, Columns: l.Columns, EstimatedSize: size, Gap: l.Gap, Header: l.Header, Footer: l.Footer, Empty: l.Empty,
 		OnLoadMore: l.OnLoadMore, Label: l.Label, Ref: l.Ref, TestID: l.TestID,
 		Style:         core.Style{CornerRadius: RadiusControl}.Merge(l.Style),
