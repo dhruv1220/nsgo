@@ -152,6 +152,9 @@ var devImports = map[string][]string{"internal/dev": {"internal/devtools", "inte
 // automationImports are what a package's nsgo dev -automation builds (the nsgoautomation tag, with nsgodev) import besides its dev builds': the dev client links nsgotest's agent, which it serves over DevTools' channel.
 var automationImports = map[string][]string{"internal/dev": {"nsgotest"}}
 
+// variantLayerTargets are the builds the nsgo tool makes with a variant's tag: nsgo watchos's, nsgo embed's iOS framework and nsgo miniprogram's.
+var variantLayerTargets = [][3]string{{"ios", "arm64", "nsgowatch"}, {"ios", "arm64", "nsgoembed"}, {"js", "wasm", "nsgominiprogram,nsgo_noshader"}}
+
 // devLayerTargets are the targets whose nsgo dev builds (the nsgodev tag) are checked too: the dev client's files differ only between the web and the rest.
 var devLayerTargets = [][2]string{{"darwin", "arm64"}, {"js", "wasm"}}
 
@@ -175,12 +178,15 @@ func TestLayering(t *testing.T) {
 		check(target[0], target[1], "")
 		check(target[0], target[1], "nsgotest")
 	}
-	check("ios", "arm64", "nsgotest,nsgowatch")
-	check("ios", "arm64", "nsgotest,nsgoembed")
-	check("js", "wasm", "nsgotest,nsgominiprogram")
+	// The watch app, an embedded iOS app and a mini-program build other files than the plain iOS and web builds, as apps and as test hosts.
+	for _, variant := range variantLayerTargets {
+		check(variant[0], variant[1], variant[2])
+		check(variant[0], variant[1], "nsgotest,"+variant[2])
+	}
 	for _, target := range devLayerTargets {
 		check(target[0], target[1], "nsgodev")
 	}
+	check("js", "wasm", "nsgodev,nsgominiprogram,nsgo_noshader")
 	// nsgo dev -automation runs on macOS alone.
 	check("darwin", "arm64", "nsgodev,nsgoautomation")
 }

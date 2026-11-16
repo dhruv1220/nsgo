@@ -128,7 +128,7 @@ A line means "imports". `internal/moduletest/layering_test.go` checks the graph 
     └───────────────────► internal/driver
 ```
 
-- Apps may import any public package directly, `core` included. `core` and `nsgotest` alias the internal types their API reaches (`TestPublicAPINamesNoInternalType`).
+- Apps may import any public package directly, `core` included. `core`, or the public package itself, aliases each internal type a public package's API reaches; `TestPublicAPINamesNoInternalType` lists the public packages with `go list`, every package outside `internal/`, `cmd/`, `tools/` and `examples/`, so a new one is checked without a list to edit.
 - `internal/driver` imports from the module only `internal/shaderir`, for the shader programs it carries.
 - `core` imports only `internal/driver`, `internal/devtools`, `internal/layout` and the shader compilers (`internal/shader`, `internal/shader/wgsl`, `internal/shaderir`). `internal/devtools` imports only `internal/driver`, for the batches and events it hands `nsgo dev -automation`'s agent, so DevTools' overlay, the layout audit's included, lives in `core` (`UpdateHighlights`).
 - Backends import `internal/driver`, `internal/engine`, `desktop/locales`, their shared packages and the shader writers, never the compilers, which only `core` links.

@@ -2,21 +2,25 @@ package moduletest
 
 import (
 	"bytes"
+	"fmt"
 	"go/importer"
 	"go/token"
 	"go/types"
+	"io"
+	"os"
 	"os/exec"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
-// publicPackages lists what apps may import. It is derived from the module so
-// adding a public package cannot silently leave it outside the API checks.
+// publicPackages lists what apps may import: every library package of the module this platform builds, but those under internal/, cmd/, tools/, examples/ and testdata. It is derived from the module so a new public package cannot slip past the API checks.
 func publicPackages(t *testing.T) []string {
 	t.Helper()
-	cmd := exec.Command("go", "list", "-e", "-f", "{{.ImportPath}}", "./...")
+	cmd := exec.Command("go", "list", "-e", "-f", "{{if and (ne .Name \"main\") (or .GoFiles .CgoFiles)}}{{.ImportPath}}{{end}}", "./...")
+	cmd.Dir = moduleRoot
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -25,31 +29,71 @@ func publicPackages(t *testing.T) []string {
 	}
 	var packages []string
 	for path := range strings.SplitSeq(string(out), "\n") {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			continue
-		}
-		rel, ok := strings.CutPrefix(path, modulePath)
-		if !ok || (rel != "" && !strings.HasPrefix(rel, "/")) {
-			continue
-		}
-		rel = strings.TrimPrefix(rel, "/")
-		if rel == "" || publicPackage(rel) {
+		if rel, ok := inModule(strings.TrimSpace(path)); ok && publicPackage(rel) {
 			packages = append(packages, rel)
 		}
 	}
 	slices.Sort(packages)
+	// The root, core and nsgotest are what every app links; a listing without them went wrong.
+	for _, rel := range []string{"", "core", "nsgotest", "base", "ui"} {
+		if !slices.Contains(packages, rel) {
+			t.Fatalf("go list found no %q among the public packages %v", rel, packages)
+		}
+	}
 	return packages
 }
 
+// publicPackage reports whether rel, a package path inside the module, is one apps may import.
 func publicPackage(rel string) bool {
-	for _, part := range strings.Split(rel, "/") {
+	for part := range strings.SplitSeq(rel, "/") {
 		switch part {
 		case "internal", "cmd", "tools", "examples", "testdata":
 			return false
 		}
 	}
 	return true
+}
+
+// exportImporter loads the module's packages, and what they import, from the compiler's export data, which go list -export leaves in the build cache: type-checking some fifty public packages and their dependencies from source takes minutes. It is made once, for every test that reads the packages' types.
+var exportImporter = sync.OnceValues(func() (exportTypes, error) {
+	cmd := exec.Command("go", "list", "-e", "-export", "-deps", "-f", "{{if .Export}}{{.ImportPath}}={{.Export}}{{end}}", "./...")
+	cmd.Dir = moduleRoot
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return exportTypes{}, fmt.Errorf("go list -export: %v\n%s", err, stderr.Bytes())
+	}
+	exports := map[string]string{}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if path, file, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+			exports[path] = file
+		}
+	}
+	files := token.NewFileSet()
+	return exportTypes{files, importer.ForCompiler(files, "gc", func(path string) (io.ReadCloser, error) {
+		file, ok := exports[path]
+		if !ok {
+			return nil, fmt.Errorf("go list -export gave no export data for %s", path)
+		}
+		return os.Open(file)
+	})}, nil
+})
+
+// exportTypes are exportImporter's file set and importer.
+type exportTypes struct {
+	files *token.FileSet
+	imp   types.Importer
+}
+
+// typesImporter is exportImporter for a test, which it fails when go list does.
+func typesImporter(t *testing.T) (*token.FileSet, types.Importer) {
+	t.Helper()
+	e, err := exportImporter()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e.files, e.imp
 }
 
 // runtimeAPI is what the engine and nsgotest drive core's tree with. Apps
@@ -63,9 +107,9 @@ var runtimeAPI = map[string]bool{
 // can name what they are given.
 func TestPublicAPINamesNoInternalType(t *testing.T) {
 	if testing.Short() {
-		t.Skip("type-checks the public packages from source")
+		t.Skip("lists and loads every public package")
 	}
-	imp := importer.ForCompiler(token.NewFileSet(), "source", nil)
+	_, imp := typesImporter(t)
 	load := func(rel string) *types.Package {
 		path := modulePath
 		if rel != "" {
