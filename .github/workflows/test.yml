@@ -36,6 +36,8 @@ jobs:
           sudo apt-get install -y libgtk-4-dev xvfb
       - name: Vet
         run: go tool nsgo check
+      - name: Test instance isolation and file handoff
+        run: go tool nsgo test -run '^TestInstance' ./internal/platform/linux
       - name: Test
         env:
           GDK_BACKEND: x11
@@ -59,3 +61,20 @@ jobs:
         run: go tool nsgo check ./internal/platform/apple
       - name: Test
         run: go tool nsgo test ./internal/platform/apple
+
+  windows-instance:
+    name: Windows instance handoff
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test instance isolation and file handoff
+        run: go tool nsgo test -run '^TestInstance' ./internal/platform/windows

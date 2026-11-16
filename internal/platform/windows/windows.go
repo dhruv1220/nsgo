@@ -65,6 +65,8 @@ type Options struct {
 	Frame driver.WindowFrame
 	// ID names the app's directories and storage (engine.AppDirs).
 	ID string
+	// InstanceKey scopes the single-instance lock; empty keeps one lock per ID.
+	InstanceKey string
 	// Components are the native components Native elements name.
 	Components driver.NativeComponents
 	// Material is the material behind the window's content, where the app
@@ -552,7 +554,7 @@ func Run(app engine.App, opts Options) {
 	var single *instance
 	if opts.ID != "" && opts.test == nil {
 		var alreadyRunning bool
-		if single, alreadyRunning = claimInstance(opts.ID, engine.LaunchFiles()); alreadyRunning {
+		if single, alreadyRunning = claimInstance(opts.ID, opts.InstanceKey, engine.LaunchFiles()); alreadyRunning {
 			return
 		}
 		defer single.close()

@@ -57,6 +57,8 @@ type Options struct {
 	Hidden bool
 	// ID names the app's directories and storage (engine.AppDirs).
 	ID string
+	// InstanceKey scopes the single-instance lock; empty keeps one lock per ID.
+	InstanceKey string
 	// Components are the native components Native elements name.
 	Components driver.NativeComponents
 	// Fonts are font files under the app's resources, registered before
@@ -252,7 +254,7 @@ func Run(app engine.App, opts Options) {
 	var instance *instance
 	if opts.ID != "" && opts.test == nil {
 		var alreadyRunning bool
-		if instance, alreadyRunning = claimInstance(opts.ID, engine.LaunchFiles()); alreadyRunning {
+		if instance, alreadyRunning = claimInstance(opts.ID, opts.InstanceKey, engine.LaunchFiles()); alreadyRunning {
 			return
 		}
 		defer instance.close()
@@ -340,7 +342,7 @@ func (w *window) startEngine(app engine.App, opts Options, size driver.Size) {
 		Host:        opts.Host,
 		// The app's own window takes its global shortcuts; a host's widget leaves them to the host.
 		HotKeys: !w.embedded,
-		Tray:        !w.embedded,
+		Tray:    !w.embedded,
 	}
 	if opts.Hidden {
 		eopts.Windows = &engine.WindowOptions{Title: opts.Title, Width: opts.Width, Height: opts.Height,
