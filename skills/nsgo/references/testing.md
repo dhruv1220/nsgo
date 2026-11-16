@@ -54,6 +54,8 @@ go tool nsgo test -target macos -run TestAdd
 
 DevTools' Recorder (`go tool nsgo dev -devtools`) writes what you do in the running app as an `nsgotest` test to start from.
 
+For `web`, set `NSGO_BROWSER` to choose the browser executable. Startup waits up to a minute and reports the browser's error output on failure; cancel the command to stop waiting.
+
 ## TSX
 
 A TSX app's `*.test.tsx` files, written with `nsgo/test`, run with its Go tests under `go tool nsgo test`.

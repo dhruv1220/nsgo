@@ -27,6 +27,7 @@ type cdp struct {
 	on func(cdpMessage)
 	// browser is the browser's process.
 	browser *exec.Cmd
+	exited  <-chan struct{}
 	profile string
 }
 
@@ -88,34 +89,92 @@ func startBrowser(ctx context.Context) (*cdp, error) {
 		// no input device and would measure as a touch screen.
 		"--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
 		"about:blank")
+	return startBrowserProcess(ctx, cmd, profile)
+}
+
+// startBrowserProcess owns the process and its profile, including a
+// failed or cancelled launch. Wait runs once, from the start, so a dead
+// browser is reported immediately and never left as an unreaped child.
+func startBrowserProcess(ctx context.Context, cmd *exec.Cmd, profile string) (_ *cdp, err error) {
+	var output browserOutput
+	cmd.Stderr = &output
+	// Browser children may inherit stderr; their pipe must not keep Wait
+	// alive indefinitely after the browser itself has gone.
+	cmd.WaitDelay = 3 * time.Second
 	if err := cmd.Start(); err != nil {
 		os.RemoveAll(profile)
 		return nil, err
 	}
+	exited := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		close(exited)
+	}()
+	defer func() {
+		if err != nil {
+			cmd.Process.Kill()
+			<-exited
+			os.RemoveAll(profile)
+			if tail := strings.TrimSpace(string(output.data)); tail != "" {
+				err = fmt.Errorf("%w\n%s", err, tail)
+			}
+		}
+	}()
+	startup, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
 	var url string
-	for range 100 {
-		time.Sleep(100 * time.Millisecond)
+	for url == "" {
 		data, err := os.ReadFile(filepath.Join(profile, "DevToolsActivePort"))
 		if lines := strings.Split(strings.TrimSpace(string(data)), "\n"); err == nil && len(lines) == 2 {
 			url = "ws://127.0.0.1:" + lines[0] + lines[1]
 			break
 		}
+		select {
+		case <-exited:
+			if err := startup.Err(); err != nil {
+				return nil, fmt.Errorf("waiting for the browser's DevTools port: %w", err)
+			}
+			return nil, fmt.Errorf("the browser exited before opening its DevTools port: %s", cmd.ProcessState)
+		case <-startup.Done():
+			return nil, fmt.Errorf("waiting for the browser's DevTools port: %w", startup.Err())
+		case <-tick.C:
+		}
 	}
-	if url == "" {
-		cmd.Process.Kill()
-		os.RemoveAll(profile)
-		return nil, errors.New("the browser did not open its DevTools port")
-	}
-	ws, err := websocket.Dial(url, "", cdpOrigin)
+	config, err := websocket.NewConfig(url, cdpOrigin)
 	if err != nil {
-		cmd.Process.Kill()
-		os.RemoveAll(profile)
+		return nil, err
+	}
+	ws, err := config.DialContext(startup)
+	if err != nil {
+		if startup.Err() != nil {
+			return nil, fmt.Errorf("connecting to the browser's DevTools port: %w", startup.Err())
+		}
 		return nil, err
 	}
 	ws.MaxPayloadBytes = 256 << 20
-	c := &cdp{ws: ws, pending: map[int64]chan cdpMessage{}, browser: cmd, profile: profile}
+	c := &cdp{ws: ws, pending: map[int64]chan cdpMessage{}, browser: cmd, exited: exited, profile: profile}
 	go c.read()
 	return c, nil
+}
+
+// browserOutput keeps only the last 64 KiB of stderr. exec.Cmd writes it
+// on one goroutine; it is read only after Wait has joined that goroutine.
+type browserOutput struct{ data []byte }
+
+func (b *browserOutput) Write(p []byte) (int, error) {
+	const limit = 64 << 10
+	n := len(p)
+	if len(p) >= limit {
+		b.data = append(b.data[:0], p[len(p)-limit:]...)
+	} else {
+		if drop := len(b.data) + len(p) - limit; drop > 0 {
+			b.data = append(b.data[:0], b.data[drop:]...)
+		}
+		b.data = append(b.data, p...)
+	}
+	return n, nil
 }
 
 func (c *cdp) read() {
@@ -185,12 +244,11 @@ func (c *cdp) call(session, method string, params any) (json.RawMessage, error) 
 func (c *cdp) close() {
 	c.call("", "Browser.close", nil)
 	c.ws.Close()
-	done := make(chan struct{})
-	go func() { c.browser.Wait(); close(done) }()
 	select {
-	case <-done:
+	case <-c.exited:
 	case <-time.After(3 * time.Second):
 		c.browser.Process.Kill()
+		<-c.exited
 	}
 	os.RemoveAll(c.profile)
 }
