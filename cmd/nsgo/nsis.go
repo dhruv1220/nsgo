@@ -167,6 +167,8 @@ type nsisData struct {
 	Icon, UninstallIcon string
 	// UninstallKey is the uninstall entry's key, under HKCU.
 	UninstallKey string
+	// Publisher and Copyright are the app's, as its executable's version resource says them, or "".
+	Publisher, Copyright string
 	// ARM64 has the installer refuse other systems.
 	ARM64 bool
 	// Command has the installer put its folder on the user's Path, for the command companion, and the uninstaller take it off.
@@ -186,6 +188,8 @@ func nsisScript(p *project, dir, arch string) (*nsisData, error) {
 	d := &nsisData{
 		Name: name, Version: p.Version, Exe: p.Name + ".exe", Output: nsisSetupName(p, arch),
 		UninstallKey: `Software\Microsoft\Windows\CurrentVersion\Uninstall\` + p.ID,
+		Publisher:    p.windowsPublisher(),
+		Copyright:    p.Copyright,
 		ARM64:        arch == "arm64",
 		Command:      p.windowsCommandLine(),
 		Excludes:     []string{p.Name + ".nsi", "*-setup.exe"},
@@ -252,28 +256,11 @@ func nsisEscape(s string) string {
 // nsisString quotes s for NSIS.
 func nsisString(s string) string { return `"` + nsisEscape(s) + `"` }
 
-// nsisVersion is a version as Windows' file versions take it, four
-// numbers: 1.2.0-beta.1 is 1.2.0.0.
+// nsisVersion is a version as Windows' file versions take it, as
+// VIProductVersion does (windowsVersionParts).
 func nsisVersion(v string) string {
-	parts := strings.Split(strings.TrimPrefix(v, "v"), ".")
-	var out []string
-	for _, part := range parts {
-		n := 0
-		for _, r := range part {
-			if r < '0' || r > '9' {
-				break
-			}
-			n = n*10 + int(r-'0')
-		}
-		out = append(out, fmt.Sprint(n%65536))
-		if len(out) == 4 || strings.IndexFunc(part, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-			break
-		}
-	}
-	for len(out) < 4 {
-		out = append(out, "0")
-	}
-	return strings.Join(out, ".")
+	p := windowsVersionParts(v)
+	return fmt.Sprintf("%d.%d.%d.%d", p[0], p[1], p[2], p[3])
 }
 
 // nsisCloseApp is the PowerShell that stops the processes running from the
@@ -350,6 +337,12 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" {{q .Name}}
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" {{q .Version}}
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" {{q .Version}}
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" {{q (print .Name " Setup")}}
+{{- if .Publisher}}
+VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" {{q .Publisher}}
+{{- end}}
+{{- if .Copyright}}
+VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" {{q .Copyright}}
+{{- end}}
 
 Function .onInit
 {{- if .ARM64}}
@@ -428,6 +421,9 @@ Section
   ExecWait {{cmd (path "$INSTDIR\\" .Exe) " --nsgo-register-toast=" (path "$SMPROGRAMS\\" .Name ".lnk")}}
   WriteRegStr HKCU {{q .UninstallKey}} "DisplayName" {{q .Name}}
   WriteRegStr HKCU {{q .UninstallKey}} "DisplayVersion" {{q .Version}}
+{{- if .Publisher}}
+  WriteRegStr HKCU {{q .UninstallKey}} "Publisher" {{q .Publisher}}
+{{- end}}
   WriteRegStr HKCU {{q .UninstallKey}} "DisplayIcon" {{path "$INSTDIR\\" .Exe}}
   WriteRegStr HKCU {{q .UninstallKey}} "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU {{q .UninstallKey}} "UninstallString" '"$INSTDIR\Uninstall.exe"'

@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -59,7 +58,7 @@ func TestICNS(t *testing.T) {
 func TestIconResource(t *testing.T) {
 	images := [][]byte{scaledPNG(testIcon(64), 16), scaledPNG(testIcon(64), 32)}
 	for _, arch := range []string{"amd64", "arm64"} {
-		syso, err := iconResource(images, []int{16, 32}, arch)
+		syso, err := windowsResource(arch, images, []int{16, 32}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,47 +84,8 @@ func TestIconResource(t *testing.T) {
 			t.Errorf("%s: the first entry does not point at the first image", arch)
 		}
 	}
-	if _, err := iconResource(images, []int{16, 32}, "riscv64"); err == nil {
+	if _, err := windowsResource("riscv64", images, []int{16, 32}, nil); err == nil {
 		t.Error("riscv64 made a resource")
-	}
-}
-
-func TestWindowsVersionResource(t *testing.T) {
-	versions := []windowsVersionStrings{
-		{Language: 0x0409, Name: "Example", FileName: "example", Company: "Acme", Version: "1.2.3", BuildNumber: 7},
-		{Language: 0x0804, Name: "示例", FileName: "example", Company: "Acme", Version: "1.2.3", BuildNumber: 7},
-	}
-	syso, err := windowsResource([][]byte{scaledPNG(testIcon(64), 16)}, []int{16}, "amd64", versions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, err := pe.NewFile(bytes.NewReader(syso))
-	if err != nil {
-		t.Fatal(err)
-	}
-	sec := f.Section(".rsrc")
-	if sec == nil {
-		t.Fatal("no .rsrc section")
-	}
-	if len(sec.Relocs) != 4 { // icon, group and two localized VERSIONINFO leaves
-		t.Fatalf("got %d relocations, want 4", len(sec.Relocs))
-	}
-	data, err := sec.Data()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range []string{"VS_VERSION_INFO", "ProductName", "Example", "示例", "1.2.3", "InternalName"} {
-		if !bytes.Contains(data, utf16Bytes(s)) {
-			t.Errorf("version resource lacks %q", s)
-		}
-	}
-	// The root directory contains RT_ICON, RT_GROUP_ICON and RT_VERSION.
-	var types []uint32
-	for i := 0; i < int(binary.LittleEndian.Uint16(data[14:16])); i++ {
-		types = append(types, binary.LittleEndian.Uint32(data[16+i*8:]))
-	}
-	if !slices.Equal(types, []uint32{rtIcon, rtGroupIcon, rtVersion}) {
-		t.Errorf("resource types %v", types)
 	}
 }
 

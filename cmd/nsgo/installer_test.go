@@ -145,7 +145,28 @@ func TestNSISScript(t *testing.T) {
 	if want := "ExecWait '\"$INSTDIR\\MyApp.exe\" --nsgo-register-toast=\"$SMPROGRAMS\\Bob$\\'s `Notes`.lnk\"'"; !strings.Contains(out.String(), want) {
 		t.Errorf("script lacks %s", want)
 	}
-	for v, want := range map[string]string{"1.2.3": "1.2.3.0", "v2": "2.0.0.0", "1.2.3.4.5": "1.2.3.4"} {
+	if strings.Contains(out.String(), "Publisher") || strings.Contains(out.String(), "LegalCopyright") {
+		t.Error("a script without a publisher or copyright names one")
+	}
+	// The publisher and copyright the executable's version says are the setup's and the uninstall entry's.
+	p.Windows.Publisher, p.Copyright = "Example $Ltd", "© 2026 Example"
+	if d, err = nsisScript(p, pkg, "arm64"); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := nsisTemplate.Execute(&out, d); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "Example $$Ltd"`,
+		`VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "© 2026 Example"`,
+		`WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\dev.example.app" "Publisher" "Example $$Ltd"`,
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("script lacks %s", want)
+		}
+	}
+	for v, want := range map[string]string{"1.2.3": "1.2.3.0", "v2": "2.0.0.0", "1.2.3.4.5": "1.2.3.4", "1.2.0-beta.1": "1.2.0.0", "": "0.0.0.0"} {
 		if got := nsisVersion(v); got != want {
 			t.Errorf("nsisVersion(%q) = %s, want %s", v, got, want)
 		}

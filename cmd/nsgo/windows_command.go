@@ -146,37 +146,27 @@ func main() {
 }
 `
 
-// buildWindowsCommand writes the console companion beside p.Name.exe. It is
-// a separate Go program so the app keeps the GUI subsystem and Explorer never
-// opens a console for the normal executable.
-func buildWindowsCommand(ctx context.Context, p *project, dir, arch string) error {
+// buildWindowsCommand writes the console companion beside p.Name.exe, linking syso, the app's resource object, when there is one, so both files show the same icon and version. It is a separate Go program so the app keeps the GUI subsystem and Explorer never opens a console for the normal executable.
+func buildWindowsCommand(ctx context.Context, p *project, dir, arch string, syso []byte) error {
 	temp, err := os.MkdirTemp("", "nsgo-windows-command-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(temp)
-	source := filepath.Join(temp, "main.go")
-	if err := os.WriteFile(source, []byte(windowsCommandSource), 0o644); err != nil {
-		return err
+	// A module of its own, as go build links .syso files only into a package's build, never one of files named on the command line.
+	files := map[string]string{"main.go": windowsCommandSource, "go.mod": "module nsgo-windows-command\n\ngo 1.26\n"}
+	if syso != nil {
+		files[windowsResourceObject(arch)] = string(syso)
 	}
-	if err := os.WriteFile(filepath.Join(temp, "go.mod"), []byte("module nsgo-windows-command\n\ngo 1.26\n"), 0o644); err != nil {
-		return err
-	}
-	// The companion is compiled from a temporary package, so copy the same
-	// combined icon/version object into it. This gives .com identical metadata
-	// without creating a second .rsrc section in either executable.
-	resource := windowsResourcePath(p, arch)
-	if data, err := os.ReadFile(resource); err == nil {
-		if err := os.WriteFile(filepath.Join(temp, filepath.Base(resource)), data, 0o644); err != nil {
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(temp, name), []byte(data), 0o644); err != nil {
 			return err
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("read Windows resources: %w", err)
 	}
 	output := filepath.Join(dir, p.Name+".com")
 	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-buildvcs=false", "-o", output, ".")
 	cmd.Dir = temp
-	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH="+arch, "CGO_ENABLED=0")
+	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH="+arch, "CGO_ENABLED=0", "GOWORK=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build Windows command companion failed: %w\n%s", err, out)
 	}

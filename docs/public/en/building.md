@@ -34,6 +34,7 @@ name: Hello
 id: dev.example.hello
 version: 0.1.0
 build_number: 1         # CFBundleVersion and Android's versionCode; else from version
+# copyright: © 2026 Example  # the Windows executable's details and installer, and the macOS About panel
 # appearance: dark      # light or dark whatever the system's
 # theme: theme.json     # a TSX app's theme: NSGo's or a shadcn/ui one
 # i18n: { dir: locales, source: en }  # the app's catalogs and the language they are written in
@@ -55,6 +56,7 @@ build:
 # android: { permissions: [REQUEST_INSTALL_PACKAGES] }  # manifest permissions beyond the runtime's
 # android: { recording: true }  # the microphone service microphone.RecordWAV records in, with RECORD_AUDIO, the foreground-service permissions and POST_NOTIFICATIONS, which RecordWAV asks for so its notification shows from Android 13; a refusal still records
 # windows: { command_line: true }  # add <name>.com, a console companion that forwards arguments and streams to <name>.exe; not in store builds
+# windows: { publisher: Example Ltd }  # the company the Windows executable's details, its installer and the uninstall entry name; else windows.store.publisher_name
 # linux: { maintainer: "Jane Doe <jane@example.com>" }  # the Linux packages' maintainer, else the app's name
 # release: { github: me/hello }  # the GitHub repository the install scripts and updates install from, else the Git remote origin's; tag_prefix: v by default
 # updates: { key: <public key> }  # how the app updates, by platform and channel: see Updates

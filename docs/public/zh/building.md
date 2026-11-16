@@ -34,6 +34,7 @@ name: Hello
 id: dev.example.hello
 version: 0.1.0
 build_number: 1         # CFBundleVersion 和 Android 的 versionCode；省略时由 version 推出
+# copyright: © 2026 Example  # Windows 可执行文件的详细信息和安装程序，以及 macOS 的“关于”面板
 # appearance: dark      # 无论系统设置如何，都使用 light 或 dark
 # theme: theme.json     # TSX 应用的主题：NSGo 的主题或 shadcn/ui 主题
 # i18n: { dir: locales, source: en }  # 应用的文案目录及其编写语言
@@ -55,6 +56,7 @@ build:
 # android: { permissions: [REQUEST_INSTALL_PACKAGES] }  # 运行时所需之外的清单权限
 # android: { recording: true }  # microphone.RecordWAV 录音所用的麦克风服务，连同 RECORD_AUDIO、前台服务权限和 POST_NOTIFICATIONS；从 Android 13 起 RecordWAV 会一并申请后者以显示录音通知，用户拒绝时照常录音
 # windows: { command_line: true }  # 添加 <name>.com 控制台伴侣，把参数和标准流转给 <name>.exe；store 构建不含
+# windows: { publisher: Example Ltd }  # Windows 可执行文件的详细信息、安装程序和卸载项显示的发布者；省略时为 windows.store.publisher_name
 # linux: { maintainer: "Jane Doe <jane@example.com>" }  # Linux 软件包的维护者，省略时为应用名
 # release: { github: me/hello }  # 安装脚本和自动更新从其 Releases 安装的 GitHub 仓库，省略时取 Git 远程 origin 的；tag_prefix 默认为 v
 # updates: { key: <公钥> }  # 应用按平台和渠道更新的方式，见“自动更新”

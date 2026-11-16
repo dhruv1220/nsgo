@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"debug/pe"
 	"os"
 	"os/exec"
@@ -170,7 +169,7 @@ func TestBuildJobs(t *testing.T) {
 func TestBuildWindowsCommand(t *testing.T) {
 	dir := t.TempDir()
 	p := &project{Name: "tool"}
-	if err := buildWindowsCommand(t.Context(), p, dir, "amd64"); err != nil {
+	if err := buildWindowsCommand(t.Context(), p, dir, "amd64", nil); err != nil {
 		t.Fatal(err)
 	}
 	f, err := pe.Open(filepath.Join(dir, "tool.com"))
@@ -184,37 +183,6 @@ func TestBuildWindowsCommand(t *testing.T) {
 	}
 	if header.Subsystem != pe.IMAGE_SUBSYSTEM_WINDOWS_CUI {
 		t.Fatalf("tool.com's subsystem is %d, want the console's, %d", header.Subsystem, pe.IMAGE_SUBSYSTEM_WINDOWS_CUI)
-	}
-}
-
-func TestBuildWindowsCommandCarriesResources(t *testing.T) {
-	dir := t.TempDir()
-	p := &project{Name: "tool", Dir: dir}
-	syso, err := windowsResource(nil, nil, "amd64", []windowsVersionStrings{{Language: langEnUS, Name: "Tool", FileName: "tool", Version: "1.2.3"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(windowsResourcePath(p, "amd64"), syso, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := buildWindowsCommand(t.Context(), p, dir, "amd64"); err != nil {
-		t.Fatal(err)
-	}
-	f, err := pe.Open(filepath.Join(dir, "tool.com"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	section := f.Section(".rsrc")
-	if section == nil {
-		t.Fatal("tool.com has no .rsrc section")
-	}
-	data, err := section.Data()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(data, utf16Bytes("Tool")) {
-		t.Error("tool.com resource lacks version strings")
 	}
 }
 

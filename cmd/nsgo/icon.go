@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/pe"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"go/build"
 	"image"
 	"image/color"
 	"image/draw"
@@ -645,14 +647,18 @@ StartupWMClass={{.WMClass}}
 {{- end}}
 `))
 
-// writeWindowsIcon writes the icon as a resource object into the app's
-// package directory, so go build links it into the executable, and
-// returns the function that removes it again. Go only links .syso files
-// from the package's own directory.
-func writeWindowsIcon(p *project, goarch string) (func(), error) {
+// writeWindowsResources writes the app's resources, its icon and its version, as an object into the app's package directory, so go build links it into the executable, and returns the object and the function that removes it again. Go only links .syso files from the package's own directory, and its linker takes resources from one object alone: when an object of the app's own holds resources, the executable takes those instead, and the object returned is nil.
+func writeWindowsResources(ctx context.Context, p *project, goarch string) ([]byte, func(), error) {
+	own, err := windowsAppResources(p.Dir, goarch)
+	if err != nil || own != "" {
+		if own != "" {
+			warnIn(ctx, "%s holds the executable's resources, so they leave out the icon and version nsgo.yaml gives", own)
+		}
+		return nil, func() {}, err
+	}
 	img, err := p.iconImage()
 	if err != nil {
-		return func() {}, err
+		return nil, func() {}, err
 	}
 	var images [][]byte
 	if img != nil {
@@ -660,23 +666,51 @@ func writeWindowsIcon(p *project, goarch string) (func(), error) {
 			images = append(images, scaledPNG(img, size))
 		}
 	}
-	versions, err := windowsVersionStringsFor(p)
+	version, err := p.windowsVersion()
 	if err != nil {
-		return func() {}, err
+		return nil, func() {}, err
 	}
-	syso, err := windowsResource(images, windowsIconSizes, goarch, versions)
+	syso, err := windowsResource(goarch, images, windowsIconSizes, version)
 	if err != nil {
-		return nil, err
+		return nil, func() {}, err
 	}
-	path := windowsResourcePath(p, goarch)
+	path := filepath.Join(p.Dir, windowsResourceObject(goarch))
 	if err := os.WriteFile(path, syso, 0o644); err != nil {
-		return nil, err
+		return nil, func() {}, err
 	}
-	return func() { os.Remove(path) }, nil
+	return syso, func() { os.Remove(path) }, nil
 }
 
-func windowsResourcePath(p *project, goarch string) string {
-	return filepath.Join(p.Dir, "nsgo_icon_windows_"+goarch+".syso")
+// windowsResourceObject is the name of the object writeWindowsResources writes.
+func windowsResourceObject(goarch string) string { return "nsgo_icon_windows_" + goarch + ".syso" }
+
+// windowsAppResources returns the name of an object of the app's own in dir that go build links for Windows on goarch and that holds resources, or "".
+func windowsAppResources(dir, goarch string) (string, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.syso"))
+	if err != nil {
+		return "", err
+	}
+	ctx := build.Default
+	ctx.GOOS, ctx.GOARCH, ctx.CgoEnabled = "windows", goarch, false
+	for _, file := range files {
+		name := filepath.Base(file)
+		if name == windowsResourceObject(goarch) {
+			continue
+		}
+		if ok, err := ctx.MatchFile(dir, name); err != nil || !ok {
+			continue
+		}
+		f, err := pe.Open(file)
+		if err != nil {
+			continue
+		}
+		rsrc := f.Section(".rsrc") != nil
+		f.Close()
+		if rsrc {
+			return name, nil
+		}
+	}
+	return "", nil
 }
 
 // windowsIconSizes are the sizes Explorer, the taskbar and title bars

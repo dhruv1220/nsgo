@@ -77,4 +77,25 @@ func TestApplePlistTakesTheProjectsEntries(t *testing.T) {
 	if want := "<key>NSMicrophoneUsageDescription</key><string>Dictate &amp; send</string>"; !strings.Contains(string(data), want) {
 		t.Errorf("Info.plist lacks %q:\n%s", want, data)
 	}
+	if strings.Contains(string(data), "NSHumanReadableCopyright") {
+		t.Errorf("Info.plist without copyright holds one:\n%s", data)
+	}
+
+	// copyright is the About panel's, unless apple.info gives its own.
+	p.Copyright = "© 2026 Oneo & co"
+	if err := writePlist(path, p, macPlist, ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(path)
+	if want := "<key>NSHumanReadableCopyright</key><string>© 2026 Oneo &amp; co</string>"; !strings.Contains(string(data), want) {
+		t.Errorf("Info.plist lacks %q:\n%s", want, data)
+	}
+	p.Apple.Info["NSHumanReadableCopyright"] = "Oneo"
+	if err := writePlist(path, p, macPlist, ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(path)
+	if n := strings.Count(string(data), "NSHumanReadableCopyright"); n != 1 || !strings.Contains(string(data), "<string>Oneo</string>") {
+		t.Errorf("apple.info's copyright: %d entries:\n%s", n, data)
+	}
 }

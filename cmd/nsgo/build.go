@@ -711,29 +711,25 @@ func buildMacApp(ctx context.Context, p *project, dir, arch string) (string, err
 	return app, run(ctx, "codesign", "--force", "--sign", "-", app)
 }
 
-// buildWindows writes <dir>/<name>.exe with the icon linked in, and the
-// resources beside it with WinSparkle.dll where the app updates.
+// buildWindows writes <dir>/<name>.exe with the icon and version linked in, and the resources beside it with WinSparkle.dll where the app updates.
 func buildWindows(ctx context.Context, p *project, dir, arch string) error {
-	removeIcon, err := writeWindowsIcon(p, arch)
+	syso, removeResources, err := writeWindowsResources(ctx, p, arch)
+	defer removeResources()
 	if err != nil {
 		return err
 	}
-	err = goBuild(ctx, p, filepath.Join(dir, p.Name+".exe"),
-		[]string{"GOOS=windows", "GOARCH=" + arch, "CGO_ENABLED=0"}, "-H=windowsgui")
-	if err != nil {
-		removeIcon()
+	if err := goBuild(ctx, p, filepath.Join(dir, p.Name+".exe"),
+		[]string{"GOOS=windows", "GOARCH=" + arch, "CGO_ENABLED=0"}, "-H=windowsgui"); err != nil {
 		return err
 	}
 	if p.windowsCommandLine() {
 		stage(ctx, "compiling the command companion")
-		if err := buildWindowsCommand(ctx, p, dir, arch); err != nil {
-			removeIcon()
+		if err := buildWindowsCommand(ctx, p, dir, arch, syso); err != nil {
 			return err
 		}
 	} else if p.Windows.CommandLine {
 		detailIn(ctx, "the Microsoft Store's package leaves out the command companion, which no console finds there")
 	}
-	removeIcon()
 	stage(ctx, "copying resources")
 	if err := copyResources(p, dir); err != nil {
 		return err
@@ -1097,6 +1093,9 @@ const plistHead = `<?xml version="1.0" encoding="UTF-8"?>
 
 var macPlist = template.Must(template.New("mac").Parse(plistHead + `	<key>LSMinimumSystemVersion</key><string>11.0</string>
 	<key>NSHighResolutionCapable</key><true/>
+{{- if and .Copyright (not (index .Apple.Info "NSHumanReadableCopyright"))}}
+	<key>NSHumanReadableCopyright</key><string>{{html .Copyright}}</string>
+{{- end}}
 {{- if .MacOS.Category}}
 	<key>LSApplicationCategoryType</key><string>{{html .MacOS.Category}}</string>
 {{- end}}
