@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"cmp"
 	"math"
 	"time"
 
@@ -197,7 +196,7 @@ func (v *view) selected() string {
 	return v.spec.Selected()
 }
 
-// look is the view's Look with its zero fields filled: the text color the edge canvas has, at an alpha, and no label background.
+// look is the view's Look with its zero fields filled: the text color the edge canvas has, at an alpha, and for the label's background a clearing of the edges under the label (ink's zero).
 func (v *view) look() inks {
 	var l Look
 	if v.spec.LookFunc != nil {
@@ -210,7 +209,7 @@ func (v *view) look() inks {
 		return ink{color: c, alpha: 1}
 	}
 	return inks{line: pick(l.Line, .35), emphasis: pick(l.Emphasis, 1), label: pick(l.Label, .55),
-		labelBackground: pick(cmp.Or(l.LabelBackground, core.Transparent), 1), labelBorder: pick(l.LabelBorder, .2)}
+		labelBackground: ink{color: l.LabelBackground, alpha: 1}, labelBorder: pick(l.LabelBorder, .2)}
 }
 
 // diagram is the plane of edges and nodes, as large as the layout, which

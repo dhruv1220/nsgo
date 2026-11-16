@@ -207,8 +207,8 @@ func TestViewShownAgainKeepsItsSizes(t *testing.T) {
 	}
 }
 
-// edgeInks returns the colors and alphas the edge canvas under the diagram strokes and fills with, in the order it paints.
-func edgeInks(t *testing.T, app *nsgotest.App) (strokes, fills []ink) {
+// edgeInks returns the colors and alphas the edge canvas under the diagram strokes and fills with, in the order it paints, and the colors it fills with while it erases.
+func edgeInks(t *testing.T, app *nsgotest.App) (strokes, fills, erases []ink) {
 	t.Helper()
 	var canvas *nsgotest.View
 	var find func(v *nsgotest.View)
@@ -224,18 +224,32 @@ func edgeInks(t *testing.T, app *nsgotest.App) (strokes, fills []ink) {
 	if canvas == nil || len(canvas.Ops) == 0 {
 		t.Fatalf("no edge canvas drew\n%s", app.Dump())
 	}
-	alpha := float32(1)
+	type state struct {
+		alpha     float32
+		composite driver.CompositeOp
+	}
+	st, stack := state{alpha: 1}, []state(nil)
 	for _, op := range canvas.Ops {
 		switch op.Kind {
+		case driver.DrawSave:
+			stack = append(stack, st)
+		case driver.DrawRestore:
+			st, stack = stack[len(stack)-1], stack[:len(stack)-1]
 		case driver.DrawAlpha:
-			alpha = op.A
+			st.alpha = op.A
+		case driver.DrawComposite:
+			st.composite = op.Composite
 		case driver.DrawStrokeColor:
-			strokes = append(strokes, ink{op.Color, alpha})
+			strokes = append(strokes, ink{op.Color, st.alpha})
 		case driver.DrawFillColor:
-			fills = append(fills, ink{op.Color, alpha})
+			if st.composite == driver.CompositeDestinationOut {
+				erases = append(erases, ink{op.Color, st.alpha})
+			} else {
+				fills = append(fills, ink{op.Color, st.alpha})
+			}
 		}
 	}
-	return strokes, fills
+	return strokes, fills, erases
 }
 
 func near(a, b float32) bool { return math.Abs(float64(a-b)) < 1e-3 }
@@ -249,13 +263,10 @@ func TestViewDrawsInTheTextColor(t *testing.T) {
 			Children: []core.Node{View{Label: "Pipeline", State: &state, Data: sample}}}
 	}, nsgotest.Size(900, 700), nsgotest.Environment(driver.Environment{ReduceMotion: true, Idiom: driver.IdiomDesktop}))
 	app.Settle()
-	strokes, fills := edgeInks(t, app)
+	strokes, fills, erases := edgeInks(t, app)
 	want := map[string]float32{"line": .35, "muted line": .35 * mutedEdgeOpacity, "label": .55, "label border": .2}
 	found := map[string]bool{}
 	for _, k := range append(strokes, fills...) {
-		if k.color == core.Transparent {
-			continue
-		}
 		if k.color != text {
 			t.Fatalf("painted %08x at %v, want the text color %08x", k.color, k.alpha, text)
 		}
@@ -270,12 +281,9 @@ func TestViewDrawsInTheTextColor(t *testing.T) {
 			t.Errorf("nothing painted as a %s, at alpha %v: strokes %v, fills %v", name, a, strokes, fills)
 		}
 	}
-	transparent := false
-	for _, k := range fills {
-		transparent = transparent || k.color == core.Transparent
-	}
-	if !transparent {
-		t.Errorf("the label's background is not clear: fills %v", fills)
+	// The label clears the edges under it, as an opaque background would hide them.
+	if len(erases) != 1 || erases[0].color&0xff != 0xff || erases[0].alpha != 1 {
+		t.Errorf("the label erased %v under it, want one opaque fill", erases)
 	}
 }
 
@@ -287,7 +295,10 @@ func TestViewDrawsItsLook(t *testing.T) {
 		return View{Label: "Pipeline", State: &state, Data: sample, LookFunc: func() Look { return look }}
 	}, nsgotest.Size(900, 700), nsgotest.Environment(driver.Environment{ReduceMotion: true, Idiom: driver.IdiomDesktop}))
 	app.Settle()
-	strokes, fills := edgeInks(t, app)
+	strokes, fills, erases := edgeInks(t, app)
+	if len(erases) != 0 {
+		t.Errorf("a label with a background erased %v", erases)
+	}
 	allowed := map[core.Color]bool{look.Line: true, look.Line.Faded(mutedEdgeOpacity): true, look.Label: true, look.LabelBackground: true, look.LabelBorder: true}
 	for _, k := range append(strokes, fills...) {
 		if !allowed[k.color] || k.alpha != 1 {

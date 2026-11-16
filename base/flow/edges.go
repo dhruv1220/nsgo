@@ -298,8 +298,13 @@ func (r *route) label(d *core.Drawing, text string, look inks, alpha float32) {
 	box := struct{ x, y, w, h float32 }{float32(x - tw/2 - labelPadX), float32(y - th/2 - labelPadY), float32(tw + 2*labelPadX), float32(th + 2*labelPadY)}
 	r.shifted(d, w, func() {
 		d.BeginPath().RoundRect(box.x, box.y, box.w, box.h, box.h/2)
-		look.labelBackground.faded(alpha).fill(d)
-		d.Fill()
+		if look.labelBackground.color == 0 {
+			// With no background of its own, the label clears the edges under it, so it reads on whatever is behind the canvas.
+			d.Save().SetComposite(core.CompositeDestinationOut).SetAlpha(alpha).SetFillColor(core.RGB(0)).Fill().Restore()
+		} else {
+			look.labelBackground.faded(alpha).fill(d)
+			d.Fill()
+		}
 		look.labelBorder.faded(alpha).stroke(d)
 		d.SetLineWidth(1).Stroke()
 		look.label.faded(alpha).fill(d)
