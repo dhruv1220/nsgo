@@ -29,11 +29,16 @@ func newTerminal(t *testing.T, opts Options) *Terminal {
 }
 
 func TestViewRunsShell(t *testing.T) {
-	term := newTerminal(t, Options{Command: []string{"/bin/sh"}, Env: []string{"PS1=$ "}})
+	const prompt = "nsgo-test>"
+	term := newTerminal(t, Options{Command: []string{"/bin/sh"}, Env: []string{"PS1=" + prompt + " "}})
 	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
 		return View{Terminal: term, Label: "Terminal", AutoFocus: true, Style: core.Style{Width: core.Pct(100), Height: core.Pct(100)}}
 	}, nsgotest.Size(640, 400))
-	app.WaitUntil(5*time.Second, func() bool { return strings.Contains(term.Text(), "$") })
+	waitForPrompt := func(n int) {
+		t.Helper()
+		app.WaitUntil(5*time.Second, func() bool { return strings.Count(term.Text(), prompt) >= n })
+	}
+	waitForPrompt(1)
 	if cols, rows := term.Size(); cols < 40 || rows < 10 {
 		t.Errorf("the view sized the screen %d×%d", cols, rows)
 	}
@@ -41,13 +46,17 @@ func TestViewRunsShell(t *testing.T) {
 	app.Type("label:Terminal", "lo")
 	app.Key("enter")
 	app.WaitUntil(5*time.Second, func() bool { return strings.Contains(term.Text(), "\nhello") })
+	waitForPrompt(2)
 
 	// Control keys reach the program as their control characters.
-	app.Type("label:Terminal", "sleep 30")
+	// The foreground process reports when it starts, and the shell's
+	// next prompt reports that it has handled the interrupt before more
+	// input is sent. A fixed sleep can race either boundary on a busy host.
+	app.Type("label:Terminal", `/bin/sh -c 'printf "\nnsgo-started\n"; exec sleep 30'`)
 	app.Key("enter")
-	time.Sleep(500 * time.Millisecond) // for sh to start sleep
-	app.Settle()
+	app.WaitUntil(5*time.Second, func() bool { return strings.Contains(term.Text(), "\nnsgo-started") })
 	app.Key("ctrl+c")
+	waitForPrompt(3)
 	app.Type("label:Terminal", "echo done")
 	app.Key("enter")
 	app.WaitUntil(5*time.Second, func() bool { return strings.Contains(term.Text(), "\ndone") })
