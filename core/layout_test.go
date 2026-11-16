@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
@@ -177,6 +179,50 @@ func TestGridMeasuresTextAtItsContentWidth(t *testing.T) {
 	// Two 40.8 pt lines of the approximate 17 pt font, in 20 pt of padding.
 	if got := h.find("cell").frame.Size.Height; got != 61 {
 		t.Errorf("cell height = %v, want 61: the text wraps to two lines at its content width", got)
+	}
+}
+
+// TestGridBaselineRowsOfWrappingTexts is a history list's case (#280): rows of a title, a smaller status and a message in a baseline-aligned grid. Texts report no baseline of their own, so a row aligns its texts' one-line boxes by their bottoms; a text that wraps at its min-content width must not push its row's other cells down by its wrapped height.
+func TestGridBaselineRowsOfWrappingTexts(t *testing.T) {
+	for name, rows := range map[string][][3]string{
+		"latin":    {{"Optimize app data", "skipped", "Safari is running"}, {"Flush DNS cache", "done", "Flushed"}, {"Reset QuickLook", "done", "Reset"}},
+		"cjk":      {{"优化应用数据库", "已跳过", "Safari 仍在运行"}, {"刷新 DNS 缓存", "完成", "已刷新"}, {"重置快速查看", "完成", "已重置"}},
+		"one word": {{"Alpha", "ok", "Beta"}, {"Gamma", "ok", "Delta"}, {"Epsilon", "ok", "Zeta"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHost(t, Size{Width: 600, Height: 300}, func(cx *Scope) Node {
+				var cells []Node
+				for r, row := range rows {
+					for c, content := range row {
+						size := Points(15)
+						if c == 1 {
+							size = 12
+						}
+						cells = append(cells, Text{TestID: fmt.Sprintf("r%dc%d", r, c), Content: content, Style: Style{FontSize: size}})
+					}
+				}
+				return View{Style: Style{Display: DisplayGrid, GridTemplateColumns: "max-content max-content 1fr",
+					ColumnGap: 12, RowGap: 8, AlignItems: AlignBaseline}, Children: cells}
+			})
+			h.commit()
+			var prevBottom Points
+			for r := range rows {
+				top, bottom := Points(math.MaxFloat32), Points(0)
+				for c := range 3 {
+					f := h.find(fmt.Sprintf("r%dc%d", r, c)).frame
+					top, bottom = min(top, f.Origin.Y), max(bottom, f.Origin.Y+f.Size.Height)
+					if c > 0 {
+						if prev := h.find(fmt.Sprintf("r%dc0", r)).frame; f.Origin.Y+f.Size.Height != prev.Origin.Y+prev.Size.Height {
+							t.Errorf("row %d: cell %d = %v, cell 0 = %v: their bottoms differ", r, c, f, prev)
+						}
+					}
+				}
+				if r > 0 && top != prevBottom+8 {
+					t.Errorf("row %d starts at %v, want %v: the row before ends at %v plus the gap", r, top, prevBottom+8, prevBottom)
+				}
+				prevBottom = bottom
+			}
+		})
 	}
 }
 
