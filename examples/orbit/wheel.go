@@ -41,7 +41,7 @@ func (s *swipe) wheel(e core.WheelEvent) {
 	}
 	switch e.Phase {
 	case core.GestureBegan:
-		*s = swipe{r: s.r, live: true, last: time.Now()}
+		*s = swipe{r: s.r, live: true, last: s.r.cx.Now()}
 		s.r.grab()
 	case core.GestureChanged:
 		if !s.live || s.along {
@@ -60,7 +60,8 @@ func (s *swipe) wheel(e core.WheelEvent) {
 			s.across = true
 			e.Delta.X = s.lock.X
 		}
-		if now, dt := time.Now(), time.Since(s.last); dt >= minSample {
+		now := s.r.cx.Now()
+		if dt := now.Sub(s.last); dt >= minSample {
 			s.speed = 0.6*s.speed + 0.4*float64(e.Delta.X)/dt.Seconds()
 			s.last = now
 		}
@@ -77,7 +78,7 @@ func (s *swipe) wheel(e core.WheelEvent) {
 			return
 		}
 		speed := float64(e.Velocity.X)
-		if speed == 0 && time.Since(s.last) < 80*time.Millisecond {
+		if speed == 0 && s.r.cx.Now().Sub(s.last) < 80*time.Millisecond {
 			speed = s.speed
 		}
 		speed = max(min(speed, maxSpeed), -maxSpeed)
