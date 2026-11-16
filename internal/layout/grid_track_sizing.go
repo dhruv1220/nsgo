@@ -327,11 +327,7 @@ func resolveItemBaselines(axis AbstractAxis, items []gridItem, innerNodeSize Siz
 			if !it.participatesInBaselineAlignment() {
 				continue
 			}
-			// Baselines are taken from the first line of the item. Measure at
-			// max-content width so a text that can wrap at min-content does not
-			// turn its full intrinsic height into the baseline fallback. The
-			// item's resolved grid area may be narrower later, but its first-line
-			// baseline remains the same.
+			// Measured at max-content width, where Taffy measures at min-content: leaves report no baseline, so a text's baseline falls back to its height, and a text that wraps at min-content width would take its wrapped height for its baseline and push the row's other items down (#280). At max-content width it is one line, as tall as its first line is in any column.
 			out := performChildLayout(it.node, noneSize, innerNodeSize, maxContentSpaces, inherentSize, Line[bool]{})
 			height := out.size.Height
 			// A scroll container's baseline comes from its content as if
