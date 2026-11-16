@@ -1,4 +1,4 @@
-package nsgo
+package moduletest
 
 import (
 	"go/importer"
@@ -31,6 +31,8 @@ var (
 // matter, its relative links, and the exported names, methods and packages
 // it mentions.
 func TestSkills(t *testing.T) {
+	// skills/ names the module's files from its root.
+	t.Chdir(moduleRoot)
 	skills, err := filepath.Glob("skills/*/SKILL.md")
 	if err != nil || len(skills) == 0 {
 		t.Fatalf("no skills/*/SKILL.md: %v", err)

@@ -24,7 +24,7 @@ NSGo is one Go module. Apps import its packages from the top; each platform's ba
 | `cmd/nsgo` | The `nsgo` tool |
 | `examples/` | The gallery and the other example apps |
 
-Packages import only downward; `layering_test.go` checks the graph on every target.
+Packages import only downward; `internal/moduletest/layering_test.go` checks the graph on every target.
 
 ## Design documents
 

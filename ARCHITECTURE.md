@@ -12,7 +12,7 @@ Apps import the public packages; `internal/` holds the implementation, which onl
 
 | Package | NSH counterpart | Responsibility |
 | --- | --- | --- |
-| `nsgo` (module root) | `run_app`, `AppView` | `nsgo.Run` of a root view or of an app that opens its windows ([application](docs/architecture/application.md)), and `nsgo.NewView` in a host's window ([embedding](docs/architecture/embedding.md)), on the backend build tags pick |
+| `nsgo` (module root) | `run_app`, `AppView` | `nsgo.Run` of a root view or of an app that opens its windows ([application](docs/architecture/application.md)), and `nsgo.NewView` in a host's window ([embedding](docs/architecture/embedding.md)), on the backend build tags pick (`internal/backend`) |
 | `core` | `nsh-core` | The app's API: elements, styles, Tailwind classes, themes, the reactive graph and regions, services; the shadow tree, layout and text preparation |
 | `base` | `nsh-base` | Unstyled components, a file each: controls, popups, navigation, panels and tables ([components](docs/architecture/components.md)) |
 | `base/datatable`, `base/dock`, `base/plot`, `base/toast` | `nsh-base` | Complex components, a package each: a virtualized table, a dock, charts and toasts |
@@ -84,7 +84,7 @@ A mini program runs the engine in its logic layer, which has no DOM: text breaks
 
 ## Boundaries
 
-Packages import only downward, which `layering_test.go` checks on every target; [package layers](docs/architecture/layers.md) holds the graph and the rules for each layer.
+Packages import only downward, which `internal/moduletest/layering_test.go` checks on every target; [package layers](docs/architecture/layers.md) holds the graph and the rules for each layer.
 
 - Each API has one home, `base`'s components have no look and `ui`'s are `base`'s in one ([principles](AGENTS.md#principles), [components](AGENTS.md#components)).
 - The main thread never waits for the engine, but up to 16 ms on macOS for a resized window's layout; the engine never touches main-thread-only UI objects.

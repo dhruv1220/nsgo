@@ -1,4 +1,4 @@
-package nsgo
+package backend
 
 import (
 	"slices"

@@ -1,4 +1,4 @@
-package nsgo
+package backend
 
 import (
 	"slices"
@@ -23,9 +23,9 @@ func TestLaunchFlags(t *testing.T) {
 		t.Errorf("malformed flags = %+v", f)
 	}
 
-	o := options{appearance: core.AppearanceLight}
+	o := Options{Appearance: core.AppearanceLight}
 	(&launchFlags{fps: true, appearanceSet: true}).apply(&o)
-	if !o.monitor || o.appearance != core.AppearanceSystem {
+	if !o.Monitor || o.Appearance != core.AppearanceSystem {
 		t.Errorf("options = %+v", o)
 	}
 	if got := f.parse(nil); got != nil {

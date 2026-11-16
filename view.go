@@ -2,6 +2,7 @@ package nsgo
 
 import (
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/backend"
 	"github.com/nsgo-dev/nsgo/internal/engine"
 )
 
@@ -13,17 +14,9 @@ import (
 // as it likes, in one window or several. Call its methods on the
 // platform's main thread.
 type View struct {
-	p    platformView
+	p    backend.View
 	host *core.Host
 	env  engine.HostEnvironment
-}
-
-// platformView is a backend's embedded view.
-type platformView interface {
-	Handle() uintptr
-	SetHostEnvironment(engine.HostEnvironment)
-	SetTokens(core.Tokens)
-	Close()
 }
 
 // NewView makes a view showing app, for a host that runs the platform's
@@ -34,8 +27,7 @@ type platformView interface {
 // Run's, as are the engine's command-line flags (--nsgo-fps). Close the
 // view when the host is done with it.
 func NewView(app App, opts ...Option) *View {
-	o := options{appearance: map[string]core.Appearance{
-		"light": core.AppearanceLight, "dark": core.AppearanceDark}[appearance]}
+	o := options{platform: backend.Options{Appearance: startAppearance()}}
 	for _, fn := range opts {
 		fn(&o)
 	}
@@ -43,7 +35,7 @@ func NewView(app App, opts ...Option) *View {
 		o.host = core.NewHost()
 	}
 	h := engine.HostOptions{Channel: o.host, Settings: &engine.HostSettings{}, OnError: o.onError, DataDir: o.dataDir}
-	return &View{p: newView(app, o, h), host: o.host}
+	return &View{p: backend.NewView(app, o.platform, h), host: o.host}
 }
 
 // Handle returns the native view: an NSView pointer on macOS, a
@@ -94,7 +86,7 @@ func (v *View) Close() {
 // view is a child window, the HWND of the host's window, which it needs.
 // Other platforms ignore it.
 func Parent(handle uintptr) Option {
-	return func(o *options) { o.parent = handle }
+	return func(o *options) { o.platform.Parent = handle }
 }
 
 // DataDir keeps a view's app data, its storage included, in dir rather

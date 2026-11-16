@@ -139,7 +139,7 @@ func TestUpdateBuildSettings(t *testing.T) {
 	p, key := updatingProject(t, ", automatic: false")
 	pub := pkg.EncodePublicKey(key.Public().(ed25519.PublicKey))
 	flags := strings.Join(p.updateLdflags([]string{"GOOS=windows", "GOARCH=amd64"}), " ")
-	for _, want := range []string{"nsgo.updateFeed=https://github.com/example/hello/releases/latest/download/appcast-windows_x64.xml'", "nsgo.updateKey=" + pub} {
+	for _, want := range []string{"internal/backend.updateFeed=https://github.com/example/hello/releases/latest/download/appcast-windows_x64.xml'", "internal/backend.updateKey=" + pub} {
 		if !strings.Contains(flags, want) {
 			t.Errorf("ldflags %s lack %s", flags, want)
 		}

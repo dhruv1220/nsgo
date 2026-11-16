@@ -1,10 +1,14 @@
-package nsgo
+package backend
 
 import (
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/engine"
 	"github.com/nsgo-dev/nsgo/internal/platform/updates"
 	"github.com/nsgo-dev/nsgo/updater"
 )
+
+// Set by the nsgo tool with -ldflags -X: updateFeed is this target's appcast, updateKey the public key its downloads are signed with, and updateAutomatic "1" when the app checks on its own.
+var updateFeed, updateKey, updateAutomatic = "", "", ""
 
 // updateConfig is how the app updates, as the nsgo tool set it from
 // nsgo.yaml's updates; macOS's Sparkle reads its own from Info.plist.
@@ -20,7 +24,7 @@ func updateConfig() updates.Config {
 // updater has no schedule of its own: Linux, Android and iOS. It checks as
 // the app starts and whenever the user comes back to it, as a phone's app
 // stays in memory for days, and never while the app is out of sight.
-func withUpdateChecks(root App, app func(*core.Scope), c updates.Config, appStore bool) (App, func(*core.Scope)) {
+func withUpdateChecks(root engine.App, app func(*core.Scope), c updates.Config, appStore bool) (engine.App, func(*core.Scope)) {
 	if !c.Automatic || !c.Checks(appStore) {
 		return root, app
 	}

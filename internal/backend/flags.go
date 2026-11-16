@@ -1,4 +1,4 @@
-package nsgo
+package backend
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/engine"
 )
 
 // launchFlags are the engine's command-line flags, which any build of an
@@ -117,17 +118,17 @@ func (f *launchFlags) set(flag string) error {
 }
 
 // apply puts the flags over Run's options.
-func (f *launchFlags) apply(o *options) {
-	o.monitor = f.fps
+func (f *launchFlags) apply(o *Options) {
+	o.Monitor = f.fps
 	if f.appearanceSet {
-		o.appearance = f.appearance
+		o.Appearance = f.appearance
 	}
 }
 
 // localized returns root, run in the locale --nsgo-lang names. The flag
 // has the last word as the app starts, over a choice the app restores,
 // and the user's later choices have theirs.
-func (f *launchFlags) localized(root App) App {
+func (f *launchFlags) localized(root engine.App) engine.App {
 	if f.lang == "" {
 		return root
 	}

@@ -24,7 +24,7 @@ NSGo 是一个 Go module。应用从上层导入它的包；各平台的后端�
 | `cmd/nsgo` | `nsgo` 工具 |
 | `examples/` | Gallery 和其他示例应用 |
 
-包只向下导入；`layering_test.go` 在每个目标上检查这张依赖图。
+包只向下导入；`internal/moduletest/layering_test.go` 在每个目标上检查这张依赖图。
 
 ## 设计文档
 

@@ -1,4 +1,4 @@
-package nsgo
+package moduletest
 
 import (
 	"go/importer"

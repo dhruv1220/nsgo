@@ -20,32 +20,18 @@
 package nsgo
 
 import (
-	"log"
-
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/backend"
 	"github.com/nsgo-dev/nsgo/internal/dev"
 	"github.com/nsgo-dev/nsgo/internal/engine"
-	"github.com/nsgo-dev/nsgo/internal/restart"
 )
 
-// Set by the nsgo tool with -ldflags -X.
-var (
-	// appearance is nsgo.yaml's: "light" or "dark" starts the app in it.
-	appearance = ""
-	// updateFeed is this target's appcast, updateKey the public key its
-	// downloads are signed with, and updateAutomatic "1" when the app
-	// checks on its own (updates.go).
-	updateFeed, updateKey, updateAutomatic = "", "", ""
-)
+// appearance is nsgo.yaml's, set by the nsgo tool with -ldflags -X: "light" or "dark" starts the app in it.
+var appearance = ""
 
-// name and id are the app's name, "NSGo" where the tool set none, and ID.
-var name, id = appName(), core.App().ID
-
-func appName() string {
-	if n := core.App().Name; n != "" {
-		return n
-	}
-	return "NSGo"
+// startAppearance is the appearance the app starts in before its options: nsgo.yaml's.
+func startAppearance() core.Appearance {
+	return map[string]core.Appearance{"light": core.AppearanceLight, "dark": core.AppearanceDark}[appearance]
 }
 
 // App builds an app's root element once.
@@ -66,33 +52,15 @@ type Main interface {
 // never returns. After desktop.Restart it has started the app again,
 // which waits for this process to exit.
 func Run[M Main](main M, opts ...Option) {
-	restart.Await()
-	o := options{width: 480, height: 640, appearance: map[string]core.Appearance{
-		"light": core.AppearanceLight, "dark": core.AppearanceDark}[appearance]}
+	o := options{platform: backend.Options{Width: 480, Height: 640, Appearance: startAppearance()}}
 	for _, fn := range opts {
 		fn(&o)
 	}
-	launch.apply(&o)
-	o.constraints = o.constraints.Normalized()
-	if o.frame.Width > 0 && o.frame.Height > 0 {
-		o.width, o.height = o.frame.Width, o.frame.Height
-	}
-	size := o.constraints.Clamp(core.Size{Width: o.width, Height: o.height})
-	o.width, o.height = size.Width, size.Height
-	dev.Start()
 	switch m := any(main).(type) {
 	case func(cx *core.Scope) core.Node:
-		run(dev.Wrap(launch.localized(m)), nil, o)
+		backend.Run(m, nil, o.platform)
 	case func(app *core.Scope):
-		run(nil, launch.localizedApp(m), o)
-	}
-	// nsgo dev ends with the app it started, so a restart there only quits.
-	if core.Restarting() && !dev.Build {
-		if restart.Looping() {
-			log.Printf("nsgo: not restarting: the app restarted again within %v of its restart", restart.LoopWindow)
-		} else if err := restart.Start(launchArgs); err != nil {
-			log.Printf("nsgo: restarting: %v", err)
-		}
+		backend.Run(nil, m, o.platform)
 	}
 }
 
@@ -106,48 +74,14 @@ func SetMainView(cx *core.Scope, view func(cx *core.Scope) core.Node) {
 	cx.SetMainView(view)
 }
 
-// appOf returns the app's function of what Run runs: app, or one showing
-// root as its main view.
-func appOf(root App, app func(*core.Scope)) func(*core.Scope) {
-	if app != nil {
-		return app
-	}
-	return func(cx *core.Scope) { cx.SetMainView(root) }
-}
-
-// rootOf returns the root view of what Run runs on a platform that
-// opens no windows: root, or app's main view.
-func rootOf(root App, app func(*core.Scope)) App {
-	if app != nil {
-		return core.AppRoot(app)
-	}
-	return root
-}
-
 // Option configures Run and NewView.
 type Option func(*options)
 
 type options struct {
-	components core.NativeComponents
-	// fonts are the font files to register, under the app's resources.
-	fonts []string
-	// monitor shows the performance monitor over the app: --nsgo-fps.
-	monitor bool
-	// material is the material behind the main window's content, and
-	// width and height its size.
-	material      core.WindowMaterial
-	width, height core.Points
-	// frame is where the main window opens, when it moves.
-	frame core.WindowFrame
-	// constraints limit the main window.
-	constraints core.WindowConstraints
-	// appearance is the appearance the app starts in.
-	appearance core.Appearance
-	// hideDock starts the app out of the Dock (macOS).
-	hideDock bool
-	// What NewView takes: the parent window, the data directory, the
-	// error handler and the host channel.
-	parent  uintptr
+	// platform is what the backend takes.
+	platform backend.Options
+	// What NewView takes besides: the data directory, the error handler
+	// and the host channel.
 	dataDir string
 	onError func(error)
 	host    *core.Host
@@ -157,13 +91,13 @@ type options struct {
 // window and native chrome included, as core.Scope.SetAppearance later
 // changes it.
 func Appearance(appearance core.Appearance) Option {
-	return func(o *options) { o.appearance = appearance }
+	return func(o *options) { o.platform.Appearance = appearance }
 }
 
 // WindowSize sizes the main window's content, in points: 480 by 640 by
 // default. desktop.OpenWindow's windows take it where they set no size.
 func WindowSize(width, height core.Points) Option {
-	return func(o *options) { o.width, o.height = width, height }
+	return func(o *options) { o.platform.Width, o.platform.Height = width, height }
 }
 
 // WindowFrame opens the main window with frame f, as desktop.Frame
@@ -171,7 +105,7 @@ func WindowSize(width, height core.Points) Option {
 // window with it. A window no screen would show, as on a screen that
 // went away, opens centered on the main screen. Linux takes only the size.
 func WindowFrame(f core.WindowFrame) Option {
-	return func(o *options) { o.frame = f }
+	return func(o *options) { o.platform.Frame = f }
 }
 
 // WindowConstraints limits the main window's content size and what the
@@ -179,14 +113,14 @@ func WindowFrame(f core.WindowFrame) Option {
 // them later. desktop.OpenWindow's windows take their own from
 // WindowOptions.
 func WindowConstraints(c core.WindowConstraints) Option {
-	return func(o *options) { o.constraints = c }
+	return func(o *options) { o.platform.Constraints = c }
 }
 
 // HideDock starts the app out of the Dock and the app switcher, on
 // macOS, as a tray or background app runs: set before the app starts,
 // its icon never shows there. desktop.SetDockVisible changes it later.
 func HideDock() Option {
-	return func(o *options) { o.hideDock = true }
+	return func(o *options) { o.platform.HideDock = true }
 }
 
 // WindowMaterial starts the main window with material behind its content,
@@ -195,7 +129,7 @@ func HideDock() Option {
 // ignore it. desktop.SetWindowMaterial changes it later, which on
 // Windows needs a window started with one.
 func WindowMaterial(material core.WindowMaterial) Option {
-	return func(o *options) { o.material = material }
+	return func(o *options) { o.platform.Material = material }
 }
 
 // Fonts registers the font files at paths, slash-separated under the
@@ -203,7 +137,7 @@ func WindowMaterial(material core.WindowMaterial) Option {
 // the first view: text names them by their families, as Font.Family or a
 // Style's FontFamily.
 func Fonts(paths ...string) Option {
-	return func(o *options) { o.fonts = append(o.fonts, paths...) }
+	return func(o *options) { o.platform.Fonts = append(o.platform.Fonts, paths...) }
 }
 
 // Component registers a native component the app's Native elements name:
@@ -211,9 +145,9 @@ func Fonts(paths ...string) Option {
 // of each platform in files built for it.
 func Component(name string, factory core.NativeFactory) Option {
 	return func(o *options) {
-		if o.components == nil {
-			o.components = core.NativeComponents{}
+		if o.platform.Components == nil {
+			o.platform.Components = core.NativeComponents{}
 		}
-		o.components[name] = factory
+		o.platform.Components[name] = factory
 	}
 }

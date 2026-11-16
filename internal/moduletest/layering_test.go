@@ -1,4 +1,4 @@
-package nsgo
+package moduletest
 
 import (
 	"bytes"
@@ -63,10 +63,14 @@ var layers = []struct {
 	{"internal/platform/webstyle", []string{"internal/driver"}},
 	{"internal/platform/", append([]string{"internal/driver", "internal/engine", "internal/testhost", "core", "desktop/locales"}, platformShared...)},
 	{"nsgotest", []string{"core", "internal/automation", "internal/devtools", "internal/driver", "internal/testhost"}},
-	{"", []string{"core", "internal/dev", "internal/engine", "internal/platform/", "internal/restart", "updater"}},
+	{"", []string{"core", "internal/backend", "internal/dev", "internal/engine"}},
+	// The backend runs the app on the platform build tags pick, with the launch flags, the dev client, restarts and, where the platform's updater keeps no schedule, update checks.
+	{"internal/backend", []string{"core", "internal/dev", "internal/engine", "internal/platform/", "internal/restart", "updater"}},
 	// The dev client nsgo.Run starts in nsgo dev's builds; release builds link its no-op Start and Wrap alone.
 	{"internal/dev", []string{"core", "internal/engine"}},
 	{"internal/restart", nil},
+	// The module-wide tests, which have no code of their own.
+	{"internal/moduletest", nil},
 	// The code nsgo writes from catalogs runs on i18n.
 	{"i18n", []string{"core", "internal/cldr"}},
 	{"base/", []string{"core", "base/", "i18n"}},
@@ -187,6 +191,7 @@ type listedPackage struct {
 func listPackages(t *testing.T, goos, goarch, tags string) []listedPackage {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-e", "-tags="+tags, "-json=ImportPath,Imports,CgoFiles,Error", "./...")
+	cmd.Dir = moduleRoot
 	// CGO_ENABLED=1 keeps cgo files in the listing, so a C import shows.
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=1", "GOFLAGS=")
 	var stderr bytes.Buffer

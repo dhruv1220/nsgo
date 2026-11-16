@@ -16,7 +16,8 @@ nsgo
 │   └── benchmark                        The same apps on other frameworks
 │
 ├── Entry points
-│   ├── nsgo (root)                      Picks a backend and starts the app
+│   ├── nsgo (root)                      Run, NewView and their options
+│   │   ├── internal/backend             Picks a backend and starts the app
 │   │   ├── internal/dev                 The dev client of nsgo dev's builds
 │   │   └── internal/restart             Starts a desktop app again once it exits
 │   ├── tsx                              Runs TSX apps on goja, or the page's engine
@@ -107,7 +108,7 @@ The `nsgo` tool links no component or runtime, so changing them does not rebuild
 
 ## Dependency graph
 
-A line means "imports". `layering_test.go` checks the graph on every target, and fails on an import no rule allows.
+A line means "imports". `internal/moduletest/layering_test.go` checks the graph on every target, and fails on an import no rule allows.
 
 ```text
                      apps (examples/*)
@@ -135,7 +136,7 @@ A line means "imports". `layering_test.go` checks the graph on every target, and
 - The root starts the dev client (`internal/dev`), which imports `internal/devtools` and `internal/driver` only in dev builds, to write `-trace`'s batches and DevTools' commits, and `nsgotest` only in `nsgo dev -automation`'s (`internal/dev/automation.go`, the `nsgodev` and `nsgoautomation` tags), whose agent `nsgotest` and the tool reach through `internal/automation`, which imports nothing of NSGo's; `TestLayering` lists that build too, and `TestMinimalAppLinks` fails a release app that links `testing`, `nsgotest` or the protocol.
 - `audio` imports only `core`, as `mobile` does: `core` does the engine's part, so its sounds and players reach the platform through the batch.
 - `i18n` imports only `core` and `internal/cldr`; `base`'s packages import it for their catalogs, as `ui/chat/locales` does for its own.
-- `updater` imports only `core` and its catalogs; the root imports it, to check as the app starts where the platform's updater keeps no schedule.
+- `updater` imports only `core` and its catalogs; `internal/backend` imports it, to check as the app starts where the platform's updater keeps no schedule.
 - `ui` imports `base`, `core`, `mobile`, `desktop` and the icons; `base` never imports it.
 - `tsx/tsxtest` is the one package that imports both `tsx` and `nsgotest`, and `tsx/ui` with the packages below it the TSX packages that import `ui`. `tsx/internal/js`, the engines' API, imports nothing of NSGo's, and on the web reaches the page through `syscall/js`.
 - `base/terminal` is the one package of `base` that is not portable: it loads libghostty-vt through purego, runs programs on desktops and remote sessions there and on iOS, and elsewhere builds to report that it cannot (`unportable` in `layering_test.go`).
@@ -146,7 +147,7 @@ Backends reach `core` only through the engine and `core` imports no backend, so 
 
 - `internal/driver` is what they exchange: `core` writes a `MountBatch`, and a backend reports `driver.Event`s and implements `TextEngine`.
 - `internal/engine` runs `core` and defines `engine.Platform`, which each backend implements.
-- `nsgo` picks the backend by build tags (`run_windows.go`, `view_windows.go`) and hands it the app.
+- `nsgo` gathers `Run`'s and `NewView`'s options and hands the app to `internal/backend`, which picks the backend by build tags (`run_windows.go`, `view_windows.go`).
 
 `nsgotest` is a backend of its own: headless, without the engine, applying each batch to a model of the native views. On a platform, it drives a backend's test host through `internal/testhost`.
 
@@ -178,14 +179,14 @@ Go's linker keeps what a reachable function, method or package initializer reach
 - A backend leaves to the system what it has: images download through its HTTP client (`imageload.HTTP`), the web decodes and encodes images with the browser's codecs, and only Android imports `archive/zip`, for its APK.
 - What is large comes in by the app's own import: formulas, Untie and their font, only with `base/formula` (`RenderMath: formula.RenderMath`), which alone may import Untie, and diagrams and limu only with `base/diagram` (`RenderDiagram: diagram.RenderDiagram`), which alone may import limu (`owned` in `layering_test.go`), as code highlighting comes with `base/textview/highlight`.
 
-`TestMinimalAppLinks` (`linked_test.go`) builds an app showing one text (`testdata/minimal`) for each target and fails when another package reaches what `unlinked` lists: Go's HTTP and TLS stack, the shader compilers, and on the web Go's image codecs; `TestTextViewAppLinks` builds a `ui.TextView` without `RenderMath` or `RenderDiagram` (`testdata/textview`) and fails when it links Untie or limu. Such an app's release build went from 11.5 to 12.3 MB natively and 13.7 MB on the web to 7.5 to 8.1 MB and 10.3 MB with these rules and the tool's smaller encoding/json ([packages](tool.md#packages)) (2026-11-10). A backend's handling of every mount item still links into every app, its shaders' writers among them, since the linker cannot follow an item's kind, and Android keeps Go's DNS resolver for apps' own networking.
+`TestMinimalAppLinks` (`internal/moduletest/linked_test.go`) builds an app showing one text (`testdata/minimal`) for each target and fails when another package reaches what `unlinked` lists: Go's HTTP and TLS stack, the shader compilers, and on the web Go's image codecs; `TestTextViewAppLinks` builds a `ui.TextView` without `RenderMath` or `RenderDiagram` (`testdata/textview`) and fails when it links Untie or limu. Such an app's release build went from 11.5 to 12.3 MB natively and 13.7 MB on the web to 7.5 to 8.1 MB and 10.3 MB with these rules and the tool's smaller encoding/json ([packages](tool.md#packages)) (2026-11-10). A backend's handling of every mount item still links into every app, its shaders' writers among them, since the linker cannot follow an item's kind, and Android keeps Go's DNS resolver for apps' own networking.
 
 ## A button, top to bottom
 
 This follows a `base.Button` from an app to the Windows backend; another backend replaces only the Windows parts.
 
 1. The app calls `nsgo.Run(Root)`, and `Root` returns a `base.Button`.
-2. `run_windows.go` is the only `run` a Windows build has, so `nsgo.Run` reaches `windows.Run`.
+2. `internal/backend/run_windows.go` is the only `run` a Windows build has, so `nsgo.Run` reaches `windows.Run` through `backend.Run`.
 3. `windows.Run` creates the window, which is an `engine.Platform`, and calls `engine.Start` with the app.
 4. On the engine goroutine, `Button.Render` returns a `core.View` with the app's styles, its role and its handlers.
 5. `core` resolves styles, prepares text through the window's `TextEngine` (DirectWrite), lays out and commits a `driver.MountBatch`.
@@ -202,4 +203,4 @@ This follows a `base.Button` from an app to the Windows backend; another backend
 | What only phones or only desktops have | `mobile` or `desktop` |
 | A new element or service | `core` and `internal/driver`, then every backend |
 | A drawing or input bug on one target | `internal/platform/<target>`, then check the other backends |
-| A new package | Its layer, with a rule in `layers` in `layering_test.go` |
+| A new package | Its layer, with a rule in `layers` in `internal/moduletest/layering_test.go` |

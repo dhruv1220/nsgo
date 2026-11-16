@@ -218,7 +218,8 @@ func (p *project) updateLdflags(env []string) []string {
 	if !p.updatesOn() {
 		return nil
 	}
-	const pkgPath = "github.com/nsgo-dev/nsgo"
+	// The backend, which nsgo.Run runs the app with, reads them.
+	const pkgPath = "github.com/nsgo-dev/nsgo/internal/backend"
 	var flags []string
 	if feed := p.appcastURL(envTarget(env)); feed != "" && p.updates() {
 		flags = append(flags, fmt.Sprintf("-X '%s.updateFeed=%s'", pkgPath, feed),

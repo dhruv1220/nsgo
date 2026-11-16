@@ -17,7 +17,7 @@ The performance monitor measures what a surface's frames and commits cost while 
 
 ## The panel
 
-Any build shows one when started with `--nsgo-fps` (`flags.go`), and `nsgo dev -fps` starts it so; `nsgo.Run` turns the flag into the backend's monitor, and embedded views and target tests have none. Without the flag nothing is installed, so a build costs the same with the monitor's code as without it; with it, the frame clock runs every refresh, so measure with and read CPU without it. macOS, iOS, Windows and Linux show one; Android and the web accept the option and ignore it.
+Any build shows one when started with `--nsgo-fps` (`internal/backend/flags.go`), and `nsgo dev -fps` starts it so; `nsgo.Run` turns the flag into the backend's monitor, and embedded views and target tests have none. Without the flag nothing is installed, so a build costs the same with the monitor's code as without it; with it, the frame clock runs every refresh, so measure with and read CPU without it. macOS, iOS, Windows and Linux show one; Android and the web accept the option and ignore it.
 
 The panel sits at the top right of the surface (below the safe area on iOS), lets the pointer through, and is redrawn every 500 ms; on macOS it fades out while the pointer is over it. Its sizes, colors and trace are `engine`'s (`perfpanel.go`), and `internal/platform/perfhud` reads the process' CPU and memory for every backend:
 

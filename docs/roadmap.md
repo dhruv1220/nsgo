@@ -318,7 +318,7 @@ What `nsgo dev -automation` and `nsgo mcp` lack beyond macOS ([tool](architectur
 | Android | `TestAgent.java` | A debuggable build launched with an automation extra creates the test agent, with `classes.dex` rebuilt, reaching the server over `adb reverse` |
 | The web | `web/testhost.go`, `cdp.go` | `nsgo dev -target web -automation` opens its own browser over the DevTools protocol, installs the `nsgoTest` binding and passes the token in the page's query |
 | Several engines | ARCHITECTURE.md (Boundaries) | The automation follows every graph of a process, as a host embedding several apps has, telling their surfaces apart, where it now follows the first graph that registers a surface |
-| Mini programs | `run_miniprogram.go` | `nsgo dev -automation` on a mini-program target drives the app in its developer tool's simulator, with the token in the build as `devServer` is, where it now refuses those targets |
+| Mini programs | `internal/backend/run_miniprogram.go` | `nsgo dev -automation` on a mini-program target drives the app in its developer tool's simulator, with the token in the build as `devServer` is, where it now refuses those targets |
 
 ## Finish the existing platforms
 

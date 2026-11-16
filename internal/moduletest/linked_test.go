@@ -1,4 +1,4 @@
-package nsgo
+package moduletest
 
 import (
 	"bufio"
@@ -39,7 +39,7 @@ func TestTextViewAppLinks(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("needs the go command")
 	}
-	linked := linkedPackagesOf(t, "./testdata/textview", "darwin", "arm64", "")
+	linked := linkedPackagesOf(t, moduleRoot+"/testdata/textview", "darwin", "arm64", "")
 	if !linked["github.com/nsgo-dev/nsgo/base/textview"] {
 		t.Fatal("the text view app links no text view")
 	}
@@ -86,7 +86,7 @@ func TestDevBuildsLink(t *testing.T) {
 // linkedPackages returns the packages the linker keeps in testdata/minimal for goos and goarch, built with tags, for what other packages reach: those its dependency dump has an edge into from another package's symbol. A package's own init and the tables it fills, and literals the linker shares by content, do not count.
 func linkedPackages(t *testing.T, goos, goarch, tags string) map[string]bool {
 	t.Helper()
-	return linkedPackagesOf(t, "./testdata/minimal", goos, goarch, tags)
+	return linkedPackagesOf(t, moduleRoot+"/testdata/minimal", goos, goarch, tags)
 }
 
 // linkedPackagesOf is linkedPackages for the app in dir.
