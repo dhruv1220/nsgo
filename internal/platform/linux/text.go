@@ -952,6 +952,21 @@ func (l *textLayout) indexAt(x, y driver.Points) int {
 	return int(index)
 }
 
+// glyphAt returns the byte offset of the character at x, y, in the text's points, or -1 off the glyphs. It makes the PangoLayout a text that has not drawn yet lacks, as snapshot does.
+func (l *textLayout) glyphAt(x, y driver.Points) int {
+	if l.text == "" {
+		return -1
+	}
+	if l.layout == 0 {
+		l.ensure(scratchCairo())
+	}
+	var index, trailing int32
+	if pangoLayoutXyToIndex(l.layout, int32(x*pangoScale), int32(y*pangoScale), &index, &trailing) == 0 {
+		return -1
+	}
+	return int(index)
+}
+
 // Height returns the height the text laid out at.
 func (l *textLayout) Height() driver.Points { return l.height }
 

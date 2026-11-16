@@ -288,7 +288,7 @@ func (w *window) updatePointerCursor() {
 	if text != nil {
 		if l, isText := text.text.(*textLayout); isText {
 			if b, shown := w.surfaceBounds(text); shown {
-				c, ok = driver.SpanCursor(text.spans, l.indexAt(w.lastPointer.X-b.Origin.X-text.content.Origin.X,
+				c, ok = driver.SpanCursor(text.spans, l.glyphAt(w.lastPointer.X-b.Origin.X-text.content.Origin.X,
 					w.lastPointer.Y-b.Origin.Y-text.content.Origin.Y))
 			}
 		}
