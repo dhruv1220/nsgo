@@ -14,17 +14,19 @@ import (
 // GTK 4 leaves where a toplevel goes to the window manager, and on Wayland to the compositor, which no client can ask for a position. On X11 a panel is placed through its X window with Xlib, as global shortcuts are grabbed, and one that never takes the focus is left unmanaged (override-redirect), as menus and tooltips are: no window manager decorates, places, lists or focuses it, so the app the user types in keeps the keyboard.
 var (
 	gtkWidgetRealize          func(widget uintptr)
+	gdkX11DisplayGetType      func() uintptr
+	gdkX11PanelXDisplay       func(display uintptr) uintptr
 	gdkX11SurfaceGetXID       func(surface uintptr) uintptr
 	x11MoveWindow             func(display, window uintptr, x, y int32) int32
 	x11ChangeWindowAttributes func(display, window, mask uintptr, attributes *x11WindowAttributes) int32
 	x11Flush                  func(display uintptr) int32
 	x11PanelsReady            bool
 	bindX11Panels             = sync.OnceFunc(func() {
-		if bindX11HotKeys(); !x11HotKeysReady {
-			return
-		}
-		if _, err := purego.Dlsym(gtkLib, "gdk_x11_surface_get_xid"); err != nil {
-			return
+		// GDK's display, not the environment, says whether it draws on X11: an app run with GDK_BACKEND=x11 in a Wayland session has WAYLAND_DISPLAY set and still draws on Xwayland, where its panels can be placed.
+		for _, symbol := range []string{"gdk_x11_display_get_type", "gdk_x11_display_get_xdisplay", "gdk_x11_surface_get_xid"} {
+			if _, err := purego.Dlsym(gtkLib, symbol); err != nil {
+				return
+			}
 		}
 		lib, err := purego.Dlopen("libX11.so.6", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 		if err != nil {
@@ -33,6 +35,8 @@ var (
 			}
 		}
 		purego.RegisterLibFunc(&gtkWidgetRealize, gtkLib, "gtk_widget_realize")
+		purego.RegisterLibFunc(&gdkX11DisplayGetType, gtkLib, "gdk_x11_display_get_type")
+		purego.RegisterLibFunc(&gdkX11PanelXDisplay, gtkLib, "gdk_x11_display_get_xdisplay")
 		purego.RegisterLibFunc(&gdkX11SurfaceGetXID, gtkLib, "gdk_x11_surface_get_xid")
 		purego.RegisterLibFunc(&x11MoveWindow, lib, "XMoveWindow")
 		purego.RegisterLibFunc(&x11ChangeWindowAttributes, lib, "XChangeWindowAttributes")
@@ -61,10 +65,10 @@ func (w *window) x11Window() (display, xid uintptr, ok bool) {
 		return 0, 0, false
 	}
 	gdk := gdkDisplayGetDefault()
-	if gdk == 0 {
+	if gdk == 0 || gTypeIsA(gdk, gdkX11DisplayGetType()) == 0 {
 		return 0, 0, false
 	}
-	if display = gdkX11DisplayGetXDisplay(gdk); display == 0 {
+	if display = gdkX11PanelXDisplay(gdk); display == 0 {
 		return 0, 0, false
 	}
 	gtkWidgetRealize(w.win)
