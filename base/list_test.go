@@ -270,3 +270,41 @@ func TestListEmpty(t *testing.T) {
 		t.Fatalf("the list is %v tall, want the app's 100", got)
 	}
 }
+
+// TestListInUnplacedContentLeavesTheKeys has a list that took the keys give them up while a Holder keeps it out of the tree, and take them again once it shows.
+func TestListInUnplacedContentLeavesTheKeys(t *testing.T) {
+	var sel *base.Selection
+	var tab *core.Signal[int]
+	page := 0
+	app := startDesktop(t, func(cx *core.Scope) core.Node {
+		tab = core.NewSignal(cx, 0)
+		sel = base.NewSelection(cx, true)
+		cx.OnKey("down", func() { page++ })
+		cx.OnKey("mod+a", func() { page++ })
+		pane := core.NewHolder(cx, func(cx *core.Scope) core.Node { return rowsOf(sel, nil) })
+		return core.Dynamic(func(cx *core.Scope) core.Node {
+			if tab.Get() == 0 {
+				return pane.Place()
+			}
+			return core.Text{Content: "other"}
+		})
+	})
+	app.Press("label:Apple")
+	app.Key("down")
+	if got := sel.Cursor(); got != "Apricot" {
+		t.Fatalf("placed, the list's cursor is on %v, want Apricot", got)
+	}
+	app.Post(func() { tab.Set(1) })
+	app.Settle()
+	app.Key("down")
+	app.Key("mod+a")
+	if got := sel.Cursor(); got != "Apricot" || sel.Len() != 1 || page != 2 {
+		t.Fatalf("unplaced, the list's cursor is on %v with %d selected and the page heard %d keys, want Apricot, 1 and 2", got, sel.Len(), page)
+	}
+	app.Post(func() { tab.Set(0) })
+	app.Settle()
+	app.Key("down")
+	if got := sel.Cursor(); got != "Banana" || page != 2 {
+		t.Fatalf("placed again, the list's cursor is on %v and the page heard %d keys, want Banana and 2", got, page)
+	}
+}

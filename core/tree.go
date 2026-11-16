@@ -77,6 +77,8 @@ type Tree struct {
 	keys        []*keyBinding
 	keysChanged bool
 	backs       []*backHandler
+	// regions are the live regions, which the views do not number: an owner may have no view but a region, as a Holder's content may (keyPlaces).
+	regions map[*node]struct{}
 	// peeking is the screen a back gesture may uncover (Tree.peek).
 	peeking *node
 	// history is the depth ItemHistory last sent, which historyAgain
@@ -780,7 +782,12 @@ func (t *Tree) newNode(kind driver.ViewKind, parent *node, owner *Scope) *node {
 }
 
 func (t *Tree) newRegion(parent *node, owner *Scope) *node {
-	return t.newNode(0, parent, owner)
+	n := t.newNode(0, parent, owner)
+	if t.regions == nil {
+		t.regions = map[*node]struct{}{}
+	}
+	t.regions[n] = struct{}{}
+	return n
 }
 
 // nativeParent is the view n's native view goes into.
@@ -907,6 +914,13 @@ func (t *Tree) discard(n *node) {
 		return
 	}
 	n.deleted = true
+	if n.kind == 0 {
+		delete(t.regions, n)
+	}
+	if n.kind == driver.KindModal {
+		// What it covered comes back to the keymap (keyActive).
+		t.keysChanged = true
+	}
 	if n.states&stateFocusWithin != 0 || t.focus == n {
 		t.focusMoved = true
 	}
@@ -1083,7 +1097,7 @@ func (t *Tree) restyle(n *node) bool {
 	}
 	z, sticky := n.stackRank()
 	was := &n.style
-	lines, overflow, pointer, visibility := was.NumberOfLines, was.TextOverflow, was.PointerEvents, was.Visibility
+	lines, overflow, pointer, visibility, display := was.NumberOfLines, was.TextOverflow, was.PointerEvents, was.Visibility, was.Display
 	n.style = merged.withStates(statesOf(t.shownInteraction(n), &p, n.part.Data), g)
 	if p.Disabled {
 		// The platform still follows the states a disabled view's own
@@ -1115,6 +1129,10 @@ func (t *Tree) restyle(n *node) bool {
 	}
 	if len(t.suspended) > 0 && t.suspendedIn(n) {
 		n.style.Display = DisplayNone
+	}
+	if n.style.Display != display && len(t.keys) > 0 {
+		// The bindings of what it hides leave the keymap, and come back as it shows (keyActive).
+		t.keysChanged = true
 	}
 	// Roots are placed by style the layout leaves out of theirs.
 	if n.lstyleOK && !n.isRoot && n.hoist == nil {

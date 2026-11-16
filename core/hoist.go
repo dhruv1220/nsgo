@@ -266,6 +266,8 @@ func (t *Tree) mountModal(cx *Scope, parent *node, m Modal) {
 	}
 	n := t.newNode(driver.KindModal, parent, cx)
 	t.hoist(n, &hoistNode{modal: &m, reported: NewSignal[*modalSize](cx, nil)})
+	// What it covers leaves the keymap (keyActive).
+	t.keysChanged = true
 	t.setClasses(n, m.Class)
 	t.bindStyle(cx, n, m.Style, m.StyleFunc)
 	n.props = driver.ViewProps{Role: m.Role, Label: m.Label, TestID: m.TestID}
@@ -327,6 +329,9 @@ func (t *Tree) placeHoisted(host *node) {
 		// hides it only through the core; so does a sheet swiped away.
 		if hidden := hiddenIn(n) || n.hoist.dismissed; hidden != n.hidden {
 			n.hidden = hidden
+			if n.kind == driver.KindModal {
+				t.keysChanged = true
+			}
 			t.mark(n)
 		}
 		if n.hidden {
@@ -764,9 +769,13 @@ func (t *Tree) back() {
 		}
 		return
 	}
+	var places *keyPlaces
+	if len(t.backs) > 0 {
+		places = t.keyPlaces()
+	}
 	for i := len(t.backs) - 1; i >= 0; i-- {
 		b := t.backs[i]
-		if b.owner.disposed || !t.focusWithin(b.within) {
+		if b.owner.disposed || !places.shows(b.owner, true) || !t.focusWithin(b.within) {
 			continue
 		}
 		taken := false
@@ -797,8 +806,9 @@ func (t *Tree) backPreview() driver.NodeID {
 		return 0
 	}
 	if host.kind != driver.KindModal {
+		places := t.keyPlaces()
 		for _, b := range t.backs {
-			if !b.owner.disposed && t.focusWithin(b.within) {
+			if !b.owner.disposed && places.shows(b.owner, true) && t.focusWithin(b.within) {
 				return 0
 			}
 		}

@@ -671,3 +671,40 @@ func TestPopoverContentFollowsItsTriggerInTheTabOrder(t *testing.T) {
 		t.Errorf("Tab went %v, want %v", order, want)
 	}
 }
+
+// A dialog shadows the page's keys: Space and Escape do not reach the page while it shows, Escape closes it, its own bindings and an OverModals one fire, and the page's come back once it closes.
+func TestDialogShadowsThePagesKeys(t *testing.T) {
+	var open *core.Signal[bool]
+	var log []string
+	add := func(s string) func() { return func() { log = append(log, s) } }
+	app := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		open = core.NewSignal(cx, true)
+		cx.OnKey("space", add("page space"))
+		cx.OnKey("escape", add("page escape"))
+		cx.OnKeyWith("f1", core.KeyOptions{OverModals: true}, add("help"))
+		return core.View{Children: []core.Node{
+			core.Text{Content: "Page"},
+			base.Dialog{Open: open.Get, OnOpenChange: func(o bool, _ base.Reason) { open.Set(o) }, Label: "Settings", Children: []core.Node{
+				core.Func(func(cx *core.Scope) core.Node {
+					cx.OnKey("enter", add("dialog enter"))
+					return core.Text{Content: "In the dialog", TestID: "dialog-text"}
+				}),
+			}},
+		}}
+	}, nsgotest.Environment(core.Environment{OS: core.OSMacOS}))
+	app.Find("id:dialog-text")
+	app.Key("space")
+	app.Key("enter")
+	app.Key("f1")
+	app.Key("escape")
+	app.Settle()
+	if want := []string{"dialog enter", "help"}; !slices.Equal(log, want) || open.Get() {
+		t.Fatalf("with the dialog: log = %q, open %v; want %q and closed", log, open.Get(), want)
+	}
+	log = nil
+	app.Key("space")
+	app.Key("escape")
+	if want := []string{"page space", "page escape"}; !slices.Equal(log, want) {
+		t.Fatalf("after the dialog: log = %q, want %q", log, want)
+	}
+}

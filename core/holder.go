@@ -94,6 +94,7 @@ func (h *Holder) show() {
 	h.root.parent = at
 	at.children = append(at.children, h.root)
 	t.childrenChanged(at)
+	h.t.keysChanged, h.t.changed = true, true
 	// It inherits from its new place, and brings its marks.
 	t.carry(h.root)
 	t.markResolve(h.root)
@@ -109,6 +110,7 @@ func (h *Holder) detach() {
 		p.children = slices.DeleteFunc(p.children, func(c *node) bool { return c == r })
 		r.parent = nil
 		h.t.childrenChanged(p)
+		h.t.keysChanged, h.t.changed = true, true
 	}
 }
 

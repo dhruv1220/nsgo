@@ -17,7 +17,9 @@ type keyBinding struct {
 	owner *Scope
 	// within is the scope Confine confined it to, nil for none.
 	within *Scope
-	fn     func()
+	// overModals is KeyOptions.OverModals.
+	overModals bool
+	fn         func()
 }
 
 // KeyWhen says when a binding fires.
@@ -39,14 +41,13 @@ type KeyOptions struct {
 	When KeyWhen
 	// Repeat fires it again on the auto-repeats of a held key.
 	Repeat bool
+	// OverModals keeps it firing while a modal its owner's views are not in covers them, for an app-wide shortcut such as a menu's.
+	OverModals bool
 }
 
-// OnKey runs fn when key is pressed, while the current owner lives. key
-// names modifiers and a key joined by "+": "mod+s" (Command on Apple
-// platforms, Control elsewhere), "ctrl+shift+z", "alt+left", "escape",
-// "enter", "f5", "a". The newest binding of a key wins. It fires once
-// while the key is held, and not while a text input that uses the key
-// has the keyboard focus; OnKeyWith says else.
+// OnKey runs fn when key is pressed, while the current owner lives and the user can see what it shows. key names modifiers and a key joined by "+": "mod+s" (Command on Apple platforms, Control elsewhere), "ctrl+shift+z", "alt+left", "escape", "enter", "f5", "a". The newest binding of a key wins. It fires once while the key is held, and not while a text input that uses the key has the keyboard focus; OnKeyWith says else.
+//
+// What the owner shows are the views of the nearest owner at or above it that has any. The binding rests while none of them shows: in a Holder's content no place shows, under a DisplayNone view such as a navigation stack's screen below the top, in a dismissed modal. While a modal is shown it rests too if any of them is outside the topmost modal, as the page under a dialog is, unless KeyOptions.OverModals. It fires again once they show, without binding it again.
 func (cx *Scope) OnKey(key string, fn func()) { cx.OnKeyWith(key, KeyOptions{}, fn) }
 
 // OnKeyWith is OnKey firing as opts say.
@@ -58,7 +59,7 @@ func (cx *Scope) OnKeyWith(key string, opts KeyOptions, fn func()) {
 	k := driver.NormalizeKey(key)
 	inText := opts.When == KeyAlways || opts.When == KeyAuto && !EditsText(k)
 	owner := cx.current()
-	b := &keyBinding{KeyBinding: driver.KeyBinding{Key: k, InText: inText, Repeat: opts.Repeat}, owner: owner, within: confinement(owner), fn: fn}
+	b := &keyBinding{KeyBinding: driver.KeyBinding{Key: k, InText: inText, Repeat: opts.Repeat}, owner: owner, within: confinement(owner), overModals: opts.OverModals, fn: fn}
 	t.keys = append(t.keys, b)
 	t.keysChanged = true
 	t.changed = true
@@ -153,11 +154,7 @@ func (t *Tree) confinedKeys() bool {
 	return slices.ContainsFunc(t.keys, func(b *keyBinding) bool { return b.within != nil })
 }
 
-// OnBackPress runs fn when back is pressed (Escape, the back button or
-// gesture, the browser's back) while the current owner lives: after the
-// overlays and modals, which take it first, and before the navigation
-// stacks, the newest handler first. fn returns true to take it; when none
-// does, the top stack pops, else the platform goes back itself.
+// OnBackPress runs fn when back is pressed (Escape, the back button or gesture, the browser's back) while the current owner lives and the user can see what it shows, as for OnKey: after the overlays and modals, which take it first, and before the navigation stacks, the newest handler first. fn returns true to take it; when none does, the top stack pops, else the platform goes back itself.
 func (cx *Scope) OnBackPress(fn func() bool) {
 	t := cx.tree()
 	if t == nil {
@@ -178,24 +175,104 @@ func (cx *Scope) ExitApp() {
 	}
 }
 
-// keymap returns the bindings that may fire where the focus is, oldest first: the newest of a key wins.
+// keymap returns the bindings that may fire where the focus is and as the views show, oldest first: the newest of a key wins.
 func (t *Tree) keymap() []driver.KeyBinding {
 	out := make([]driver.KeyBinding, 0, len(t.keys))
+	if len(t.keys) == 0 {
+		return out
+	}
+	places := t.keyPlaces()
 	for _, b := range t.keys {
-		if t.focusWithin(b.within) {
+		if t.keyActive(b, places) {
 			out = append(out, b.KeyBinding)
 		}
 	}
 	return out
 }
 
+// keyActive reports whether binding b may fire: its owner lives and shows (keyPlaces.shows), above any modal unless it is OverModals, and the focus is within what it is confined to.
+func (t *Tree) keyActive(b *keyBinding, places *keyPlaces) bool {
+	return !b.owner.disposed && places.shows(b.owner, b.overModals) && t.focusWithin(b.within)
+}
+
+// keyPlaces is where the owners of views show, which decides the key bindings and back handlers that take part: read from the views each time a keymap, a key or a back press asks, so it follows a Holder's content in and out of its places, a modal shown or dismissed, and DisplayNone.
+type keyPlaces struct {
+	of map[*Scope]keyPlace
+}
+
+// keyPlace is what an owner's own views are: some live, some shown, some shown under the topmost modal.
+type keyPlace uint8
+
+const (
+	ownsView keyPlace = 1 << iota
+	viewShown
+	viewCovered
+)
+
+// keyPlaces finds where the owners of the views show. A view shows when the root view holds it, through the places of Holders, and neither it nor a view around it is DisplayNone (a stack's screen below the top, a Suspense's waiting content) or a modal dismissed. A modal covers what shows outside it; nothing covers the topmost modal, nor a Topmost overlay of a host from the root view to it, which shows above that host's modals.
+func (t *Tree) keyPlaces() *keyPlaces {
+	p := &keyPlaces{of: make(map[*Scope]keyPlace)}
+	for _, n := range t.nodes {
+		if n != nil && !n.deleted && n.owner != nil {
+			p.of[n.owner] |= ownsView
+		}
+	}
+	for n := range t.regions {
+		if n.owner != nil {
+			p.of[n.owner] |= ownsView
+		}
+	}
+	hosts := []*node{t.view}
+	for top := topModal(t.view); top != nil; top = topModal(top) {
+		hosts = append(hosts, top)
+	}
+	top := hosts[len(hosts)-1]
+	var walk func(n *node, above bool)
+	walk = func(n *node, above bool) {
+		if n.deleted || n.style.Display == DisplayNone || n.hoist != nil && n.hoist.dismissed {
+			return
+		}
+		if n == top || n.hoist != nil && n.hoist.topmost() && slices.Contains(hosts, n.hoist.host) {
+			above = true
+		}
+		if n.owner != nil {
+			f := p.of[n.owner] | ownsView | viewShown
+			if !above {
+				f |= viewCovered
+			}
+			p.of[n.owner] = f
+		}
+		for _, c := range n.children {
+			walk(c, above)
+		}
+	}
+	walk(t.view, len(hosts) == 1)
+	return p
+}
+
+// shows reports whether what owner o binds takes part: the nearest owner at or above o that has a view, as the owner of a binding often has none of its own (a Show's that binds while a control has the focus), has one shown and, unless overModals, none of them under a modal. An owner with no view around it takes part.
+func (p *keyPlaces) shows(o *Scope, overModals bool) bool {
+	for s := o; s != nil; s = s.parent {
+		if f := p.of[s]; f != 0 {
+			return f&viewShown != 0 && (overModals || f&viewCovered == 0)
+		}
+	}
+	return true
+}
+
 func (t *Tree) pressKey(key string) {
 	key = driver.NormalizeKey(key)
+	var places *keyPlaces
 	for i := len(t.keys) - 1; i >= 0; i-- {
-		// A confined binding is checked again, as the platform may have matched the press by a keymap the focus has since left.
-		if b := t.keys[i]; b.Key == key && !b.owner.disposed && t.focusWithin(b.within) {
-			t.within(b.owner, b.fn)
-			return
+		// A binding is checked again, as the platform may have matched the press by a keymap the focus or the views have since left.
+		if b := t.keys[i]; b.Key == key {
+			if places == nil {
+				places = t.keyPlaces()
+			}
+			if t.keyActive(b, places) {
+				t.within(b.owner, b.fn)
+				return
+			}
 		}
 	}
 }
