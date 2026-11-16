@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
+	"github.com/nsgo-dev/nsgo/internal/platform/hover"
 )
 
 var (
@@ -293,35 +294,51 @@ func (w *window) hostedPointer(message uint32, wParam, lParam uintptr) bool {
 	return true
 }
 
-// viewCursor shows the cursor of the nearest view under the pointer, or
-// its ancestor's, and reports whether it set one.
+// viewCursor shows the cursor the views name under the pointer (cursorAt), and reports whether they name one.
 func (w *window) viewCursor() bool {
 	var at point
 	if r, _, _ := getCursorPos.Call(uintptr(unsafe.Pointer(&at))); r == 0 {
 		return false
 	}
 	screenToClient.Call(w.hwnd, uintptr(unsafe.Pointer(&at)))
-	v := w.pickAt(at.X, at.Y)
-	if v != nil && v.kind == driver.KindText {
-		if l, ok := v.text.(*textLayout); ok {
-			b, shown := w.surfaceBounds(v)
-			if shown {
-				x := float32(at.X) - float32(b.Origin.X+v.content.Origin.X)
-				y := float32(at.Y) - float32(b.Origin.Y+v.content.Origin.Y)
-				if c, ok := driver.SpanCursor(v.spans, l.indexAt(x, y)); ok {
-					setCursor.Call(systemCursor(c))
-					return true
+	c, ok := w.cursorAt(w.point(at.X, at.Y))
+	if ok {
+		setCursor.Call(systemCursor(c))
+	}
+	return ok
+}
+
+// cursorAt returns the cursor the views name at p, a point of the client area: the nearest view's from the one under p up, a text's span under p ahead of the text's own; false where none names one.
+func (w *window) cursorAt(p driver.Point) (driver.Cursor, bool) {
+	root := w.view(w.root)
+	if root == nil {
+		return driver.CursorAuto, false
+	}
+	for v := pick(root, p); v != nil; v = v.parent {
+		if l, ok := textOf(v); ok {
+			if b, shown := w.surfaceBounds(v); shown {
+				i := l.indexAt(float32(p.X-b.Origin.X-v.content.Origin.X), float32(p.Y-b.Origin.Y-v.content.Origin.Y))
+				if c, ok := driver.SpanCursor(v.spans, i); ok {
+					return c, true
 				}
 			}
 		}
-	}
-	for ; v != nil; v = v.parent {
 		if c := v.style.Cursor; c != driver.CursorAuto {
-			setCursor.Call(systemCursor(c))
-			return true
+			return c, true
 		}
 	}
-	return false
+	return driver.CursorAuto, false
+}
+
+// refreshCursor shows the cursor under a still pointer again, as WM_SETCURSOR would, once a batch changed what is under it; not while a button is held, as a drag keeps its cursor.
+func (w *window) refreshCursor() {
+	if !w.pointerIn || hover.Pressed(uint32(w.held), mouseButtons) != driver.MouseButtonNone {
+		return
+	}
+	if !w.hostedCursor() && !w.fieldCursor() && !w.viewCursor() {
+		arrow, _, _ := loadCursorW.Call(0, idcArrow)
+		setCursor.Call(arrow)
+	}
 }
 
 // systemCursor loads and keeps the Windows cursor of c; 0 hides the

@@ -1071,6 +1071,7 @@ func (w *window) apply(b *driver.MountBatch) {
 	w.batch++
 	var rescroll, loads []*view
 	structure := false // views came or went, for UI Automation
+	recursor := false  // a text's span cursors changed
 	lb := w.layoutBatch(b)
 	type focusChange struct {
 		v     *view // nil dismisses the keyboard
@@ -1295,12 +1296,13 @@ func (w *window) apply(b *driver.MountBatch) {
 			}
 			v.text, _ = it.Text.Layout.(drawnText)
 			v.content = it.Text.Content
-			if v.plain != it.Text.Text || !slices.Equal(v.spans, it.Text.Spans) {
-				v.plain, v.spans = it.Text.Text, it.Text.Spans
-				w.accessChanged(v, true)
+			if driver.HasSpanCursor(v.spans) || driver.HasSpanCursor(it.Text.Spans) {
+				recursor = true // the cursor over a still pointer may change with the spans
 			}
-			if w.pointerIn {
-				w.viewCursor()
+			v.spans = it.Text.Spans
+			if v.plain != it.Text.Text {
+				v.plain = it.Text.Text
+				w.accessChanged(v, true)
 			}
 		case driver.ItemInput:
 			if v.field != nil && it.Input != nil {
@@ -1446,6 +1448,9 @@ func (w *window) apply(b *driver.MountBatch) {
 	w.placeIME()
 	// Views that moved, appeared or went under a still pointer.
 	w.hoverViews()
+	if recursor {
+		w.refreshCursor()
+	}
 	w.refreshSelection()
 	if structure {
 		w.structureChanged()

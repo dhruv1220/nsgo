@@ -32,8 +32,7 @@ type AttributedText struct {
 type TextSpan struct {
 	Start, End int
 	Style      TextStyle
-	// Cursor is the pointer's look over the span's characters. Auto leaves
-	// the view's cursor unchanged.
+	// Cursor is the pointer's look over the span's visible characters, ahead of the text view's own; Auto leaves the view's.
 	Cursor Cursor
 	// Link marks a span with a press handler: a press on it reports
 	// EventPress with Index set to a byte offset inside it.
@@ -53,7 +52,7 @@ type TextSpan struct {
 	Copy string
 }
 
-// SpanCursor returns an explicit cursor covering byte offset i.
+// SpanCursor returns the cursor a span names over byte offset i (-1 off the text's glyphs), and false where none does.
 func SpanCursor(spans []TextSpan, i int) (Cursor, bool) {
 	for _, sp := range spans {
 		if !sp.Hidden && sp.Cursor != CursorAuto && i >= sp.Start && i < sp.End {
@@ -61,6 +60,16 @@ func SpanCursor(spans []TextSpan, i int) (Cursor, bool) {
 		}
 	}
 	return CursorAuto, false
+}
+
+// HasSpanCursor reports whether any span names a cursor, so a backend knows the cursor under a still pointer may change with the text.
+func HasSpanCursor(spans []TextSpan) bool {
+	for _, sp := range spans {
+		if sp.Cursor != CursorAuto {
+			return true
+		}
+	}
+	return false
 }
 
 // PressesAt reports whether a pressable text takes a press on byte

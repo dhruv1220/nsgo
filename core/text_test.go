@@ -1,6 +1,7 @@
 package core
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
@@ -50,13 +51,56 @@ func TestTextTransformShadowAndDecoration(t *testing.T) {
 }
 
 func TestSpanCursorReachesTextSpan(t *testing.T) {
+	var cursor *Signal[Cursor]
 	h := newHost(t, Size{Width: 400, Height: 100}, func(cx *Scope) Node {
-		return Text{TestID: "text", Spans: []Span{{Content: "plain"}, {Content: "link", Style: Style{Cursor: CursorPointer}}}}
+		cursor = NewSignal(cx, CursorPointer)
+		return Text{TestID: "text", Style: Style{Cursor: CursorHelp}, Spans: []Span{
+			{Content: "plain "},
+			{Content: "link", StyleFunc: func() Style { return Style{Cursor: cursor.Get()} }},
+			{Content: " class", Class: "cursor-crosshair"},
+		}}
 	})
 	h.commit()
-	spans := h.find("text").text.text.Spans
-	if len(spans) != 2 || spans[0].Cursor != CursorAuto || spans[1].Cursor != CursorPointer {
-		t.Fatalf("span cursors = %+v, want auto and pointer", spans)
+	cursors := func() []Cursor {
+		var out []Cursor
+		for _, sp := range h.find("text").text.text.Spans {
+			out = append(out, sp.Cursor)
+		}
+		return out
+	}
+	// The text's own cursor stays the view's: a span names only its own.
+	if got := cursors(); !slices.Equal(got, []Cursor{CursorAuto, CursorPointer, CursorCrosshair}) {
+		t.Fatalf("span cursors = %v, want auto, pointer and crosshair", got)
+	}
+	cursor.Set(CursorAuto)
+	h.commit()
+	if got := cursors(); !slices.Equal(got, []Cursor{CursorAuto, CursorAuto, CursorCrosshair}) {
+		t.Fatalf("span cursors after StyleFunc = %v, want auto, auto and crosshair", got)
+	}
+}
+
+func TestSpansFuncSendsCursorChanges(t *testing.T) {
+	var cursor *Signal[Cursor]
+	h := newHost(t, Size{Width: 400, Height: 100}, func(cx *Scope) Node {
+		cursor = NewSignal(cx, CursorAuto)
+		return Text{SpansFunc: func() []Span {
+			return []Span{{Content: "see "}, {Content: "docs", Style: Style{Cursor: cursor.Get()}}}
+		}}
+	})
+	sent := func() *driver.TextContent {
+		for _, it := range h.commit().Items {
+			if it.Kind == driver.ItemText {
+				return it.Text
+			}
+		}
+		return nil
+	}
+	if text := sent(); text == nil || text.Spans[1].Cursor != CursorAuto {
+		t.Fatalf("text %+v, want the spans", text)
+	}
+	cursor.Set(CursorPointer)
+	if text := sent(); text == nil || text.Spans[1].Cursor != CursorPointer {
+		t.Fatalf("a span's new cursor was not sent: %+v", text)
 	}
 }
 

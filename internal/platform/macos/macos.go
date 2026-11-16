@@ -1731,6 +1731,9 @@ func (s *surface) apply(b *driver.MountBatch) {
 			v.layout, _ = it.Text.Layout.(*apple.Layout)
 			v.box = it.Text.Content
 			v.sizeContent()
+			if driver.HasSpanCursor(v.spans) || driver.HasSpanCursor(it.Text.Spans) {
+				s.repick = true // the cursor over a still pointer may change with the spans
+			}
 			v.spans = it.Text.Spans
 			v.textChanged(it.Text.Text)
 			v.redraw()
@@ -2471,23 +2474,22 @@ func (s *surface) updateCursor(hit, up objc.ID, loc apple.CGPoint, always bool) 
 	}
 }
 
-// cursorAt returns the cursor over hit, a view in up: the nearest view's
-// from hit up that names one, or the I-beam over a text a press selects
-// or an input's text. own is false off the surface and over the views that
-// show their own: web views, players and native components.
+// cursorAt returns the cursor over hit, a view in up, with the mouse at loc, a point of the window: the nearest view's from hit up that names one, a text's span under loc first, or the I-beam over a text a press selects or an input's text. own is false off the surface and over the views that show their own: web views, players and native components.
 func cursorAt(hit, up objc.ID, loc apple.CGPoint) (cursor driver.Cursor, own bool) {
 	if hit == 0 {
 		return driver.CursorAuto, false
 	}
 	for n := hit; n != 0 && n != up; n = n.Send(selSuperview) {
 		v := views[n]
-		switch {
-		case v == nil:
-		case v.kind == driver.KindText:
-			p := objc.Send[apple.CGPoint](n, sel("convertPoint:fromView:"), loc, objc.ID(0))
+		if v != nil && v.kind == driver.KindText && v.native == n {
+			// A span's cursor goes ahead of its text's own and the I-beam.
+			p := objc.Send[apple.CGPoint](n, selConvertPoint, loc, objc.ID(0))
 			if c, ok := driver.SpanCursor(v.spans, v.indexAt(p)); ok {
 				return c, true
 			}
+		}
+		switch {
+		case v == nil:
 		case v.kind == driver.KindInput && hit != v.native && v.input.showsIBeam(hit):
 			return driver.CursorText, true
 		case v.native != n:

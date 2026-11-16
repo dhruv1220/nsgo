@@ -57,3 +57,32 @@ func TestAlertButtonsKeepTheArrow(t *testing.T) {
 		}
 	}
 }
+
+// Run in a browser, which computes the spans' styles: nsgo test -target web.
+func TestSpanCursorShowsOverItsCharacters(t *testing.T) {
+	doc := js.Global().Get("document")
+	if !doc.Truthy() {
+		t.Skip("no document here: run with nsgo test -target web")
+	}
+	s := &surface{doc: doc}
+	s.host = doc.Call("createElement", "div")
+	doc.Get("body").Call("appendChild", s.host)
+	defer s.host.Call("remove")
+	style := driver.TextStyle{Font: driver.Font{Size: 16}}
+	el := doc.Call("createElement", "div")
+	el.Get("style").Call("setProperty", "cursor", "help") // the text's own
+	s.Prepare(&driver.AttributedText{Text: "plain link", Style: style, Spans: []driver.TextSpan{
+		{Start: 0, End: 6, Style: style},
+		{Start: 6, End: 10, Style: style, Cursor: driver.CursorPointer},
+	}}).(*preparedText).fill(s, el, false)
+	s.host.Call("appendChild", el)
+	spans := el.Call("querySelectorAll", "span")
+	if spans.Length() != 2 {
+		t.Fatalf("%d spans, want 2", spans.Length())
+	}
+	for i, want := range []string{"help", "pointer"} {
+		if c := js.Global().Call("getComputedStyle", spans.Index(i)).Get("cursor").String(); c != want {
+			t.Errorf("span %d: cursor %q, want %q", i, c, want)
+		}
+	}
+}

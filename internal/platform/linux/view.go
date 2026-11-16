@@ -278,39 +278,32 @@ func (w *window) movePointer(at driver.Point, state uint32) {
 	}
 }
 
-// updatePointerCursor applies an explicit cursor on the text span under the
-// pointer, while leaving the view and ancestor cursor rules intact elsewhere.
+// updatePointerCursor shows the cursor a text's span names under the pointer on the text's widget, and gives the widget back its own as the pointer leaves the span: GTK shows the cursor of the widget under the pointer, which a span is not.
 func (w *window) updatePointerCursor() {
-	root := w.view(w.root)
 	var text *view
-	if root != nil && w.pointerIn {
+	if root := w.view(w.root); root != nil && w.pointerIn {
 		text = hit(root, w.lastPointer, func(v *view) bool { return v.kind == driver.KindText })
 	}
-	if w.cursorText != nil && w.cursorText != text {
-		w.setCursor(w.cursorText)
+	c, ok := driver.CursorAuto, false
+	if text != nil {
+		if l, isText := text.text.(*textLayout); isText {
+			if b, shown := w.surfaceBounds(text); shown {
+				c, ok = driver.SpanCursor(text.spans, l.indexAt(w.lastPointer.X-b.Origin.X-text.content.Origin.X,
+					w.lastPointer.Y-b.Origin.Y-text.content.Origin.Y))
+			}
+		}
+	}
+	if old := w.cursorText; old != nil && (old != text || !ok) {
 		w.cursorText = nil
+		w.setCursor(old)
 	}
-	if text == nil {
-		return
-	}
-	b, shown := w.surfaceBounds(text)
-	if !shown {
-		return
-	}
-	l, ok := text.text.(*textLayout)
-	if !ok {
-		w.setCursor(text)
-		return
-	}
-	i := l.indexAt(w.lastPointer.X-b.Origin.X-text.content.Origin.X,
-		w.lastPointer.Y-b.Origin.Y-text.content.Origin.Y)
-	if c, ok := driver.SpanCursor(text.spans, i); ok {
+	if ok && (text.cursor != c || !text.cursorSet) {
 		text.cursor, text.cursorSet = c, true
 		gtkWidgetSetCursorFromName(text.widget, cstr(c.Name()))
-		w.cursorText = text
-		return
 	}
-	w.setCursor(text)
+	if ok {
+		w.cursorText = text
+	}
 }
 
 // touch reports the mouse as a finger, when ok.

@@ -168,7 +168,7 @@ type window struct {
 	drop       fileDrop
 
 	lastPointer  driver.Point
-	cursorText   *view         // text view whose span cursor is set on its widget
+	cursorText   *view         // the text whose widget shows a span's cursor
 	down         driver.Event  // the last press: modifiers and click count
 	mouse        finger.Mouse  // finger 0 of the views' touches
 	paste        *pasting      // the paste whose clipboard is being read
@@ -1001,9 +1001,6 @@ func (w *window) apply(b *driver.MountBatch) {
 			v.plain, v.spans = it.Text.Text, it.Text.Spans
 			w.accessChanged(v)
 			w.changed(v)
-			if w.pointerIn {
-				w.updatePointerCursor()
-			}
 		case driver.ItemInput:
 			w.configure(v, it.Input)
 		case driver.ItemInputValue:
@@ -1123,6 +1120,7 @@ func (w *window) apply(b *driver.MountBatch) {
 	}
 	// Views that moved, appeared or went under a still pointer.
 	w.hoverViews()
+	w.updatePointerCursor()
 	w.refreshSelection()
 }
 
@@ -1159,6 +1157,9 @@ func (w *window) delete(v *view) {
 	w.endEffect(v)
 	w.forgetDestination(v)
 	w.hovered.Forget(v.id)
+	if w.cursorText == v {
+		w.cursorText = nil
+	}
 	v.detach()
 	for _, c := range v.children {
 		c.parent = nil
