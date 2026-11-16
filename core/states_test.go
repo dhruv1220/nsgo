@@ -146,9 +146,9 @@ func TestBlurRunsWhenTheNextFocusIsReportedBeforeTheCommit(t *testing.T) {
 	if h.tree.focus != next {
 		t.Fatalf("focus = %v, want the next view", h.tree.focus)
 	}
-	slices.Sort(log)
+	// The blur comes first, as between two views that stay, so a flag both set ends as the next view left it.
 	if !slices.Equal(log, []string{"blur", "focus"}) {
-		t.Fatalf("ran %q, want the removed view's OnBlur once and the next view's OnFocus", log)
+		t.Fatalf("ran %q, want the removed view's OnBlur once, then the next view's OnFocus", log)
 	}
 }
 

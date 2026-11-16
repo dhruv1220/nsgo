@@ -1218,10 +1218,7 @@ func (t *Tree) focusReported(n *node, focused bool) {
 		t.focusVisible = t.focusShows(n)
 	}
 	if t.focus != n {
-		if t.focus != nil && t.focus.deleted {
-			// The focused view went in this pass, before a commit noticed: its blur still runs.
-			t.blurRemoved(t.focus)
-		}
+		gone := t.focus
 		t.focusByKeyboard = n != nil && t.keyboardMovesFocus()
 		if t.focusByKeyboard {
 			// A stop the keyboard reaches scrolls into view.
@@ -1232,6 +1229,10 @@ func (t *Tree) focusReported(n *node, focused bool) {
 		// The keymap holds the confined bindings only while the focus is within their owner.
 		if t.confinedKeys() {
 			t.keysChanged = true
+		}
+		if gone != nil && gone.deleted {
+			// The focused view went in this pass, before a commit noticed: its blur runs now, before the OnFocus of the view the platform reports, as a move between two views that stay runs them.
+			t.blurRemoved(gone, true)
 		}
 	} else if n != nil && (t.focusVisibleOn == n) != t.focusVisible {
 		t.focusMoved, t.changed = true, true
@@ -1364,7 +1365,7 @@ func (t *Tree) shownInteraction(n *node) uint8 {
 func (t *Tree) updateFocusWithin() {
 	t.focusMoved = false
 	if t.focus != nil && t.focus.deleted {
-		t.blurRemoved(t.focus)
+		t.blurRemoved(t.focus, false)
 		t.focus = nil
 		if t.confinedKeys() {
 			t.keysChanged = true
@@ -1390,21 +1391,26 @@ func (t *Tree) updateFocusWithin() {
 	}
 }
 
-// blurRemoved ends the focus of n, the focused view, which left the tree: the platform's blur for it finds no view (node), so its OnBlur runs here, once, after the commit, as OnFocusOut does on the views around it that stay. Its own owner usually went with it, a Show's branch or a list's row, so it runs under the nearest owner around it still there, or the tree's root for content discarded out of the tree, such as a Holder's.
-func (t *Tree) blurRemoved(n *node) {
+// blurRemoved ends the focus of n, the focused view, which left the tree: the platform's blur for it finds no view (node), so its OnBlur runs here, once. From the commit (updateFocusWithin) it is posted to run after it, as OnFocusOut is on the views around it that stay; when the platform reports the next focus first (now), it runs at once, before that view's OnFocus. Its own owner usually went with it, a Show's branch or a list's row, so it runs under the nearest owner around it still there, or the tree's root for content discarded out of the tree, such as a Holder's.
+func (t *Tree) blurRemoved(n *node, now bool) {
 	n.states &^= stateFocused
 	blur := n.h.blur
 	if blur == nil {
 		return
 	}
+	o := t.root
 	for p := n; p != nil; p = p.parent {
 		if p.owner != nil && !p.owner.disposed {
-			p.owner.Post(blur)
-			return
+			o = p.owner
+			break
 		}
 	}
-	if !t.root.disposed {
-		t.root.Post(blur)
+	switch {
+	case o.disposed:
+	case now:
+		t.within(o, blur)
+	default:
+		o.Post(blur)
 	}
 }
 
