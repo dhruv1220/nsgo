@@ -970,8 +970,7 @@ func (s *surface) environment() driver.Environment {
 	}
 }
 
-// lifecycle returns the app-wide lifecycle for the hidden root surface and
-// the state of this surface's window for desktop and embedded views.
+// lifecycle is the lifecycle of the surface's window, an embedded surface's host window: in the background while the app is hidden or the window is not visible, minimized or covered, active while the app is the active one. The app's own surface, in no window, and a tray icon's take the app's, appLifecycle.
 func (s *surface) lifecycle() driver.Lifecycle {
 	if s.window == 0 || s.kind == driver.SurfaceTrayIcon {
 		return appLifecycle()

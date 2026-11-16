@@ -157,7 +157,7 @@ if err == nil {
 }
 ```
 
-`cx.Env().Lifecycle()` 说明应用处于前台、非活动还是后台，`desktop.Minimized(cx)` 说明当前桌面窗口是否最小化。`cx.OnQuit` 在应用退出时做清理，无论以何种方式退出，最多有 200 毫秒完成工作。`desktop.OnQuitRequest` 在 macOS 上听到用户发起的退出，例如 Cmd+Q，可以取消它，或推迟到询问过用户再答复。`cx.SetAppearance` 强制浅色或深色，`cx.SetLocale` 选择语言，`cx.OnKey` 绑定键盘快捷键，它的所有者显示的内容被隐藏或被对话框盖住时不生效，除非用 `core.KeyOptions{OverModals: true}` 保留，`cx.RegisterHotKey` 绑定任何应用在前台时都生效的快捷键，`cx.OnOpenFiles` 听到 macOS 应用打开的文件。
+`cx.Env().Lifecycle()` 说明应用处于前台、非活动还是后台：在桌面上是 `cx` 所在窗口的状态，所以一个窗口最小化时其内容可以暂停，而其他窗口照常显示；在应用自身的作用域里则是所有窗口合起来的状态。`desktop.Minimized(cx)` 说明该窗口是否最小化。`cx.OnQuit` 在应用退出时做清理，无论以何种方式退出，最多有 200 毫秒完成工作。`desktop.OnQuitRequest` 在 macOS 上听到用户发起的退出，例如 Cmd+Q，可以取消它，或推迟到询问过用户再答复。`cx.SetAppearance` 强制浅色或深色，`cx.SetLocale` 选择语言，`cx.OnKey` 绑定键盘快捷键，它的所有者显示的内容被隐藏或被对话框盖住时不生效，除非用 `core.KeyOptions{OverModals: true}` 保留，`cx.RegisterHotKey` 绑定任何应用在前台时都生效的快捷键，`cx.OnOpenFiles` 听到 macOS 应用打开的文件。
 
 ```go
 cx.OnKey("mod+k", func() { palette.Set(true) })

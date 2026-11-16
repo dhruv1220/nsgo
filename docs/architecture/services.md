@@ -214,16 +214,18 @@ A playing `Video` keeps the display on only on iOS, where `AVPlayer`'s `prevents
 
 ## The app's lifecycle
 
-`Env.Lifecycle`, NSH's `lifecycle()`, says whether the app is in use: `active`, `inactive` (shown without the focus) or `background` (none of it shows). Each backend reports it with the environment, as it changes. `Env.Minimized` and `desktop.Minimized` say whether the window containing a scope is minimized; they are separate from `Window.Visible`, which only records the app's own show or hide request.
+`Env.Lifecycle`, NSH's `lifecycle()`, says whether the app is in use: `active`, `inactive` (shown without the focus) or `background` (none of it shows). Each backend reports it with the environment, as it changes. On desktops it is the window's: a scope in a window's content reads that window's, so a minimized or covered window turns background while the others stay as they are, and a scope of an embedded view reads its host window's. The app's own scope, which `nsgo.Run(App)` runs in no window, reads them all together: background only while none of the app's windows shows.
+
+`Env.Minimized`, `desktop.Minimized` for apps, says the window is minimized. It is not `Window.Visible`, which follows only the app's own `Show` and `Hide`: a window the user minimizes, or an app hidden with Cmd+H, stays visible there.
 
 | Target | Background while | Active while | `Minimized` |
 | --- | --- | --- | --- |
-| macOS | The app is hidden, or the window's `occlusionState` says none of it shows (minimized, covered, the screen locked) | The app is active | The window is miniaturized; an embedded view follows its host window |
-| iOS | `applicationState` is background | It is active: not under a call, the app switcher or Control Center |
-| Android | `NsgoView`'s window is not visible | The window has the focus |
-| Windows | The window, an embedded view's root window, is minimized or hidden | The app is active (`WM_ACTIVATEAPP`) | `IsIconic` on the window or its embedded root |
-| Linux | The surface is unmapped, or its toplevel minimized or suspended | One of the app's windows `is-active` | `GDK_TOPLEVEL_STATE_MINIMIZED` where the compositor reports it |
-| Web | The document is hidden | The document has the focus |
+| macOS | The app is hidden, or the window is not visible, miniaturized, or its `occlusionState` says none of it shows (covered, the screen locked) | The app is active | The window `isMiniaturized` |
+| iOS | `applicationState` is background | It is active: not under a call, the app switcher or Control Center | Never |
+| Android | `NsgoView`'s window is not visible | The window has the focus | Never |
+| Windows | The window, an embedded view's root window, is minimized or hidden | The app is active (`WM_ACTIVATEAPP`) | The window, an embedded view's root window, `IsIconic` |
+| Linux | The surface is unmapped, or its toplevel minimized or suspended | One of the app's windows `is-active` | Its toplevel is `GDK_TOPLEVEL_STATE_MINIMIZED`, which X11 reports and Wayland's xdg-shell has no state for |
+| Web | The document is hidden | The document has the focus | Never |
 
 `core.App`, NSH's `appInfo()` and TSX's too, is the app's ID, name, version and build number as `nsgo.yaml` gives them, which the tool builds into `core` with `-X`, and whether it is a development build: any but `nsgo build`'s. It is the binary's, not an engine's, so every view a host embeds reads the host build's.
 

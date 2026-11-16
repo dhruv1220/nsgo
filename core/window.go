@@ -268,7 +268,7 @@ func (w *Window) Close() {
 	w.scope.Dispose()
 }
 
-// Visible reports whether the window shows, tracked.
+// Visible reports whether the window shows, tracked: what the app's own Show, Hide and Focus calls, and a panel that hides as it loses the focus, made it. A window the user minimizes, or an app the user hides, stays visible here; desktop.Minimized and Env.Lifecycle in the window's content say so.
 func (w *Window) Visible() bool { return w != nil && !w.closed && w.visible.Get() }
 
 // Closed reports whether the window is closed.

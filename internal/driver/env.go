@@ -26,9 +26,7 @@ type Environment struct {
 	Maximized bool
 	// FullScreen is whether the window fills its screen in full screen.
 	FullScreen bool
-	// Minimized is whether the surface's window is minimized. It is false on
-	// targets without desktop windows and where the compositor does not report
-	// a minimized state.
+	// Minimized is whether the surface's window is minimized, an embedded surface's host window; false without desktop windows and where the compositor reports no minimized state.
 	Minimized bool
 	// WindowFrame is where the window is and how large, as WindowSetFrame
 	// takes them; zero without a window, and a position only where the

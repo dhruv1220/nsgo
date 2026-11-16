@@ -238,8 +238,7 @@ func (e *Env) Maximized() bool { return e.maximized.Get() }
 // part of desktop.FullScreen, which apps use.
 func (e *Env) FullScreen() bool { return e.fullScreen.Get() }
 
-// Minimized reports whether the window is minimized: the core's part of
-// desktop.Minimized, which apps use.
+// Minimized reports whether the window is minimized: the core's part of desktop.Minimized, which apps use.
 func (e *Env) Minimized() bool { return e.minimized.Get() }
 
 // WindowFrame returns where the window is and how large: the core's part
@@ -403,8 +402,7 @@ func (e *Env) OSVersion() OSVersion { return e.version.Get() }
 // Idiom returns the kind of device.
 func (e *Env) Idiom() Idiom { return e.idiom.Get() }
 
-// Lifecycle returns whether the app is in use: active, inactive (shown
-// without the focus) or in the background.
+// Lifecycle returns whether the app is in use: active, inactive (shown without the focus) or in the background. On desktops it is the window's the scope is in, a minimized or covered window's in the background while the others show, and the app's own scope's is every window's together.
 func (e *Env) Lifecycle() Lifecycle { return e.lifecycle.Get() }
 
 // AppClip reports whether the app runs as an iOS App Clip: the core's
