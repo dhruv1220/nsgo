@@ -397,6 +397,55 @@ func TestFocusTabsToAStopAsAUserDoes(t *testing.T) {
 	}
 }
 
+func TestOnBlurRunsAsTheFocusedViewLeaves(t *testing.T) {
+	stops := map[string]func(focus, blur func()) core.Node{
+		"input": func(focus, blur func()) core.Node {
+			return core.Input{TestID: "note", Style: core.Style{Height: core.Pt(20)}, OnFocus: focus, OnBlur: blur}
+		},
+		"pressable": func(focus, blur func()) core.Node {
+			return core.View{TestID: "note", Style: core.Style{Height: core.Pt(20)}, OnPress: func(core.PressEvent) {}, OnFocus: focus, OnBlur: blur}
+		},
+		"focusable": func(focus, blur func()) core.Node {
+			return core.View{TestID: "note", Style: core.Style{Height: core.Pt(20)}, Focusable: func() bool { return true }, OnFocus: focus, OnBlur: blur}
+		},
+	}
+	// A shortcut removes any of them while it keeps the focus; a click keeps a field's focus too, as the field the issue's app lost it with.
+	cases := []struct{ stop, by string }{{"input", "key"}, {"pressable", "key"}, {"focusable", "key"}, {"input", "press"}}
+	for _, c := range cases {
+		t.Run(c.stop+"/"+c.by, func(t *testing.T) {
+			blurs, outs := 0, 0
+			a := Start(t, func(cx *core.Scope) core.Node {
+				shown := core.NewSignal(cx, true)
+				focused := core.NewSignal(cx, false)
+				cx.OnKeyWith("mod+k", core.KeyOptions{When: core.KeyAlways}, func() { shown.Set(false) })
+				return core.View{OnFocusOut: func() { outs++ }, Children: []core.Node{
+					core.Show{When: shown.Get, Then: func(cx *core.Scope) core.Node {
+						return stops[c.stop](func() { focused.Set(true) }, func() { blurs++; focused.Set(false) })
+					}},
+					core.View{TestID: "close", Style: core.Style{Height: core.Pt(20)}, OnPress: func(core.PressEvent) { shown.Set(false) },
+						Children: []core.Node{core.Text{Content: "Close"}}},
+					core.Show{When: focused.Get, Then: func(cx *core.Scope) core.Node { return core.Text{TestID: "focused", Content: "editing"} }},
+				}}
+			}, Environment(driver.Environment{OS: driver.OSMacOS}))
+			a.Focus("id:note")
+			if !a.Exists("id:focused") {
+				t.Fatalf("OnFocus did not run\n%s", a.Dump())
+			}
+			if c.by == "key" {
+				a.Key("mod+k")
+			} else {
+				a.Press("id:close")
+			}
+			if a.Exists("id:note") {
+				t.Fatalf("the note is still there\n%s", a.Dump())
+			}
+			if a.Exists("id:focused") || blurs != 1 || outs != 1 {
+				t.Fatalf("removing the focused note ran OnBlur %d times and the frame's OnFocusOut %d times, want once each\n%s", blurs, outs, a.Dump())
+			}
+		})
+	}
+}
+
 func TestFocusResolvesFieldsFirstThenStopsAroundTheMatch(t *testing.T) {
 	a := Start(t, func(cx *core.Scope) core.Node {
 		return core.View{Children: []core.Node{

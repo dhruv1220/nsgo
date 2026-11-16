@@ -1218,6 +1218,10 @@ func (t *Tree) focusReported(n *node, focused bool) {
 		t.focusVisible = t.focusShows(n)
 	}
 	if t.focus != n {
+		if t.focus != nil && t.focus.deleted {
+			// The focused view went in this pass, before a commit noticed: its blur still runs.
+			t.blurRemoved(t.focus)
+		}
 		t.focusByKeyboard = n != nil && t.keyboardMovesFocus()
 		if t.focusByKeyboard {
 			// A stop the keyboard reaches scrolls into view.
@@ -1359,27 +1363,11 @@ func (t *Tree) shownInteraction(n *node) uint8 {
 // portal.
 func (t *Tree) updateFocusWithin() {
 	t.focusMoved = false
-	var removed *node
 	if t.focus != nil && t.focus.deleted {
-		removed = t.focus
+		t.blurRemoved(t.focus)
 		t.focus = nil
-		removed.states &^= stateFocused
 		if t.confinedKeys() {
 			t.keysChanged = true
-		}
-	}
-	if removed != nil && removed.h.blur != nil {
-		// The platform cannot send EventBlur after the native view has been
-		// removed: node() deliberately drops deleted IDs. Keep the view's
-		// OnBlur contract by delivering it through the nearest live owner after
-		// this commit has removed the node. The deleted owner itself is often a
-		// Show branch that was disposed before its nodes were discarded.
-		for p := removed; p != nil; p = p.parent {
-			if p.owner != nil && !p.owner.disposed {
-				owner, blur := p.owner, removed.h.blur
-				owner.Post(func() { blur() })
-				break
-			}
 		}
 	}
 	old := t.focusChain
@@ -1399,6 +1387,24 @@ func (t *Tree) updateFocusWithin() {
 			t.focusCrossed(n, n.h.focusIn)
 		}
 		t.setState(n, stateFocusWithin, true)
+	}
+}
+
+// blurRemoved ends the focus of n, the focused view, which left the tree: the platform's blur for it finds no view (node), so its OnBlur runs here, once, after the commit, as OnFocusOut does on the views around it that stay. Its own owner usually went with it, a Show's branch or a list's row, so it runs under the nearest owner around it still there, or the tree's root for content discarded out of the tree, such as a Holder's.
+func (t *Tree) blurRemoved(n *node) {
+	n.states &^= stateFocused
+	blur := n.h.blur
+	if blur == nil {
+		return
+	}
+	for p := n; p != nil; p = p.parent {
+		if p.owner != nil && !p.owner.disposed {
+			p.owner.Post(blur)
+			return
+		}
+	}
+	if !t.root.disposed {
+		t.root.Post(blur)
 	}
 }
 

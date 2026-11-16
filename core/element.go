@@ -92,14 +92,10 @@ type View struct {
 	// once, rather than appearing with Create. A thumbnail and the page
 	// it opens into share one, so the picture travels between them.
 	MatchID string
-	// OnFocus and OnBlur follow the keyboard focus to and from a view that
-	// takes presses or is Focusable, on macOS and the web; a click presses
-	// without focusing.
+	// OnFocus and OnBlur follow the keyboard focus to and from a view that takes presses or is Focusable, on macOS and the web; a click presses without focusing. A focused view that leaves the tree hears OnBlur once, after the commit that removed it.
 	OnFocus func()
 	OnBlur  func()
-	// OnFocusIn and OnFocusOut hear the keyboard focus come to the view or
-	// a view inside it from elsewhere, and leave them: a move inside the
-	// view is neither, as CSS's :focus-within sees it.
+	// OnFocusIn and OnFocusOut hear the keyboard focus come to the view or a view inside it from elsewhere, and leave them: a move inside the view is neither, as CSS's :focus-within sees it. A view that stays hears OnFocusOut as the focused view inside it leaves the tree.
 	OnFocusIn, OnFocusOut func()
 	// PointerEvents says which of the view and its children take
 	// touches and the pointer.
@@ -430,8 +426,9 @@ type Input struct {
 	OnChange func(text string)
 	// OnSubmit runs on Return, as SubmitBehavior says.
 	OnSubmit func(text string)
-	OnFocus  func()
-	OnBlur   func()
+	// OnFocus and OnBlur follow the focus to and from the field; a focused field that leaves the tree hears OnBlur once, after the commit that removed it.
+	OnFocus func()
+	OnBlur  func()
 	// OnSelectionChange receives the selection, or the caret, as the user
 	// moves it.
 	OnSelectionChange func(TextRange)

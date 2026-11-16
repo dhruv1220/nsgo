@@ -2,6 +2,7 @@ package core
 
 import (
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
@@ -68,35 +69,106 @@ func TestFocusWithinFollowsTheFocusIntoOverlaysAndOut(t *testing.T) {
 	}
 }
 
-func TestBlurRunsWhenTheFocusedViewIsRemoved(t *testing.T) {
+func TestBlurRunsOnceAsTheFocusedViewLeaves(t *testing.T) {
+	cases := []struct {
+		name string
+		view func(blur func()) Node
+	}{
+		{"pressable", func(blur func()) Node { return View{TestID: "field", OnPress: press, OnBlur: blur} }},
+		{"focusable", func(blur func()) Node {
+			return View{TestID: "field", Focusable: func() bool { return true }, OnBlur: blur}
+		}},
+		{"input", func(blur func()) Node { return Input{TestID: "field", OnBlur: blur} }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var rows *Signal[[]int]
+			var log []string
+			h := newHost(t, Size{Width: 390, Height: 844}, func(cx *Scope) Node {
+				rows = NewSignalFunc(cx, []int{1, 2}, nil)
+				return View{TestID: "frame", OnFocusOut: func() { log = append(log, "out") }, Children: []Node{
+					// The row's own scope is disposed with it, before its views are discarded.
+					Each(rows.Get, func(i int) int { return i }, func(cx *Scope, item func() int, _ func() int) Node {
+						if item() == 1 {
+							return c.view(func() { log = append(log, "blur") })
+						}
+						return View{TestID: "other", OnPress: press}
+					}),
+				}}
+			})
+			h.commit()
+			field := h.find("field")
+			h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: field.id})
+			h.commit()
+			h.drain()
+			rows.Set([]int{2})
+			h.commit()
+			h.drain()
+			if field.states&stateFocused != 0 || h.tree.focus != nil {
+				t.Errorf("the removed view keeps the focus: states %b, focus %v", field.states, h.tree.focus)
+			}
+			if !slices.Equal(log, []string{"blur", "out"}) {
+				t.Fatalf("removing the focused view ran %q, want its OnBlur once, then the frame's OnFocusOut", log)
+			}
+			// The platform's blur for the removed view comes late and finds no view.
+			h.tree.Dispatch(driver.Event{Kind: driver.EventBlur, ID: field.id})
+			h.commit()
+			h.drain()
+			if len(log) != 2 {
+				t.Errorf("a late blur ran %q again", log[2:])
+			}
+		})
+	}
+}
+
+func TestBlurRunsWhenTheNextFocusIsReportedBeforeTheCommit(t *testing.T) {
 	var shown *Signal[bool]
-	blurs := 0
+	var log []string
 	h := newHost(t, Size{Width: 390, Height: 844}, func(cx *Scope) Node {
 		shown = NewSignal(cx, true)
-		return Show{When: shown.Get, Then: func(*Scope) Node {
-			return View{TestID: "field", OnPress: press, OnBlur: func() { blurs++ }}
+		return View{Children: []Node{
+			Show{When: shown.Get, Then: func(*Scope) Node {
+				return View{TestID: "field", OnPress: press, OnBlur: func() { log = append(log, "blur") }}
+			}},
+			View{TestID: "next", OnPress: press, OnFocus: func() { log = append(log, "focus") }},
 		}}
 	})
 	h.commit()
-	field := h.find("field")
-	h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: field.id})
+	h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("field").id})
 	h.commit()
 	h.drain()
+	// One pass of the engine's queue: what an event did removes the focused view, and the platform reports the focus on another view before the commit.
+	next := h.find("next")
 	shown.Set(false)
+	h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: next.id})
 	h.commit()
 	h.drain()
-	if field.states&stateFocused != 0 {
-		t.Fatal("removed view retained the focused state")
+	if h.tree.focus != next {
+		t.Fatalf("focus = %v, want the next view", h.tree.focus)
 	}
-	if blurs != 1 {
-		t.Fatalf("OnBlur ran %d times when the focused view was removed, want once", blurs)
+	slices.Sort(log)
+	if !slices.Equal(log, []string{"blur", "focus"}) {
+		t.Fatalf("ran %q, want the removed view's OnBlur once and the next view's OnFocus", log)
 	}
-	// A late native blur for the deleted ID is ignored and cannot run it again.
-	h.tree.Dispatch(driver.Event{Kind: driver.EventBlur, ID: field.id})
+}
+
+func TestBlurRunsAsAHoldersFocusedContentIsDiscarded(t *testing.T) {
+	var held *Holder
+	blurs := 0
+	h := newHost(t, Size{Width: 390, Height: 844}, func(cx *Scope) Node {
+		held = NewHolder(cx, func(cx *Scope) Node { return Input{TestID: "field", OnBlur: func() { blurs++ }} })
+		return View{Children: []Node{held.Place()}}
+	})
+	h.commit()
+	h.tree.Dispatch(driver.Event{Kind: driver.EventFocus, ID: h.find("field").id})
 	h.commit()
 	h.drain()
-	if blurs != 1 {
-		t.Fatalf("late EventBlur ran OnBlur %d times, want once", blurs)
+	// The content leaves the tree before its views are discarded, so no owner around it is left: the root runs the blur.
+	held.Dispose()
+	h.commit()
+	h.drain()
+	if blurs != 1 || h.tree.focus != nil {
+		t.Fatalf("OnBlur ran %d times as the holder's focused content went, focus %v; want once, none", blurs, h.tree.focus)
 	}
 }
 

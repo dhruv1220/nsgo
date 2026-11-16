@@ -27,7 +27,7 @@ ui.Input{
 
 ## 焦点与键盘
 
-`Ref` 让文本框获得或失去焦点，`cx.DismissKeyboard()` 关闭软件键盘。`OnFocus` 和 `OnBlur` 跟随焦点，`View.OnFocus`/`OnBlur` 对任何可聚焦视图做同样的事。
+`Ref` 让文本框获得或失去焦点，`cx.DismissKeyboard()` 关闭软件键盘。`OnFocus` 和 `OnBlur` 跟随焦点，`View.OnFocus`/`OnBlur` 对任何可聚焦视图做同样的事。获得焦点的视图离开树时（它所在的 `Show` 关闭或它所在的行被移除），会在移除它的那次提交之后收到一次 `OnBlur`，留下的外层视图收到 `OnFocusOut`。
 
 ```go
 email := &core.Ref{}
