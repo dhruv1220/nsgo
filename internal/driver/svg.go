@@ -39,7 +39,8 @@ type svgBox struct{ x, y, w, h float32 }
 const (
 	maxSVGDepth  = 256
 	maxSVGUses   = 16
-	maxSVGVisits = 1 << 20
+	// A quarter of a million elements is far past what a drawing draws, and refusing a document of nested uses or markers that asks for more takes a fifth of the time a million did.
+	maxSVGVisits = 1 << 18
 	maxSVGOps    = 1 << 21
 )
 
