@@ -49,7 +49,7 @@ core.Text{Style: core.Style{FontSize: 17, LineHeight: 24}, Spans: []core.Span{
 
 ## 字体
 
-`FontFamily` 指定一个字体系列或 CSS 列表（`Inter, "Noto Sans SC", sans-serif`），前面的字体缺少的字符由后面的字体补上。`FontWeight`、`FontStyle`、`FontVariant`、`LineHeight`、`LineHeightMultiple`、`LetterSpacing` 和 `LetterSpacingEm` 设置字形和间距，`core.FontMonospace` 是平台等宽字体。
+`FontFamily` 指定一个字体系列或 CSS 列表（`Inter, "Noto Sans SC", sans-serif`），前面的字体缺少的字符由后面的字体补上。列表中的每个字体都采用指定的字重和样式。在 macOS 和 iOS 上，一行的行高和基线取自该行字符实际使用的字体，因此整行都由后面的字体绘制时采用该字体的度量，而浏览器会以第一个字体的度量作为下限。`FontWeight`、`FontStyle`、`FontVariant`、`LineHeight`、`LineHeightMultiple`、`LetterSpacing` 和 `LetterSpacingEm` 设置字形和间距，`core.FontMonospace` 是平台等宽字体。
 
 把应用的字体放在 `resources/` 下并在第一个视图前注册，或在运行时注册字体字节：
 

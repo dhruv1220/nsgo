@@ -49,7 +49,7 @@ core.Text{Style: core.Style{FontSize: 17, LineHeight: 24}, Spans: []core.Span{
 
 ## Fonts
 
-`FontFamily` names a family or a CSS list (`Inter, "Noto Sans SC", sans-serif`), each used for the characters those before it lack. `FontWeight`, `FontStyle`, `FontVariant`, `LineHeight`, `LineHeightMultiple`, `LetterSpacing` and `LetterSpacingEm` set the face and the spacing, and `core.FontMonospace` is the platform's fixed-pitch family.
+`FontFamily` names a family or a CSS list (`Inter, "Noto Sans SC", sans-serif`), each used for the characters those before it lack. Each family in the list takes the weight and style. On macOS and iOS a line takes its height and baseline from the faces its characters are set in, so a line set wholly in a later family takes that family's, where a browser keeps the first family's as a floor. `FontWeight`, `FontStyle`, `FontVariant`, `LineHeight`, `LineHeightMultiple`, `LetterSpacing` and `LetterSpacingEm` set the face and the spacing, and `core.FontMonospace` is the platform's fixed-pitch family.
 
 Package the app's fonts under `resources/` and register them before the first view, or register a font's bytes while the app runs:
 
