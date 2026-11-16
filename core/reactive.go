@@ -344,8 +344,7 @@ func (cx *Scope) disposeDetached() {
 	}
 }
 
-// Cleanup registers fn to run when the current owner is disposed or runs
-// again, last registered first, as testing.T.Cleanup does.
+// Cleanup registers fn to run when the current owner is disposed or runs again, last registered first, as testing.T.Cleanup does. Readers of what fn writes run once the disposal, or the owner's new run, is over, never against a half-disposed tree.
 func (cx *Scope) Cleanup(fn func()) { cx.current().addCleanup(fn) }
 
 func (o *Scope) addCleanup(fn func()) {
@@ -678,13 +677,14 @@ func (c *computation) run() {
 	if c.rt.dev != nil {
 		began = time.Now()
 	}
+	rt := c.rt
+	// The batch covers the disposal too, so a cleanup's write runs nothing before c has run again.
+	rt.batch++
 	c.disposeOwned()
 	c.unlink()
 	c.state = clean
-	rt := c.rt
 	prevOwner, prevObs := rt.owner, rt.observer
 	rt.owner, rt.observer = &c.Scope, c
-	rt.batch++
 	changed := false
 	rt.guard(&c.Scope, func() {
 		if c.effect != nil {

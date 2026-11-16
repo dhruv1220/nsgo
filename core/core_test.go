@@ -240,21 +240,81 @@ func TestDisposalBatchesCleanupWrites(t *testing.T) {
 	}
 }
 
+// An effect outside the disposed subtree runs once for all the cleanups' writes, after the subtree is gone, with its context values.
 func TestDisposalFlushesOutsideEffectsAfterCleanup(t *testing.T) {
+	theme := NewKey("theme after dispose", "none")
 	root := NewRoot(RootOptions{})
 	page := root.Child()
-	flag := NewSignal(page, true)
-	runs := 0
+	theme.Provide(page, "dark")
+	n := NewSignal(page, 0)
+	section := page.Child()
+	var seen []string
 	page.Effect(func() {
-		flag.Get()
-		runs++
+		seen = append(seen, fmt.Sprint(n.Get(), " ", theme.Use(page), " ", section.Disposed()))
 	})
-	child := page.Child()
-	child.Cleanup(func() { flag.Set(false) })
+	for i := range 2 {
+		card := section.Child()
+		card.Cleanup(func() { n.Set(n.GetUntracked() + 1 + i) })
+	}
 
-	child.Dispose()
-	if runs != 2 {
-		t.Fatalf("outside effect ran %d times, want 2", runs)
+	section.Dispose()
+	if want := []string{"0 dark false", "3 dark true"}; !slices.Equal(seen, want) {
+		t.Fatalf("outside effect saw %q, want %q", seen, want)
+	}
+	root.Dispose()
+}
+
+// A Show whose condition a cleanup flips while the app is torn down does not build a branch in the tree being disposed.
+func TestDisposalBuildsNoBranch(t *testing.T) {
+	user := NewKey("user during dispose", "")
+	var built []string
+	h := newHost(t, Size{Width: 100, Height: 100}, nil)
+	user.Provide(h.root, "ada")
+	h.tree.Mount(func(cx *Scope) Node {
+		signedOut := NewSignal(cx, false)
+		return View{Children: []Node{
+			Show{When: signedOut.Get, Then: func(cx *Scope) Node {
+				built = append(built, "user "+user.Use(cx))
+				return Text{Content: "signed out"}
+			}},
+			Dynamic(func(cx *Scope) Node {
+				cx.Cleanup(func() { signedOut.Set(true) })
+				return View{}
+			}),
+		}}
+	})
+	h.commit()
+
+	h.root.Dispose()
+	if len(built) != 0 || len(h.errs) != 0 {
+		t.Fatalf("teardown built %q, errors %v", built, h.errs)
+	}
+}
+
+// A memo read outside a batch disposes what it built before it runs again; a cleanup's write there runs its readers only after the memo has run, never the memo inside its own run.
+func TestMemoRerunBatchesCleanupWrites(t *testing.T) {
+	root := NewRoot(RootOptions{})
+	src := NewSignal(root, 0)
+	n := NewSignal(root, 0)
+	runs := 0
+	m := NewMemo(root, func() int {
+		runs++
+		v := src.Get()
+		root.Cleanup(func() { n.Set(n.GetUntracked() + 1) })
+		return v
+	})
+	var seen []int
+	root.Effect(func() {
+		n.Get()
+		seen = append(seen, m.GetUntracked())
+	})
+
+	src.Set(1)
+	if got := m.Get(); got != 1 {
+		t.Fatalf("memo = %d, want 1", got)
+	}
+	if runs != 2 || !slices.Equal(seen, []int{0, 1}) {
+		t.Fatalf("memo ran %d times, effect saw %v; want 2 runs and [0 1]", runs, seen)
 	}
 	root.Dispose()
 }

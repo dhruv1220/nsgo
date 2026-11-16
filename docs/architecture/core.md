@@ -8,7 +8,7 @@ Read this before changing `core`, `internal/engine` or the mount protocol a back
 
 The graph follows NSH's (Solid 1.9's scheduling): signals, memos, render effects for element bindings and user effects for the app, run in that order after each batch.
 
-- Every computation and scope is an owner. Disposing an owner disposes what it created and runs its cleanups, last first, as `testing.T.Cleanup` does. Cleanup writes are batched until the owner is fully detached, so computations outside it see the intact owner tree and computations inside it never run during teardown.
+- Every computation and scope is an owner. Disposing an owner disposes what it created and runs its cleanups, last first, as `testing.T.Cleanup` does. A disposal is a batch, and a computation's disposal before it runs again is part of the run's: what cleanups write runs once it is over, so computations outside the owner run once against an intact tree and those inside it, already disposed, never run.
 - Go has no goroutine-local state, so code finds its graph through `cx *Scope`. While the graph runs code, what that code creates belongs to the innermost running owner, whichever `cx` it captured. Handlers run under the owner their element was built in.
 - The graph belongs to the engine goroutine and never locks. Other goroutines reach it with `Scope.Post`. `Scope.Context` is cancelled when the owner goes, so work started for a screen stops with it.
 - A reader and each source it read keep each other's index in their lists, so a computation that runs again unlinks in constant time however many read the same source: a table's thousand cells reading one signal.
