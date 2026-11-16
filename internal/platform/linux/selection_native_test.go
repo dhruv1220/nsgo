@@ -204,8 +204,16 @@ func TestTouchDragsScrollAndPullsToRefresh(t *testing.T) {
 	if rest.Y <= at.Y {
 		t.Errorf("the view rests at %v, want past %v: no glide", rest, at)
 	}
-	// Back to the top, then a pull past it.
-	w.onLoop(t, func() { w.scrollTo(scroll, driver.Point{}) })
+	// Back to the top as the app's ScrollTo puts it, which stops the glide still under way, then a pull past it.
+	w.onLoop(t, func() {
+		w.interruptScroll(scroll)
+		w.scrollTo(scroll, driver.Point{})
+	})
+	time.Sleep(100 * time.Millisecond)
+	w.onLoop(t, func() { rest = scroll.offset })
+	if rest.Y != 0 {
+		t.Fatalf("scrolled to the top, the view went on gliding to %v", rest)
+	}
 	drag(driver.Point{X: 100, Y: 50}, 20, 40, 40, 40, 40)
 	select {
 	case <-refreshed:
