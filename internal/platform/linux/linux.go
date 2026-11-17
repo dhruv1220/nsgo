@@ -107,6 +107,9 @@ type window struct {
 	unmanaged    bool
 	anchorBounds driver.Bounds
 	panelSide    driver.WindowPlacement
+	// workspaces are the workspaces the app put the window on, and onAllDesktops whether it last asked the window manager for every desktop (workspaces.go).
+	workspaces    driver.WindowWorkspaces
+	onAllDesktops bool
 	// settingsHandlers are the handlers setupSettings connects to GTK's settings, which outlive the window.
 	settingsHandlers []uint64
 	// contrastHandler is the handler on GNOME's accessibility settings, which are not GTK's.
@@ -401,6 +404,8 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	}
 	child := newWindow(opts, false)
 	child.kind, child.hideOnBlur, child.noActivate, child.opts = cfg.Kind, cfg.HideOnBlur, cfg.NoActivate, opts
+	// Applied as the window maps (windowMappedCallback).
+	child.workspaces = cfg.Workspaces
 	child.createWindow(opts)
 	child.setupSettings()
 	child.visible = !opts.Hidden
@@ -565,6 +570,7 @@ func (w *window) createWindow(opts Options) {
 	}
 	w.setupInputs()
 	gSignalConnect(w.win, "close-request", cbCloseRequest, w.handle)
+	gSignalConnect(w.win, "map", cbWindowMapped, w.handle)
 	for _, name := range []string{"maximized", "fullscreen", "default-width", "default-height"} {
 		gSignalConnect(w.win, "notify::"+name, cbWindowState, w.handle)
 	}
@@ -1301,6 +1307,8 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		w.setConstraints(c.Constraints)
 	case driver.WindowSetLevel:
 		// Stacking is the compositor's.
+	case driver.WindowSetWorkspaces:
+		w.setWorkspaces(c.Workspaces)
 	}
 }
 

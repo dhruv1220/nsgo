@@ -13,6 +13,7 @@ var (
 	cbRun          uintptr
 	cbWindowState  uintptr
 	cbMapped       uintptr
+	cbWindowMapped uintptr
 	cbActivity     uintptr
 
 	cbClickPressed     uintptr
@@ -97,6 +98,7 @@ func init() {
 	cbRun = newCallback(runCallback)
 	cbWindowState = newCallback(windowStateCallback)
 	cbMapped = newCallback(mappedCallback)
+	cbWindowMapped = newCallback(windowMappedCallback)
 	cbActivity = newCallback(activityCallback)
 
 	cbClickPressed = newCallback(clickPressedCallback)

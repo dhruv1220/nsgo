@@ -20,6 +20,8 @@ type (
 	WindowFrame = core.WindowFrame
 	// WindowLevel is where a window stacks among the others.
 	WindowLevel = core.WindowLevel
+	// WindowWorkspaces are the workspaces a window shows on: macOS's Spaces, the virtual desktops of Windows and Linux.
+	WindowWorkspaces = core.WindowWorkspaces
 	// WindowConstraints limit a window's size and what the user may do
 	// to it.
 	WindowConstraints = core.WindowConstraints
@@ -44,6 +46,13 @@ const (
 	WindowLevelNormal   = core.WindowLevelNormal
 	WindowLevelFloating = core.WindowLevelFloating
 	WindowLevelDesktop  = core.WindowLevelDesktop
+)
+
+const (
+	// WindowWorkspacesCurrent keeps a window on the workspace it opened on.
+	WindowWorkspacesCurrent = core.WindowWorkspacesCurrent
+	// WindowWorkspacesAll shows it on every workspace.
+	WindowWorkspacesAll = core.WindowWorkspacesAll
 )
 
 const (
@@ -165,6 +174,9 @@ func SetWindowFrame(cx *core.Scope, f WindowFrame) { cx.SetWindowFrame(f) }
 // SetWindowLevel puts the window at level among the others, on macOS
 // and Windows; Linux leaves stacking to the compositor.
 func SetWindowLevel(cx *core.Scope, level WindowLevel) { cx.SetWindowLevel(level) }
+
+// SetWindowWorkspaces shows the window on every workspace, as a desktop pet, a HUD or a timer does, or back on one, the one the user is on; WindowOptions.Workspaces opens a window so. On macOS a window on every Space also shows over other apps' full screen spaces and stays out of Cmd-` cycling, and SetWindowLevel keeps it on every Space; a level that floats keeps it above the windows there, and the desktop's level behind them, out of full screen spaces. Linux puts it on every virtual desktop on X11, where the window manager supports _NET_WM_DESKTOP. Windows, which has no public way to pin a window to every virtual desktop, and Wayland leave it on the one it opened on.
+func SetWindowWorkspaces(cx *core.Scope, w WindowWorkspaces) { cx.SetWindowWorkspaces(w) }
 
 // SetWindowConstraints limits the window's content size and says whether
 // it resizes, minimizes and maximizes; the zero WindowConstraints limits
