@@ -102,9 +102,10 @@ type window struct {
 	hideOnBlur bool
 	visible    bool
 	focused    bool
-	// noActivate keeps a panel from the focus (SurfaceConfig.NoActivate), which X11 does by leaving it unmanaged: no window manager places, decorates or focuses it. anchorBounds and panelSide are where core.Window.ShowAt last placed it, panelSide WindowPlaceDefault for nowhere.
+	// noActivate keeps a panel from the focus (SurfaceConfig.NoActivate), which X11 does by leaving it unmanaged: no window manager places, decorates or focuses it. transparent is set once a panel's background is gone (SurfaceConfig.Transparent). anchorBounds and panelSide are where core.Window.ShowAt last placed it, panelSide WindowPlaceDefault for nowhere.
 	noActivate   bool
 	unmanaged    bool
+	transparent  bool
 	anchorBounds driver.Bounds
 	panelSide    driver.WindowPlacement
 	// settingsHandlers are the handlers setupSettings connects to GTK's settings, which outlive the window.
@@ -409,6 +410,9 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 		gtkWindowSetDecorated(child.win, 0)
 		if cfg.NoActivate {
 			child.unmanaged = child.leaveUnmanaged()
+		}
+		if cfg.Transparent {
+			child.transparent = child.clearBackground()
 		}
 	}
 	if cfg.Frame.Width > 0 || cfg.Frame.Height > 0 {
@@ -1287,6 +1291,10 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		}
 		w.visible = true
 		gtkWindowPresent(w.win)
+	case driver.WindowFitSize:
+		if w.kind == driver.SurfacePanel {
+			w.fitPanel(c.Frame.Width, c.Frame.Height)
+		}
 	case driver.WindowSetAnchor:
 		if w.kind == driver.SurfacePanel {
 			w.anchorBounds, w.panelSide = c.AnchorBounds, c.Placement

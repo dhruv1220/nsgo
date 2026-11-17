@@ -315,6 +315,10 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		w.setMaterial(c.Material)
 	case driver.WindowSetConstraints:
 		w.setConstraints(c.Constraints)
+	case driver.WindowFitSize:
+		if w.kind == driver.SurfacePanel {
+			w.fitPanel(c.Frame.Width, c.Frame.Height)
+		}
 	case driver.WindowSetAnchor:
 		if w.kind == driver.SurfacePanel {
 			w.anchorBounds, w.placement = c.AnchorBounds, c.Placement

@@ -51,7 +51,7 @@ func main() { nsgo.Run(Root) }
 - Signals belong to the engine's goroutine. Do I/O on a goroutine and set signals through `cx.Post`, or use `core.NewResource`, whose fetcher runs off the engine with a `context` cancelled when its source changes, under `core.Suspense` for the loading state. Never block a component or a handler on the network or disk.
 - Keep tokens, API keys and passwords in `cx.Secrets()`, the platform's keychain or keystore, never in `cx.Storage()`, a plain file; its calls may wait for the system, so make them on a goroutine too.
 - Apps use `ui`'s components, which have a look and follow the theme; `base` holds the same controls without a look, for component authors; `mobile` and `desktop` hold what only phones or only desktops have. [references/components.md](references/components.md) maps needs to components.
-- A desktop app that opens its own windows, panels, tray icons and shortcuts runs `nsgo.Run(App)` with `func App(app *core.Scope)` and opens them with `desktop`.
+- A desktop app that opens its own windows, panels, tray icons and shortcuts runs `nsgo.Run(App)` with `func App(app *core.Scope)` and opens them with `desktop`. A popup card is a panel with `PanelOptions` `Transparent` and `FitContent` whose content draws its own corners and shadow, and a background where `desktop.Transparent` is false.
 - TSX apps embed their sources and run `compiler.App(src, "App.tsx")`, importing `nsgo`, `nsgo/base` and `nsgo/ui`; Go components and functions reach TSX through `tsx.Register` and `tsx.RegisterFunctions` ([TSX apps](https://nsgo.dev/docs/tsx.md)).
 
 ## Layout and styles

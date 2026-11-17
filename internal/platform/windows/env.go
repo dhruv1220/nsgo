@@ -99,6 +99,8 @@ func (w *window) environment() driver.Environment {
 
 		// The toast notifier's schedule, which has no repeats.
 		ScheduledNotifications: true,
+
+		WindowTransparent: w.transparent,
 	}
 }
 

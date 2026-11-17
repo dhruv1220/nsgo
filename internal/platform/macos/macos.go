@@ -212,7 +212,7 @@ type surface struct {
 	// loopback are the auth sessions without a callback scheme, which the default browser shows.
 	loopback loopback.Sessions
 	// id is the surface's tree for a surface the app opened, of kind;
-	// tray is the tray icon a SurfaceTrayIcon draws, anchor the one a panel last showed under, and anchorBounds and placement where core.Window.ShowAt last placed it, placement WindowPlaceDefault for nowhere. hideOnBlur hides a panel as it loses the focus, and noActivate keeps it from ever taking it.
+	// tray is the tray icon a SurfaceTrayIcon draws, anchor the one a panel last showed under, and anchorBounds and placement where core.Window.ShowAt last placed it, placement WindowPlaceDefault for nowhere. hideOnBlur hides a panel as it loses the focus, noActivate keeps it from ever taking it, and transparent has it draw nothing of its own.
 	id           uint32
 	kind         driver.SurfaceKind
 	tray         uint32
@@ -221,6 +221,7 @@ type surface struct {
 	placement    driver.WindowPlacement
 	hideOnBlur   bool
 	noActivate   bool
+	transparent  bool
 	// The app and how an embedded surface starts it once it is in a
 	// window; observed the window its observations follow.
 	app      engine.App
@@ -1058,6 +1059,8 @@ func (s *surface) environment() driver.Environment {
 
 		// The center serves only an app in a bundle.
 		ScheduledNotifications: apple.NotificationsAvailable(),
+
+		WindowTransparent: s.transparent,
 	}
 }
 

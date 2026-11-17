@@ -3,6 +3,7 @@
 package linux
 
 import (
+	"log"
 	"math"
 	"sync"
 
@@ -154,5 +155,49 @@ func (w *window) placementFailed() {
 	gtkWidgetSetVisible(w.win, 0)
 	if w.engine != nil {
 		w.engine.Dispatch(driver.Event{Kind: driver.EventWindowPlacementFailed, Text: "Linux places a panel at a screen rectangle on X11 only; a Wayland compositor places its windows itself"})
+	}
+}
+
+// A transparent panel (SurfaceConfig.Transparent) takes its window's background away through a CSS class, so only what the app draws shows: GDK gives a window an alpha channel where the display is composited and has an RGBA visual, as every Wayland compositor and a compositing X11 window manager do. Without them the panel keeps its background and reports so.
+var (
+	gdkDisplayIsComposited func(display uintptr) int32
+	gdkDisplayIsRGBA       func(display uintptr) int32
+	gtkWidgetAddCSSClass   func(widget uintptr, class *byte)
+	bindClearPanels        = sync.OnceValue(func() bool {
+		for _, symbol := range []string{"gdk_display_is_composited", "gdk_display_is_rgba", "gtk_widget_add_css_class"} {
+			if _, err := purego.Dlsym(gtkLib, symbol); err != nil {
+				return false
+			}
+		}
+		purego.RegisterLibFunc(&gdkDisplayIsComposited, gtkLib, "gdk_display_is_composited")
+		purego.RegisterLibFunc(&gdkDisplayIsRGBA, gtkLib, "gdk_display_is_rgba")
+		purego.RegisterLibFunc(&gtkWidgetAddCSSClass, gtkLib, "gtk_widget_add_css_class")
+		provider := gtkCssProviderNew()
+		gtkCssProviderLoadFromString(provider, cstr(clearPanelCSS))
+		// Above the theme's window background.
+		gtkStyleContextAddForDisplay(gdkDisplayGetDefault(), provider, 700)
+		return true
+	})
+)
+
+// clearPanelCSS takes a transparent panel's background, border and shadow away.
+const clearPanelCSS = `window.nsgo-clear, window.nsgo-clear > box { background: none; border: none; box-shadow: none; }`
+
+// clearBackground takes the panel's background away, reporting whether the display shows what is behind it.
+func (w *window) clearBackground() bool {
+	display := gdkDisplayGetDefault()
+	if display == 0 || !bindClearPanels() || gdkDisplayIsComposited(display) == 0 || gdkDisplayIsRGBA(display) == 0 {
+		log.Printf("nsgo: a transparent panel needs a compositor: the panel keeps its background")
+		return false
+	}
+	gtkWidgetAddCSSClass(w.win, cstr("nsgo-clear"))
+	return true
+}
+
+// fitPanel sizes a panel to width by height, the size its content takes (driver.WindowFitSize), rounded up to GTK's whole logical pixels so a size the core rounded to device pixels, a half point at scale 2, loses none of the content: GTK keeps its top left corner, and one that shows beside the rectangle ShowAt placed it at is placed there again at its new size, on X11.
+func (w *window) fitPanel(width, height driver.Points) {
+	gtkWindowSetDefaultSize(w.win, int32(math.Ceil(float64(width))), int32(math.Ceil(float64(height))))
+	if w.visible && w.panelSide != driver.WindowPlaceDefault {
+		w.placePanel()
 	}
 }

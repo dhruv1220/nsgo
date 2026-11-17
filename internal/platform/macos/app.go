@@ -107,10 +107,11 @@ func (o *surface) openSurface(cfg driver.SurfaceConfig) {
 	window.Send(sel("setReleasedWhenClosed:"), false)
 	s := newSurface(opts, false)
 	s.id, s.kind, s.hideOnBlur, s.noActivate = cfg.ID, cfg.Kind, cfg.HideOnBlur, cfg.NoActivate
+	s.transparent = cfg.Kind == driver.SurfacePanel && cfg.Transparent
 	s.window = window
 	s.setWindowDelegate()
 	window.Send(sel("setContentView:"), s.native)
-	if cfg.Kind == driver.SurfacePanel {
+	if cfg.Kind == driver.SurfacePanel && !s.transparent {
 		// A panel's content is clipped to its rounded corners.
 		s.native.Send(selLayer).Send(sel("setCornerRadius:"), float64(12))
 		s.native.Send(selLayer).Send(sel("setMasksToBounds:"), true)
@@ -131,9 +132,7 @@ func (o *surface) openSurface(cfg driver.SurfaceConfig) {
 	s.showFirst = !cfg.Hidden
 }
 
-// newPanel returns a panel of cfg's size: titled for its rounded corners
-// and shadow, with no title bar or controls, above the windows of every
-// space.
+// newPanel returns a panel of cfg's size, above the windows of every space: titled for its rounded corners and shadow, with no title bar or controls; or, transparent, borderless, clear and without a shadow, so that only what the app draws shows, its own corners and shadow among it.
 func newPanel(cfg driver.SurfaceConfig) objc.ID {
 	if classPanel == 0 {
 		no := func(objc.ID, objc.SEL) bool { return false }
@@ -150,14 +149,23 @@ func newPanel(cfg driver.SurfaceConfig) objc.ID {
 	if cfg.NoActivate {
 		class = classStillPanel
 	}
+	style := uint(styleTitled | styleNonactivating | maskFullSize)
+	if cfg.Transparent {
+		style = styleNonactivating // NSWindowStyleMaskBorderless is 0
+	}
 	p := objc.ID(class).Send(selAlloc).Send(sel("initWithContentRect:styleMask:backing:defer:"),
-		apple.Rect(0, 0, float64(cfg.Width), float64(cfg.Height)),
-		uint(styleTitled|styleNonactivating|maskFullSize), uint(2), false)
-	p.Send(sel("setTitlebarAppearsTransparent:"), true)
-	p.Send(sel("setTitleVisibility:"), titleHidden)
-	for i := 0; i < 3; i++ {
-		if b := p.Send(selStandardButton, i); b != 0 {
-			b.Send(selSetHidden, true)
+		apple.Rect(0, 0, float64(cfg.Width), float64(cfg.Height)), style, uint(2), false)
+	if cfg.Transparent {
+		p.Send(selSetOpaque, false)
+		p.Send(selSetBackgroundColor, objc.ID(apple.Class("NSColor")).Send(selClearColor))
+		p.Send(sel("setHasShadow:"), false)
+	} else {
+		p.Send(sel("setTitlebarAppearsTransparent:"), true)
+		p.Send(sel("setTitleVisibility:"), titleHidden)
+		for i := 0; i < 3; i++ {
+			if b := p.Send(selStandardButton, i); b != 0 {
+				b.Send(selSetHidden, true)
+			}
 		}
 	}
 	p.Send(sel("setMovable:"), false)
@@ -212,11 +220,16 @@ func (s *surface) show(anchor uint32) {
 
 // showPanel shows a panel and gives it the keyboard, unless it never takes it: beside at on side when side is set (core.Window.ShowAt), else under tray icon anchor, else in the upper middle of the screen with the mouse, as Spotlight shows.
 func (s *surface) showPanel(anchor uint32, at driver.Bounds, side driver.WindowPlacement) {
-	w := s.window
 	s.anchor, s.anchorBounds, s.placement = anchor, at, side
+	s.movePanel(anchor, at, side)
+	s.orderPanelFront()
+}
+
+// movePanel moves a panel where showPanel shows it, without showing it.
+func (s *surface) movePanel(anchor uint32, at driver.Bounds, side driver.WindowPlacement) {
+	w := s.window
 	if side != driver.WindowPlaceDefault {
 		w.Send(sel("setFrameOrigin:"), placePanel(at, objc.Send[apple.CGRect](w, sel("frame")).Size, side))
-		s.orderPanelFront()
 		return
 	}
 	frame := objc.Send[apple.CGRect](w, sel("frame"))
@@ -253,7 +266,24 @@ func (s *surface) showPanel(anchor uint32, at driver.Bounds, side driver.WindowP
 		frame.Origin.Y = max(v.Origin.Y+8, min(frame.Origin.Y, v.Origin.Y+v.Size.Height-frame.Size.Height))
 	}
 	w.Send(sel("setFrameOrigin:"), frame.Origin)
-	s.orderPanelFront()
+}
+
+// fitPanel sizes a panel's content to width by height, the size its content takes (driver.WindowFitSize), keeping its top edge: one that shows beside the rectangle ShowAt placed it at, or under its tray icon, is placed there again at its new size.
+func (s *surface) fitPanel(width, height driver.Points) {
+	w := s.window
+	frame := objc.Send[apple.CGRect](w, sel("frame"))
+	content := objc.Send[apple.CGRect](w, sel("contentRectForFrameRect:"), frame).Size
+	top := frame.Origin.Y + frame.Size.Height
+	frame.Size.Width += float64(width) - content.Width
+	frame.Size.Height += float64(height) - content.Height
+	frame.Origin.Y = top - frame.Size.Height
+	w.Send(sel("setFrame:display:"), frame, true)
+	if !objc.Send[bool](w, sel("isVisible")) {
+		return
+	}
+	if tr := trays[s.anchor]; s.placement != driver.WindowPlaceDefault || tr != nil && tr.item != 0 {
+		s.movePanel(s.anchor, s.anchorBounds, s.placement)
+	}
 }
 
 // orderPanelFront shows a panel in front, as the key window unless it never takes the keyboard: then orderFrontRegardless leaves the key window, and the app in front, as they are.

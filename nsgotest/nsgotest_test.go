@@ -436,6 +436,33 @@ func TestStartOpensWindowsWhereRunDoes(t *testing.T) {
 	}
 }
 
+// A panel opened Transparent reports it, as on a compositing desktop, also after the test reports a new environment; another panel does not.
+func TestTransparentPanelReportsIt(t *testing.T) {
+	if Target() != "" {
+		t.Skip("checks the headless model")
+	}
+	var clear, plain bool
+	app := StartApp(t, func(cx *core.Scope) {
+		desktop.OpenPanel(cx, desktop.PanelOptions{Width: 300, Height: 400, FitContent: true, Transparent: true}, func(cx *core.Scope) core.Node {
+			cx.Effect(func() { clear = desktop.Transparent(cx) })
+			return core.Text{Content: "card"}
+		})
+		desktop.OpenPanel(cx, desktop.PanelOptions{}, func(cx *core.Scope) core.Node {
+			cx.Effect(func() { plain = desktop.Transparent(cx) })
+			return core.Text{Content: "plain"}
+		})
+		cx.SetMainView(func(cx *core.Scope) core.Node { return core.Text{Content: "main", TestID: "main"} })
+	}, Environment(core.Environment{OS: core.OSMacOS}))
+	app.Find("id:main")
+	if !clear || plain {
+		t.Fatalf("the transparent panel reports %v, the other %v", clear, plain)
+	}
+	app.SetEnvironment(core.Environment{OS: core.OSMacOS, Dark: true})
+	if !clear || plain {
+		t.Fatalf("after a new environment the transparent panel reports %v, the other %v", clear, plain)
+	}
+}
+
 // Steps act on the window SetMainView opens, not on one the app opened before it, and on the next one once it closes and the app shows its view again.
 func TestStepsFollowTheMainWindow(t *testing.T) {
 	if Target() != "" {

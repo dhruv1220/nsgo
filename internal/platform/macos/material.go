@@ -72,16 +72,17 @@ func materialCode(m driver.WindowMaterial) (int, bool) {
 	return 0, false
 }
 
-// setMaterial puts m behind the app's views, or takes the material away
-// and makes the window opaque again for WindowMaterialNone.
+// setMaterial puts m behind the app's views, or takes the material away and makes the window opaque again for WindowMaterialNone, unless it is a transparent panel, which stays clear.
 func (s *surface) setMaterial(m driver.WindowMaterial) {
 	code, ok := materialCode(m)
 	if !ok {
 		if s.effect != 0 {
 			s.effect.Send(sel("removeFromSuperview"))
 			s.effect = 0
-			s.window.Send(selSetOpaque, true)
-			s.window.Send(selSetBackgroundColor, objc.ID(apple.Class("NSColor")).Send(sel("windowBackgroundColor")))
+			if !s.transparent {
+				s.window.Send(selSetOpaque, true)
+				s.window.Send(selSetBackgroundColor, objc.ID(apple.Class("NSColor")).Send(sel("windowBackgroundColor")))
+			}
 		}
 		s.material = driver.WindowMaterialNone
 		return

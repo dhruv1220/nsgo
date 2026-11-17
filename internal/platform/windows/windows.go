@@ -477,10 +477,9 @@ type window struct {
 	// behind its content, and composed the web views the last frame drew.
 	composition *composition
 	composed    []*webView
-	// baseComposed draws the window's content through DirectComposition,
-	// with its alpha, for a material behind it; backdrop is the DWM
-	// system backdrop, backdropNone when the material could not be set.
+	// baseComposed draws the window's content through DirectComposition, with its alpha, for a material behind it or a transparent panel; backdrop is the DWM system backdrop, backdropNone when the material could not be set. transparent marks a panel that draws nothing of its own (SurfaceConfig.Transparent): the desktop shows where the app draws nothing.
 	baseComposed bool
+	transparent  bool
 	backdrop     int32
 	// material is the material DWM draws, WindowMaterialNone when the
 	// window is opaque.
@@ -787,6 +786,15 @@ func (w *window) composeFor(m driver.WindowMaterial) {
 	}
 }
 
+// composeClear has a panel that draws nothing of its own (SurfaceConfig.Transparent) draw through DirectComposition with its alpha, so the desktop shows where the app draws nothing; without DirectComposition it stays opaque.
+func (w *window) composeClear() {
+	if !w.baseComposed && !compositionAvailable() {
+		log.Printf("nsgo: transparent panels need DirectComposition: the panel stays opaque")
+		return
+	}
+	w.baseComposed, w.transparent = true, true
+}
+
 // newWindow returns the state of a window showing an app.
 func newWindow(opts Options) *window {
 	w := &window{title: opts.Title, scale: 1, webs: map[*webView]bool{}, touchWebs: map[uint32]*webView{}, trays: map[uint32]*trayIcon{},
@@ -882,6 +890,9 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	child.visible = !opts.Hidden
 	child.chrome.constraints = opts.Constraints
 	child.composeFor(opts.Material)
+	if cfg.Kind == driver.SurfacePanel && cfg.Transparent {
+		child.composeClear()
+	}
 	style := constrainedStyle(wsOverlappedWindow|wsClipChildren, opts.Constraints)
 	var ex uintptr
 	if child.baseComposed {
@@ -937,6 +948,11 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 		} else {
 			child.backdrop = backdropNone
 		}
+	}
+	if child.transparent {
+		// The system's own corners would cut into what the app draws.
+		corners := int32(dwmwcpDoNotRound)
+		dwmSetWindowAttribute.Call(hwnd, dwmwaWindowCornerPreference, uintptr(unsafe.Pointer(&corners)), 4)
 	}
 	if w.ownPerf != nil && cfg.Kind == driver.SurfaceWindow {
 		child.showPerf(w.ownPerf)

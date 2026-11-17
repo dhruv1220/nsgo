@@ -123,6 +123,9 @@ func ShowsMaterial(cx *core.Scope) bool {
 	return cx.Env().WindowMaterial() != core.WindowMaterialNone
 }
 
+// Transparent reports whether the panel was opened with PanelOptions.Transparent and the platform could make it draw nothing of its own, no background, frame or shadow; it is false in any other window. Where it is false, as on Linux without a compositor, give the content a background of its own.
+func Transparent(cx *core.Scope) bool { return cx.Env().WindowTransparent() }
+
 // Maximized reports whether the window is maximized or zoomed, so a
 // maximize button of the app's own can show restore.
 func Maximized(cx *core.Scope) bool { return cx.Env().Maximized() }

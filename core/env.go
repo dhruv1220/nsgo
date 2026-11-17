@@ -57,6 +57,8 @@ type Env struct {
 	geometry    *Signal[Geometry]
 	shown       *Memo[Geometry]
 	verticalBar *Signal[VerticalBarEdge]
+	// transparent is whether the panel draws nothing of its own (PanelOptions.Transparent).
+	transparent *Signal[bool]
 	// headers are the system header's heights, which only the tree reads.
 	headers [2]Points
 }
@@ -109,6 +111,7 @@ func newEnv(cx *Scope, app *Env) *Env {
 		appearance:       NewSignal(cx, AppearanceSystem),
 		appleKeys:        NewSignal(cx, false),
 		material:         NewSignal(cx, WindowMaterialNone),
+		transparent:      NewSignal(cx, false),
 		tokens:           NewSignalFunc(cx, hostColors{}, nil),
 	}
 	if app != nil {
@@ -214,6 +217,7 @@ func (e *Env) set(v Environment) {
 	e.openedURL.Set(v.OpenedURL)
 	e.launchedAtLogin.Set(v.LaunchedAtLogin)
 	e.material.Set(v.WindowMaterial)
+	e.transparent.Set(v.WindowTransparent)
 	e.verticalBar.Set(v.VerticalBarEdge)
 	e.headers = [2]Points{v.HeaderHeight, max(v.LargeHeaderHeight, v.HeaderHeight)}
 }
@@ -457,6 +461,9 @@ func (e *Env) AppleKeys() bool { return e.appleKeys.Get() }
 // WindowMaterialNone when the window is opaque: the core's part of
 // desktop.ShowsMaterial, which apps use.
 func (e *Env) WindowMaterial() WindowMaterial { return e.material.Get() }
+
+// WindowTransparent reports whether the panel was opened with PanelOptions.Transparent and the platform could make it draw nothing of its own, no background, frame or shadow: the core's part of desktop.Transparent, which apps use. It is false in any other window. Where it is false, give the content a background of its own.
+func (e *Env) WindowTransparent() bool { return e.transparent.Get() }
 
 // Desktop reports whether the device is a desktop.
 func (e *Env) Desktop() bool { return e.idiom.Get() == IdiomDesktop }

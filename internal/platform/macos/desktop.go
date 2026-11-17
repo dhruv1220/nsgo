@@ -181,6 +181,10 @@ func (s *surface) command(c *driver.WindowCommand) {
 		s.refresh()
 	case driver.WindowSetConstraints:
 		s.setConstraints(c.Constraints)
+	case driver.WindowFitSize:
+		if s.kind == driver.SurfacePanel {
+			s.fitPanel(c.Frame.Width, c.Frame.Height)
+		}
 	case driver.WindowSetAnchor:
 		if s.kind != driver.SurfacePanel {
 			break

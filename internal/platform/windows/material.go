@@ -26,7 +26,9 @@ var (
 )
 
 const (
-	dwmwaSystemBackdropType = 38
+	dwmwaSystemBackdropType     = 38
+	dwmwaWindowCornerPreference = 33
+	dwmwcpDoNotRound            = 1
 
 	backdropNone    = 1 // DWMSBT_NONE
 	backdropMica    = 2 // DWMSBT_MAINWINDOW
