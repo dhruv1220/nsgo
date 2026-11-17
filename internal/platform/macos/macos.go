@@ -1055,6 +1055,7 @@ func (s *surface) environment() driver.Environment {
 		WindowFrame:      s.windowFrame(),
 		Lifecycle:        s.lifecycle(),
 		LaunchedAtLogin:  s.opts.LaunchedAtLogin,
+		FrontmostApp:     frontmostApp(),
 
 		// The center serves only an app in a bundle.
 		ScheduledNotifications: apple.NotificationsAvailable(),

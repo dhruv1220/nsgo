@@ -96,6 +96,7 @@ func (w *window) environment() driver.Environment {
 		WindowFrame:      w.windowFrame(),
 		Lifecycle:        w.lifecycle(),
 		Speak:            speakAvailable(),
+		FrontmostApp:     frontmostApp(),
 
 		// The toast notifier's schedule, which has no repeats.
 		ScheduledNotifications: true,
