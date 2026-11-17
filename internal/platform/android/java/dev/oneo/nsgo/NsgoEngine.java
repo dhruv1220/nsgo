@@ -129,7 +129,9 @@ public final class NsgoEngine {
         Thread reader = new Thread(() -> read(running), "nsgo-reader");
         reader.setDaemon(true);
         reader.start();
-        Thread logger = new Thread(() -> log(running), "nsgo-log");
+        // Keep this run's listener until stderr ends, even if the protocol
+        // reader sees EOF first and releases the view.
+        Thread logger = new Thread(() -> log(running, next), "nsgo-log");
         logger.setDaemon(true);
         logger.start();
     }
@@ -211,17 +213,31 @@ public final class NsgoEngine {
         }
     }
 
-    private void log(Process running) {
+    private void log(Process running, Listener current) {
+        boolean marked = false;
         try (BufferedReader err = new BufferedReader(new InputStreamReader(running.getErrorStream()))) {
             for (String line; (line = err.readLine()) != null; ) {
-                Listener current;
-                synchronized (this) {
-                    current = listener;
+                if (testRun != null && (line.startsWith("nsgo-test-exit " + testRun + " ") ||
+                        line.startsWith("nsgo-test-error " + testRun + " "))) {
+                    marked = true;
                 }
-                if (current != null) current.onLog(line);
+                current.onLog(line);
             }
         } catch (IOException ignored) {
             // The process ended.
         }
+        // Logcat stays open after the child exits. Report an unmarked exit
+        // only after draining stderr, so its panic and stack precede it.
+        String reason;
+        try {
+            reason = "the test process ended without its exit code (status " + running.waitFor() + ")";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            reason = "interrupted while waiting for the test process's exit code";
+        }
+        synchronized (this) {
+            if (closed || marked || testRun == null || testRun.isEmpty()) return;
+        }
+        current.onLog("nsgo-test-error " + testRun + " " + reason);
     }
 }
