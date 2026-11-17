@@ -144,3 +144,23 @@ func TestCheckTargetFailuresContinue(t *testing.T) {
 		t.Errorf("a failed vet prevented the following target:\n%s", out)
 	}
 }
+
+// A bare OS name vets that OS, as nsgo test -target spells it (#589).
+func TestCheckBareOSTarget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("cross-vets a real package")
+	}
+	p := checkFixture(t)
+	for _, target := range []string{"windows", "linux"} {
+		var err error
+		out := captureStderr(t, func() { err = check(t.Context(), p, target) })
+		if err != nil {
+			t.Fatalf("check %q: %v\n%s", target, err, out)
+		}
+		for _, name := range []string{target + "_arm64", target + "_x64"} {
+			if !strings.Contains(out, "vetted for "+name) {
+				t.Errorf("check %q did not vet %s:\n%s", target, name, out)
+			}
+		}
+	}
+}

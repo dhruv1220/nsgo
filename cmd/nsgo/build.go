@@ -279,10 +279,11 @@ var targets = []string{
 const miniProgramGroup = "miniprogram"
 
 // expandTargets replaces "all" with every target that needs only Go and
-// Xcode, checks every name and drops duplicates, so each package is built
-// once. android_x64 stays out of "all" because it needs an NDK, and
-// the mini programs because they take only Go apps that fit their
-// packages.
+// Xcode, a bare OS name with its architectures, and "miniprogram" with every
+// mini program, checks every name and drops duplicates, so each package is
+// built once. android_x64 stays out of "all" and "android" because it needs
+// an NDK, and the mini programs because they take only Go apps that fit
+// their packages.
 func expandTargets(names []string) ([]string, error) {
 	var out []string
 	for _, name := range names {
@@ -294,6 +295,14 @@ func expandTargets(names []string) ([]string, error) {
 			expanded = nil
 			for _, t := range targets {
 				if strings.HasPrefix(t, "miniprogram_") {
+					expanded = append(expanded, t)
+				}
+			}
+		case slices.Contains([]string{"macos", "windows", "linux", "android"}, name):
+			// The bare OS, as nsgo test -target spells it (#589).
+			expanded = nil
+			for _, t := range targets {
+				if os, _, _ := strings.Cut(t, "_"); os == name && t != "android_x64" {
 					expanded = append(expanded, t)
 				}
 			}

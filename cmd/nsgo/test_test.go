@@ -738,6 +738,38 @@ func TestActivateNeedsMacOSTarget(t *testing.T) {
 	}
 }
 
+// An arch-qualified spelling runs the test target of its OS, and an
+// unknown target lists the names test accepts (#589).
+func TestNormalizeTestTarget(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"windows", "windows"},
+		{"windows_x64", "windows"},
+		{"windows_arm64", "windows"},
+		{"macos_arm64", "macos"},
+		{"macos_x64", "macos"},
+		{"linux_x64", "linux"},
+		{"linux_arm64", "linux"},
+		{"android_arm64", "android"},
+		{"web", "web"},
+		{"ios_simulator", "ios_simulator"},
+	} {
+		got, err := normalizeTestTarget(tc.in)
+		if err != nil || got != tc.want {
+			t.Errorf("normalizeTestTarget(%q) = %q, %v; want %q", tc.in, got, err, tc.want)
+		}
+	}
+	if _, err := normalizeTestTarget("plan9"); err == nil || !strings.Contains(err.Error(), "macos, windows, linux") {
+		t.Errorf("normalizeTestTarget(plan9) = %v, want an error listing the names test accepts", err)
+	}
+}
+
+func TestRunTestsUnknownTargetListsNames(t *testing.T) {
+	err := runTests(t.Context(), nil, testOptions{target: "plan9"})
+	if err == nil || !strings.Contains(err.Error(), "macos, windows, linux") {
+		t.Errorf("runTests(plan9) = %v, want an error listing the names test accepts", err)
+	}
+}
+
 func TestTestHostError(t *testing.T) {
 	if err := testHostError("android", true, true); err != nil {
 		t.Errorf("testHostError(hosted, TestMain) = %v, want nil", err)

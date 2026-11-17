@@ -69,6 +69,8 @@ build:
 # miniprogram: { appid: { wechat: wx0123456789abcdef, alipay: "2021000000000000" }, custom_navigation: false }  # 小程序的设置
 ```
 
+只写操作系统名的目标表示它的全部架构（`windows` 即 `windows_arm64` 和 `windows_x64`；`android` 仅表示 `android_arm64`，因 x86_64 构建需要 NDK），可用于 `targets`、`nsgo build -target` 和 `nsgo check -target`。`nsgo test -target` 反向也接受带架构的名字：`windows_x64` 即 `windows` 目标。
+
 命令行参数会替换同名的值，例如 `-target`、`-version` 或 `-output`；`-h` 列出全部参数。
 
 `build.ldflags` 是应用自己的链接器参数，每一项按 go build 的 `-ldflags` 的写法书写，例如 `-X main.releaseDate=2026-11-17` 或 `-X 'main.channel=beta builds'`。链接应用的每次构建都会使用它们：`dev` 及其每次重新加载、`build`（包括 `-embed`）和 `test`（包括 `-target`），覆盖所有目标。`build` 和 `test` 的 `-ldflags` 会追加到其后而不是替换它们，需要多个值时可以重复使用。它们排在工具自己的 `-X` 参数之前，而链接器以同一变量的最后一个值为准，因此 `core.App` 中的名称、ID 和版本始终取自 `nsgo.yaml`。工具会给 go 传入自己的 `-ldflags`，它会替换 `GOFLAGS` 中的 `-ldflags`，所以链接器参数应写在这里；无窗口 `test` 中写在目录之后的 `-ldflags` 属于 go test，会替换它们全部。

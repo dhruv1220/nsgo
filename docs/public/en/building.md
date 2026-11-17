@@ -69,6 +69,8 @@ build:
 # miniprogram: { appid: { wechat: wx0123456789abcdef, alipay: "2021000000000000" }, custom_navigation: false }  # the mini programs'
 ```
 
+A bare OS name in `targets` — or in `nsgo build -target` and `nsgo check -target` — means its architectures (`windows` is `windows_arm64` and `windows_x64`; `android` is `android_arm64` only, as the x86_64 build needs an NDK). `nsgo test -target` takes the same names the other way round: `windows_x64` runs the `windows` target.
+
 Flags replace the values they name, such as `-target`, `-version` or `-output`; `-h` lists them all.
 
 `build.ldflags` holds the app's own linker flags, each written as go build's `-ldflags` takes it, such as `-X main.releaseDate=2026-11-17` or `-X 'main.channel=beta builds'`. Every build that links the app takes them: `dev` and its reloads, `build` with `-embed` too and `test` with `-target` too, on every target. `-ldflags` on `build` and `test` adds to them rather than replacing them, repeated for more. They come before the tool's own `-X` flags, and the linker keeps a variable's last, so the name, ID and version in `core.App` stay those of `nsgo.yaml`. The tool passes go its own `-ldflags`, which replaces one in `GOFLAGS`, so linker flags belong here; a headless `test`'s `-ldflags` after the directory is go test's and replaces them all.

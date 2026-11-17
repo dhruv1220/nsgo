@@ -43,7 +43,7 @@ A flag replaces the value it names (`-target`, `-version`, `-output`); `go tool 
 
 ```sh
 go tool nsgo build                       # every target nsgo.yaml lists
-go tool nsgo build -target web           # or all, macos_arm64, ios, android_arm64, miniprogram_wechat, ...
+go tool nsgo build -target web           # or all, macos, windows, macos_arm64, ios, android_arm64, miniprogram_wechat, ...
 go tool nsgo build -run -device "iPhone" # build and start or install it
 go tool nsgo build -channel store        # store packages instead of installers and self-updates
 ```

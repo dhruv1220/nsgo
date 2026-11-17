@@ -56,6 +56,39 @@ func TestExpandTargetsRejectsUnknown(t *testing.T) {
 	}
 }
 
+// A bare OS name expands to its architectures, as nsgo test -target spells
+// them, so check and build take the same names as test (#589).
+func TestExpandTargetsBareOS(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want []string
+	}{
+		{"windows", []string{"windows_arm64", "windows_x64"}},
+		{"linux", []string{"linux_arm64", "linux_x64"}},
+		{"macos", []string{"macos_arm64", "macos_x64"}},
+		// android_x64 stays out, as in "all": it needs an NDK.
+		{"android", []string{"android_arm64"}},
+	} {
+		got, err := expandTargets([]string{tc.name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("expandTargets(%q) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestExpandTargetsBareOSDropsDuplicates(t *testing.T) {
+	got, err := expandTargets([]string{"windows", "windows_x64", "web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"windows_arm64", "windows_x64", "web"}; !slices.Equal(got, want) {
+		t.Fatalf("expandTargets = %v, want %v", got, want)
+	}
+}
+
 func TestLoadExpandsAllTargets(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "nsgo.yaml"), []byte("name: Test\nbuild:\n  targets: [all]\n"), 0o644); err != nil {

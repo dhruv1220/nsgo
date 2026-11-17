@@ -100,6 +100,15 @@ func runTests(ctx context.Context, p *project, opts testOptions) error {
 	if opts.activate && opts.target != "macos" {
 		return errors.New("test: -activate goes with -target macos")
 	}
+	// An arch-qualified spelling runs the target of its OS, and an unknown
+	// target says which names test accepts (#589).
+	if opts.target != "" {
+		target, err := normalizeTestTarget(opts.target)
+		if err != nil {
+			return err
+		}
+		opts.target = target
+	}
 	// go test would take another package inside the app's directory, and a target never reads it.
 	if err := testPathError(opts.args); err != nil {
 		return err

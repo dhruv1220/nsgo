@@ -660,6 +660,31 @@ func sweepTargetBuilds(base string, now time.Time) {
 	}
 }
 
+// testTargets are the names nsgo test -target accepts, as buildTargetRunner
+// runs them: one per OS, except the Apple simulators, which need Xcode.
+var testTargets = []string{"macos", "windows", "linux", "web", "ios", "ios_simulator", "tvos_simulator", "watchos_simulator", "android", "harmonyos"}
+
+// normalizeTestTarget maps an arch-qualified spelling (windows_x64) to the
+// test target it runs on, as check and build spell it, or reports the names
+// test accepts (#589).
+func normalizeTestTarget(target string) (string, error) {
+	if slices.Contains(testTargets, target) {
+		return target, nil
+	}
+	if os, _, ok := strings.Cut(target, "_"); ok {
+		switch os {
+		case "macos", "windows", "linux", "android":
+			return os, nil
+		}
+	}
+	return "", fmt.Errorf("unknown test target %q; use %s", target, testTargetList())
+}
+
+// testTargetList is the names test accepts, as one phrase for errors.
+func testTargetList() string {
+	return strings.Join(testTargets[:len(testTargets)-1], ", ") + " or " + testTargets[len(testTargets)-1]
+}
+
 // buildTargetRunner builds into the run's own directory.
 func buildTargetRunner(ctx context.Context, p *project, dir string, opts testOptions) (targetRunner, error) {
 	local := func(bin string) targetRunner {
@@ -708,7 +733,7 @@ func buildTargetRunner(ctx context.Context, p *project, dir string, opts testOpt
 	case "harmonyos":
 		return harmonyTestRunner(ctx, p, dir, opts)
 	}
-	return targetRunner{}, fmt.Errorf("unknown test target %q; use macos, windows, linux, web, ios, ios_simulator, tvos_simulator, watchos_simulator, android or harmonyos", opts.target)
+	return targetRunner{}, fmt.Errorf("unknown test target %q; use %s", opts.target, testTargetList())
 }
 
 // runLocal runs bin on this machine.

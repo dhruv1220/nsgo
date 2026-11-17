@@ -236,7 +236,7 @@ type buildFlags struct {
 
 func bindBuildFlags(fs *flag.FlagSet) *buildFlags {
 	f := &buildFlags{overrides: bindOverrides(fs)}
-	f.targets = stringFlag(fs, "target", "comma-separated `targets`: all for every platform Go and Xcode build, miniprogram for every mini program, or their names (default: nsgo.yaml's build.targets)")
+	f.targets = stringFlag(fs, "target", "comma-separated `targets`: all for every platform Go and Xcode build, miniprogram for every mini program, or their names; a bare OS such as windows builds both its architectures (default: nsgo.yaml's build.targets)")
 	f.output = stringFlag(fs, "output", "the `output` directory (default: nsgo.yaml's build.output)")
 	f.ldflags = stringListFlag(fs, "ldflags", "add app linker `flags` to nsgo.yaml's build.ldflags, as go build's -ldflags takes them; repeat for more")
 	f.open = boolFlag(fs, "open", "open the output directory (default: nsgo.yaml's build.open)")
