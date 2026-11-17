@@ -10,6 +10,7 @@
 - Stop reporting a web view load that was stopped, replaced or turned into a download to `OnError` on Apple platforms and Windows (#233 by @houko).
 - Keep a view's own outer shadows and outline outside its `Overflow: Hidden` clip on Apple for views, images and macOS scroll views, as CSS does (#238 by @houko).
 - Show a bundled macOS app's Dock badge without the notification permission until the app uses notifications (#190 by @houko).
+- Keep mounting ordinary children linear when positional classes appear elsewhere in the tree (#584 by @houko).
 
 ## [0.1.0] - 2026-11-16
 

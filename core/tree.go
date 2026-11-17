@@ -138,9 +138,10 @@ type Tree struct {
 	// views not made yet whose parents are.
 	views   viewPace
 	waiting []*node
-	// positional is set once a node has classes that follow its place
-	// among its siblings (first:, odd:).
-	positional bool
+	// classParents coalesces child-order and spacing changes per parent
+	// until resolve, so invalidating child order never walks siblings.
+	// Its bool keeps spacing that a class replacement removed.
+	classParents map[*node]bool
 	// peerStyled enables sibling-state tracking; peerParents batches changes per parent.
 	peerStyled      bool
 	peerParents     map[*node]struct{}
@@ -836,9 +837,7 @@ func (t *Tree) childrenChanged(n *node) {
 		t.queuePeerParent(n)
 		t.reorder(n)
 		t.markLayout(n)
-		if t.positional || n.cls != nil && n.cls.list.spacing {
-			t.classKids(n)
-		}
+		t.queueClassKids(n)
 	}
 }
 
@@ -2603,7 +2602,9 @@ func (t *Tree) command(kind driver.ItemKind, n *node) {
 	t.changed = true
 }
 
-// outOfFlow drops what n's parent cached of its native children while n was made, before n was marked as none of them (an attachment or a header view): classes that follow a view's place among its siblings have the tree read them as each child is made (classKids).
+// outOfFlow drops what n's parent cached of its native children while n
+// was made, before it was marked as an attachment or a header view.
+// Resolving a positional class may already have read those children.
 func outOfFlow(n *node) {
 	if p := n.nativeParent(); p != nil {
 		p.flat = nil
