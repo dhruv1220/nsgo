@@ -101,6 +101,8 @@ func (w *window) environment() driver.Environment {
 		WindowFrame:      frame,
 		Lifecycle:        w.lifecycle(),
 		Speak:            speakAvailable(),
+
+		CanSetWindowWorkspaces: w.canSetWorkspaces(),
 	}
 }
 

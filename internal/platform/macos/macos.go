@@ -1058,6 +1058,9 @@ func (s *surface) environment() driver.Environment {
 
 		// The center serves only an app in a bundle.
 		ScheduledNotifications: apple.NotificationsAvailable(),
+
+		// An embedding host owns its window, and the app's own surface and a tray icon's show in none.
+		CanSetWindowWorkspaces: !s.embedded && s.window != 0,
 	}
 }
 

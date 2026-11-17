@@ -753,3 +753,20 @@ func TestRestart(t *testing.T) {
 		t.Fatalf("restart's quit is %+v", it)
 	}
 }
+
+// TestEnvironmentWindowWorkspaces checks that Env.CanSetWindowWorkspaces follows the platform's environment, so a view reading it updates as it changes.
+func TestEnvironmentWindowWorkspaces(t *testing.T) {
+	var seen []bool
+	h := newHost(t, Size{Width: 100, Height: 100}, func(cx *Scope) Node {
+		cx.Effect(func() { seen = append(seen, cx.Env().CanSetWindowWorkspaces()) })
+		return View{}
+	})
+	h.commit()
+	h.tree.SetEnvironment(Environment{CanSetWindowWorkspaces: true})
+	h.commit()
+	h.tree.SetEnvironment(Environment{})
+	h.commit()
+	if !slices.Equal(seen, []bool{false, true, false}) {
+		t.Fatalf("CanSetWindowWorkspaces = %v", seen)
+	}
+}
