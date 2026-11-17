@@ -76,7 +76,7 @@ func (v *View) SetAppearance(a core.Appearance) {
 func (v *View) SetTokens(t core.Tokens) { v.p.SetTokens(t) }
 
 // Close stops the app, writing its storage, and destroys its native
-// components and the view.
+// components and the view. Calling it again does nothing.
 func (v *View) Close() {
 	v.p.Close()
 	engine.SyncStorage()

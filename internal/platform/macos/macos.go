@@ -611,7 +611,10 @@ func Run(app engine.App, opts Options) {
 
 // View is an app in an NSView of an embedding host's window, which the
 // host's own event loop runs (NewView).
-type View struct{ s *surface }
+type View struct {
+	s      *surface
+	closed bool
+}
 
 // NewView makes an NSView showing app, for a host that runs AppKit's
 // loop itself. Its engine starts once the view is in a window, so
@@ -625,7 +628,7 @@ func NewView(app engine.App, opts Options) *View {
 	}
 	s := newSurface(opts, true)
 	s.app, s.opts = app, opts
-	return &View{s}
+	return &View{s: s}
 }
 
 // Handle returns the NSView, which the host adds to its views and sizes.
@@ -644,12 +647,20 @@ func (v *View) SetHostEnvironment(env engine.HostEnvironment) {
 func (v *View) SetTokens(t engine.Tokens) { v.s.opts.Host.Settings.SetTokens(t) }
 
 // Close stops the app and frees the view, which the host removes from
-// its window.
+// its window. Calling it again does nothing.
 func (v *View) Close() {
+	if v.closed {
+		return
+	}
+	// A surface can stop before the host lets its native view go.
+	// Keep this guard separate, and set it before component teardown.
+	v.closed = true
 	v.s.close()
-	delete(views, v.s.native)
-	v.s.native.Send(selRemoveFromSuperview)
-	v.s.native.Send(selRelease)
+	native := v.s.native
+	v.s.native = 0
+	delete(views, native)
+	native.Send(selRemoveFromSuperview)
+	native.Send(selRelease)
 }
 
 // surfaceMoved starts an embedded surface's app once the view is in a
