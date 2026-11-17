@@ -10,6 +10,7 @@
 - Stop reporting a web view load that was stopped, replaced or turned into a download to `OnError` on Apple platforms and Windows (#233 by @houko).
 - Keep a view's own outer shadows and outline outside its `Overflow: Hidden` clip on Apple for views, images and macOS scroll views, as CSS does (#238 by @houko).
 - Show a bundled macOS app's Dock badge without the notification permission until the app uses notifications (#190 by @houko).
+- Drop commands for views removed before their first commit without moving focus or scrolling a replacement that reuses their ID (#518 by @houko).
 
 ## [0.1.0] - 2026-11-16
 
