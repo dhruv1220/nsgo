@@ -85,3 +85,5 @@ Themes give `ui`'s components their look in light and dark.
 ## Desktop apps
 
 `nsgo.Run(Root)` shows one root view. A desktop app can open what it shows itself instead: `nsgo.Run(App)` runs `func App(app *core.Scope)` once, and it opens windows, panels, tray icons and global shortcuts with `desktop`, which share its signals. This works on macOS, Windows and Linux; on macOS `examples/tray` keeps out of the Dock and lives in the menu bar.
+
+A window opened with `desktop.WindowOptions{Transparent: true}`, or the main window with `nsgo.WindowTransparent()`, has no background or frame, so the desktop shows wherever the app draws nothing, as for a desktop pet or a widget; a view with `Desktop.WindowDrag` moves it. `NoShadow` drops the system's shadow and `SkipTaskbar` keeps the window off the Windows taskbar and Alt+Tab and the X11 task list, and `desktop.SetWindowTransparent`, `SetWindowShadow` and `SetSkipTaskbar` change them later. Windows changes transparency only in a window opened transparent, which has no shadow, and Wayland has no hint to keep a window off its task list.

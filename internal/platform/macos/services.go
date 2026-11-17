@@ -561,6 +561,9 @@ var cgWindowLevelForKey func(key int32) int32
 func (s *surface) setLevel(level driver.WindowLevel) {
 	w := s.window
 	behavior := objc.Send[uint](w, sel("collectionBehavior")) &^ (joinAllSpaces | stationary | ignoresCycle)
+	if s.skipTaskbar {
+		behavior |= ignoresCycle
+	}
 	switch level {
 	case driver.WindowLevelFloating:
 		w.Send(sel("setLevel:"), levelFloating)

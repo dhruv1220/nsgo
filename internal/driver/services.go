@@ -166,6 +166,12 @@ const (
 	WindowDestroy
 	// WindowSetAnchor places a panel beside AnchorBounds on Placement's side, moving it at once if it shows, and keeps the placement for later shows; it changes neither whether it shows nor the focus.
 	WindowSetAnchor
+	// WindowSetTransparent makes a window transparent when On, without a background or frame, or gives it back both (SurfaceConfig.Transparent).
+	WindowSetTransparent
+	// WindowSetShadow gives a window the system's shadow when On, or takes it away (SurfaceConfig.NoShadow).
+	WindowSetShadow
+	// WindowSetSkipTaskbar keeps a window off the taskbar when On, or puts it back (SurfaceConfig.SkipTaskbar).
+	WindowSetSkipTaskbar
 )
 
 // SurfaceKind is what an opened surface shows in.
@@ -214,6 +220,12 @@ type SurfaceConfig struct {
 	HideOnBlur bool
 	// NoActivate keeps a panel from ever taking the keyboard or activating the app, shown, focused or clicked.
 	NoActivate bool
+	// Transparent opens a window without a background or frame, showing what is behind it wherever the app draws nothing (WindowSetTransparent).
+	Transparent bool
+	// NoShadow opens a window without the system's shadow (WindowSetShadow).
+	NoShadow bool
+	// SkipTaskbar keeps a window off the Windows taskbar and Alt+Tab, the X11 task list, and macOS's Window menu and Cmd+` (WindowSetSkipTaskbar).
+	SkipTaskbar bool
 	// Tray is the tray icon a SurfaceTrayIcon draws.
 	Tray uint32
 }
@@ -253,6 +265,8 @@ type WindowCommand struct {
 	// AnchorBounds is the rectangle, in the screen coordinates of DisplayInfo, that WindowShow and WindowSetAnchor place a panel beside, on Placement's side; WindowPlaceDefault places none.
 	AnchorBounds Bounds
 	Placement    WindowPlacement
+	// On is what WindowSetTransparent, WindowSetShadow and WindowSetSkipTaskbar set.
+	On bool
 }
 
 // WindowControls is how a hidden title bar shows the system's window

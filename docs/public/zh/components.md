@@ -85,3 +85,5 @@ core.Text{Content: "Done", Class: "self-start rounded-full bg-zinc-100 px-3 py-1
 ## 桌面应用
 
 `nsgo.Run(Root)` 显示一个根视图。桌面应用也可以自己决定显示什么：`nsgo.Run(App)` 运行一次 `func App(app *core.Scope)`，由它通过 `desktop` 打开窗口、面板、托盘图标和全局快捷键，它们共享它的 signal。目前支持 macOS、Windows 和 Linux；在 macOS 上 `examples/tray` 不出现在程序坞中，只驻留在菜单栏。
+
+用 `desktop.WindowOptions{Transparent: true}` 打开的窗口，或用 `nsgo.WindowTransparent()` 打开的主窗口，没有背景和边框，应用不绘制的地方都会露出桌面，适合桌面宠物或小组件；带 `Desktop.WindowDrag` 的视图可以拖动它。`NoShadow` 去掉系统阴影，`SkipTaskbar` 让窗口不出现在 Windows 任务栏和 Alt+Tab 以及 X11 的任务列表中；之后可以用 `desktop.SetWindowTransparent`、`SetWindowShadow` 和 `SetSkipTaskbar` 修改它们。Windows 只能在以透明方式打开的窗口中切换透明，这种窗口没有阴影；Wayland 没有让窗口不出现在任务列表中的提示。
