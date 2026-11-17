@@ -1085,6 +1085,10 @@ func (s *surface) environment() driver.Environment {
 		Lifecycle:        s.lifecycle(),
 		LaunchedAtLogin:  s.opts.LaunchedAtLogin,
 
+		// Any window of the surface's own turns transparent and leaves the Window menu (look.go); a panel's look is its own.
+		CanMakeWindowsTransparent: s.ownWindow(),
+		CanSkipTaskbar:            s.ownWindow(),
+
 		// The center serves only an app in a bundle.
 		ScheduledNotifications: apple.NotificationsAvailable(),
 	}
@@ -1954,6 +1958,7 @@ func (s *surface) apply(b *driver.MountBatch) {
 	if s.animator.Running() {
 		s.startTicking()
 	}
+	s.reshadow()
 	if s.showFirst {
 		s.showFirst = false
 		if s.kind == driver.SurfacePanel {

@@ -101,6 +101,9 @@ func (w *window) environment() driver.Environment {
 		WindowFrame:      frame,
 		Lifecycle:        w.lifecycle(),
 		Speak:            speakAvailable(),
+
+		CanMakeWindowsTransparent: w.ownWindow() && displayComposites(),
+		CanSkipTaskbar:            w.ownWindow() && skipTaskbarHint(),
 	}
 }
 
