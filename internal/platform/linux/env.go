@@ -80,6 +80,7 @@ func (w *window) environment() driver.Environment {
 			minimized = gdkToplevelGetState(top)&toplevelMinimized != 0
 		}
 	}
+	front, followed := frontmostApp()
 	return driver.Environment{
 		Dark:             dark,
 		FontScale:        fontScale,
@@ -101,7 +102,10 @@ func (w *window) environment() driver.Environment {
 		WindowFrame:      frame,
 		Lifecycle:        w.lifecycle(),
 		Speak:            speakAvailable(),
-		FrontmostApp:     frontmostApp(),
+		FrontmostApp:     front,
+
+		// Only an X11 session says which window is in front.
+		CanReadFrontmostApp: followed,
 	}
 }
 

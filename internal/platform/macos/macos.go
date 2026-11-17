@@ -1057,6 +1057,9 @@ func (s *surface) environment() driver.Environment {
 		LaunchedAtLogin:  s.opts.LaunchedAtLogin,
 		FrontmostApp:     frontmostApp(),
 
+		// NSWorkspace says which app is in front to every app.
+		CanReadFrontmostApp: true,
+
 		// The center serves only an app in a bundle.
 		ScheduledNotifications: apple.NotificationsAvailable(),
 	}

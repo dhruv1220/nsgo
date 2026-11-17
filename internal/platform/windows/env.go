@@ -98,6 +98,9 @@ func (w *window) environment() driver.Environment {
 		Speak:            speakAvailable(),
 		FrontmostApp:     frontmostApp(),
 
+		// The foreground window says which app is in front to every app.
+		CanReadFrontmostApp: true,
+
 		// The toast notifier's schedule, which has no repeats.
 		ScheduledNotifications: true,
 	}
