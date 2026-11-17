@@ -15,6 +15,7 @@ These are the rules NSGo's own `base` and `ui` follow, for components other apps
 - Controlled values come in as functions and leave through callbacks (`On func() bool`, `OnChange func(bool)`), read where they are shown so only that part updates.
 - Each part takes a `Class`, a `Style` and a `StyleFunc` named after it (`DotClass`, `DotStyle`, `DotStyleFunc`). Parts take the control's state through `PartStates`, so `checked:` classes apply while screen readers see one control.
 - The root says what the control is: `Role`, `Label` when its text does not, `Hint`, and `Checked`, `Selected`, `Disabled` or `Expanded`. Pass a root view's `OnLayout`, `Tooltip` and `TestID` through.
+- Pass `Ref` and `LabelledBy` to the actual control or input. Use `Text.LabelFor` or `View.LabelFor` for a visible label that focuses or activates it and follows its disabled/invalid states; `LabelledBy` names from refs in order, ahead of `Label`. In TSX, use node signals with callback refs when a label precedes its target ([labels](https://nsgo.dev/docs/accessibility.md#visible-labels)).
 - Looks come from `Variant`, a type of its own (`ToggleVariant`) whose zero value is the default, never boolean fields or a shared color type. Keep one size; a component that needs more takes `Size`, a `ui.Size` whose zero value is the default, never `Small` or `Compact` booleans. One that is one shape at any scale, such as an avatar, takes `Size` in points.
 
 ## Look

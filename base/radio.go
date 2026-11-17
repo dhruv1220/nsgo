@@ -10,8 +10,12 @@ import (
 // RadioGroup with the others. Its children are the app's indicator and
 // label; a GroupStyle under Style.Group follows the radio's Checked.
 type Radio struct {
-	Checked  func() bool
-	Disabled func() bool
+	// Ref and LabelledBy are the control view's, as a core.View's.
+	Ref        *core.Ref
+	LabelledBy []*core.Ref
+	Invalid    func() bool
+	Checked    func() bool
+	Disabled   func() bool
 	// OnChange receives true when an unchecked radio is pressed: the app
 	// checks it and unchecks the others. A checked radio reports nothing,
 	// as a radio cannot uncheck itself.
@@ -37,7 +41,7 @@ func (r Radio) Render(cx *core.Scope) core.Node {
 			r.OnChange(true)
 		}
 	}
-	return rovingView(cx, core.View{Class: r.Class, Style: r.Style, StyleFunc: r.StyleFunc, Role: core.RoleRadio, Label: r.Label, Hint: r.Hint, TestID: r.TestID, OnLayout: r.OnLayout, Tooltip: r.Tooltip, HitSlop: r.HitSlop,
+	return rovingView(cx, core.View{Class: r.Class, Style: r.Style, StyleFunc: r.StyleFunc, Ref: r.Ref, LabelledBy: r.LabelledBy, Invalid: r.Invalid, Role: core.RoleRadio, Label: r.Label, Hint: r.Hint, TestID: r.TestID, OnLayout: r.OnLayout, Tooltip: r.Tooltip, HitSlop: r.HitSlop,
 		// Checked and selected both: some screen readers read one, some
 		// the other, as gpui-base's Radio states toggled and selected.
 		Disabled: r.Disabled, Checked: r.Checked, Selected: r.Checked,

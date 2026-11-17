@@ -69,11 +69,14 @@ type Tree struct {
 	navTops      map[*node]*node
 	lists        []*node
 	accessories  []*node
-	headerViews  []*node
-	status       statusBars
-	anim         animations
-	layoutAnim   *LayoutAnimation
-	fontScale    float32
+	// labels registers elements declaring label associations; labelled
+	// also holds controls named by those labels in the previous round.
+	labels, labelled []*node
+	headerViews      []*node
+	status           statusBars
+	anim             animations
+	layoutAnim       *LayoutAnimation
+	fontScale        float32
 	// ratio is the device pixels per point layout rounds to.
 	ratio       float32
 	alerts      map[uint32]alertWait
@@ -232,10 +235,11 @@ type node struct {
 	ownPointer                 PointerEvents
 	pointerNone, pointerTarget bool
 	// color is the text color the node has, for CurrentColor.
-	color Color
-	ink   *textColorBinding
-	h     handlers
-	props driver.ViewProps
+	color  Color
+	ink    *textColorBinding
+	h      handlers
+	props  driver.ViewProps
+	labels *labelRelations
 	// bound are the animated values its gestures and scrolling set, as
 	// an element last bound them (rebind).
 	bound *boundValues
@@ -1091,10 +1095,7 @@ func (t *Tree) restyle(n *node) bool {
 		n.restyled = true
 		t.ending = append(t.ending, n)
 	}
-	p := n.props
-	if n.input != nil && n.input.config.Disabled {
-		p.Disabled = true
-	}
+	p := n.labelProps()
 	p.Checked = p.Checked || n.part.Checked
 	p.Indeterminate = p.Indeterminate || n.part.Indeterminate
 	p.Selected = p.Selected || n.part.Selected
@@ -1182,7 +1183,7 @@ func (t *Tree) restyle(n *node) bool {
 func (t *Tree) groupState(n *node, name string) shownStates {
 	for a := n.parent; a != nil; a = a.parent {
 		if g := a.style.Group; g != "" && (name == "" || g == name) {
-			p := a.props
+			p := a.labelProps()
 			p.Checked = p.Checked || a.part.Checked
 			p.Indeterminate = p.Indeterminate || a.part.Indeterminate
 			p.Selected = p.Selected || a.part.Selected
@@ -1638,6 +1639,7 @@ func liveRegion(role Role, live LiveRegion) LiveRegion {
 // handlers and props, before the accessibility and states bound over
 // them.
 func (t *Tree) setViewParts(n *node, v View) {
+	t.setLabels(n, v.LabelFor, v.LabelledBy)
 	n.ownPointer, n.showsExpanded = v.PointerEvents, v.ShowsExpanded
 	t.pointersMoved = t.pointerStyled
 	n.h = handlers{focusIn: v.OnFocusIn, focusOut: v.OnFocusOut, press: v.OnPress, longPress: v.OnLongPress, pressDown: v.OnPressDown, pressUp: v.OnPressUp,
@@ -1730,6 +1732,7 @@ type tooltipHooks struct {
 
 func (t *Tree) mountText(cx *Scope, parent *node, v Text) {
 	n := t.newNode(driver.KindText, parent, cx)
+	t.setLabels(n, v.LabelFor, v.LabelledBy)
 	t.bindClasses(cx, n, v.Class, v.ClassFunc)
 	t.bindStyle(cx, n, v.Style, v.StyleFunc)
 	n.h = handlers{press: v.OnPress, longPress: v.OnLongPress, layout: v.OnLayout}
@@ -1926,6 +1929,7 @@ func (t *Tree) bindInputTheme(cx *Scope, n *node) {
 
 func (t *Tree) mountInput(cx *Scope, parent *node, v Input) {
 	n := t.newNode(driver.KindInput, parent, cx)
+	t.setLabels(n, nil, v.LabelledBy)
 	t.setClasses(n, v.Class)
 	t.bindStyle(cx, n, v.Style, v.StyleFunc)
 	n.h = handlers{change: v.OnChange, submit: v.OnSubmit, focus: v.OnFocus, blur: v.OnBlur, layout: v.OnLayout}
@@ -2262,7 +2266,7 @@ func (t *Tree) Dispatch(ev driver.Event) {
 	switch ev.Kind {
 	case driver.EventPress:
 		t.setState(n, statePressed, false)
-		if n.props.Disabled {
+		if n.labelProps().Disabled {
 			break
 		}
 		// A span's own press, else the text's.
@@ -2277,8 +2281,9 @@ func (t *Tree) Dispatch(ev driver.Event) {
 			t.devRecordPress(n)
 		}
 		press(h.press)
+		t.pressLabel(n, ev)
 	case driver.EventLongPress:
-		if n.props.Disabled {
+		if n.labelProps().Disabled {
 			break
 		}
 		if tn := n.text; tn != nil && len(tn.spans) > 0 {
@@ -2289,11 +2294,11 @@ func (t *Tree) Dispatch(ev driver.Event) {
 		}
 		press(h.longPress)
 	case driver.EventAccessibilityAction:
-		if h.action != nil && !n.props.Disabled {
+		if h.action != nil && !n.labelProps().Disabled {
 			t.within(n.owner, func() { h.action(ev.Text) })
 		}
 	case driver.EventPressDown:
-		t.setState(n, statePressed, !n.props.Disabled)
+		t.setState(n, statePressed, !n.labelProps().Disabled)
 		press(h.pressDown)
 		if n.tip != nil {
 			call(n.tip.hide)
@@ -2442,7 +2447,7 @@ func (t *Tree) Dispatch(ev driver.Event) {
 			})
 		}
 	case driver.EventContextMenu:
-		if h.contextMenu != nil && !n.props.Disabled {
+		if h.contextMenu != nil && !n.labelProps().Disabled {
 			t.within(n.owner, func() { h.contextMenu(ContextMenuEvent{ev.Point, ev.Page, ev.Modifiers}) })
 		}
 	case driver.EventPressOutside:
@@ -2454,7 +2459,7 @@ func (t *Tree) Dispatch(ev driver.Event) {
 	case driver.EventFileDragLeave:
 		call(h.fileLeave)
 	case driver.EventFileDrop:
-		if h.fileDrop != nil && !n.props.Disabled {
+		if h.fileDrop != nil && !n.labelProps().Disabled {
 			t.within(n.owner, func() { h.fileDrop(ev.URIs) })
 		}
 	case driver.EventLoadStart:
@@ -2672,7 +2677,7 @@ func stacked(kids []*node) []*node {
 // takesPresses reports whether n's handlers hear presses.
 func (n *node) takesPresses() bool {
 	h := &n.h
-	return h.press != nil || h.longPress != nil || h.pressDown != nil || h.pressUp != nil
+	return h.press != nil || h.longPress != nil || h.pressDown != nil || h.pressUp != nil || n.labelTarget() != nil
 }
 
 // insidePressable reports whether a view around n in its layer takes
@@ -2699,7 +2704,7 @@ func (n *node) events() driver.EventMask {
 	// Presses a view follows only for its styles go to a view around it
 	// that takes them, as a press on a button's face is the button's.
 	pressStyled := (s.Active != nil || group) && (n.takesPresses() || !n.insidePressable())
-	bit(driver.EventPress, h.press != nil)
+	bit(driver.EventPress, h.press != nil || n.labelTarget() != nil)
 	bit(driver.EventLongPress, h.longPress != nil)
 	// A press hides the tooltip of a view that takes presses.
 	bit(driver.EventPressDown, h.pressDown != nil || pressStyled || n.tip != nil && h.press != nil)

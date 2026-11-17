@@ -5,8 +5,12 @@ import "github.com/nsgo-dev/nsgo/core"
 // Switch is on or off and takes effect at once, as a setting. Its parts
 // are a track and a thumb inside it, then its children, the label.
 type Switch struct {
-	Checked  func() bool
-	Disabled func() bool
+	// Ref and LabelledBy are the control view's, as a core.View's.
+	Ref        *core.Ref
+	LabelledBy []*core.Ref
+	Invalid    func() bool
+	Checked    func() bool
+	Disabled   func() bool
 	// OnChange receives the value a press asks for, the opposite of
 	// Checked's.
 	OnChange func(checked bool)
@@ -37,7 +41,7 @@ func (s Switch) Render(*core.Scope) core.Node {
 	thumb := core.View{Class: s.ThumbClass, Style: s.ThumbStyle, StyleFunc: s.ThumbStyleFunc, PartStates: shows}
 	track := core.View{Class: s.TrackClass, Style: s.TrackStyle, StyleFunc: s.TrackStyleFunc, PartStates: shows,
 		Children: []core.Node{thumb}}
-	return core.View{Class: s.Class, Style: s.Style, StyleFunc: s.StyleFunc, Role: core.RoleSwitch, Label: s.Label, Hint: s.Hint, TestID: s.TestID, OnLayout: s.OnLayout, Tooltip: s.Tooltip, HitSlop: s.HitSlop,
+	return core.View{Class: s.Class, Style: s.Style, StyleFunc: s.StyleFunc, Ref: s.Ref, LabelledBy: s.LabelledBy, Invalid: s.Invalid, Role: core.RoleSwitch, Label: s.Label, Hint: s.Hint, TestID: s.TestID, OnLayout: s.OnLayout, Tooltip: s.Tooltip, HitSlop: s.HitSlop,
 		Disabled: s.Disabled, Checked: s.Checked,
 		OnPress: func(core.PressEvent) {
 			if s.OnChange != nil {
