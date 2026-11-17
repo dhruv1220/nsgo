@@ -107,6 +107,8 @@ type window struct {
 	unmanaged    bool
 	anchorBounds driver.Bounds
 	panelSide    driver.WindowPlacement
+	// input is where the window takes the pointer (windowpointer.go).
+	input windowInput
 	// settingsHandlers are the handlers setupSettings connects to GTK's settings, which outlive the window.
 	settingsHandlers []uint64
 	// contrastHandler is the handler on GNOME's accessibility settings, which are not GTK's.
@@ -414,6 +416,7 @@ func (w *window) openSurface(cfg driver.SurfaceConfig) {
 	if cfg.Frame.Width > 0 || cfg.Frame.Height > 0 {
 		child.setFrame(cfg.Frame)
 	}
+	child.setPointerEvents(cfg.PointerEvents)
 	child.env = child.environment()
 	child.engine = w.engine.Attach(cfg.ID, child)
 	size := driver.Size{Width: opts.Width, Height: opts.Height}
@@ -1299,6 +1302,8 @@ func (w *window) windowCommand(c *driver.WindowCommand) {
 		w.showMenuBar()
 	case driver.WindowSetConstraints:
 		w.setConstraints(c.Constraints)
+	case driver.WindowSetPointerEvents:
+		w.setPointerEvents(c.PointerEvents)
 	case driver.WindowSetLevel:
 		// Stacking is the compositor's.
 	}

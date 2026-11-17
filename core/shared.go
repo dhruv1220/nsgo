@@ -374,6 +374,8 @@ type (
 	WindowFrame = driver.WindowFrame
 	// WindowLevel is where a window stacks among the others.
 	WindowLevel = driver.WindowLevel
+	// WindowPointerEvents is where a desktop window takes the pointer: the core's part of desktop.WindowPointerEvents, which apps use.
+	WindowPointerEvents = driver.WindowPointerEvents
 	// WindowConstraints limit a window's size and what the user may do
 	// to it.
 	WindowConstraints = driver.WindowConstraints
@@ -489,6 +491,12 @@ const (
 	WindowLevelNormal   = driver.WindowLevelNormal
 	WindowLevelFloating = driver.WindowLevelFloating
 	WindowLevelDesktop  = driver.WindowLevelDesktop
+)
+
+const (
+	WindowPointerAuto    = driver.WindowPointerAuto
+	WindowPointerNone    = driver.WindowPointerNone
+	WindowPointerPainted = driver.WindowPointerPainted
 )
 
 const (

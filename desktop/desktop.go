@@ -20,6 +20,8 @@ type (
 	WindowFrame = core.WindowFrame
 	// WindowLevel is where a window stacks among the others.
 	WindowLevel = core.WindowLevel
+	// WindowPointerEvents is where a window takes the pointer: everywhere, nowhere, or only where it draws something.
+	WindowPointerEvents = core.WindowPointerEvents
 	// WindowConstraints limit a window's size and what the user may do
 	// to it.
 	WindowConstraints = core.WindowConstraints
@@ -44,6 +46,15 @@ const (
 	WindowLevelNormal   = core.WindowLevelNormal
 	WindowLevelFloating = core.WindowLevelFloating
 	WindowLevelDesktop  = core.WindowLevelDesktop
+)
+
+const (
+	// WindowPointerAuto takes the pointer everywhere in the window, as windows do.
+	WindowPointerAuto = core.WindowPointerAuto
+	// WindowPointerNone lets every press, scroll and hover through to what is below, as a heads-up display does.
+	WindowPointerNone = core.WindowPointerNone
+	// WindowPointerPainted takes the pointer only over the views that draw something, such as a background, a border, a text or an image, or that hear it, such as a pressable, a context menu or a window drag handle; elsewhere it goes through, as around a desktop pet.
+	WindowPointerPainted = core.WindowPointerPainted
 )
 
 const (
@@ -165,6 +176,13 @@ func SetWindowFrame(cx *core.Scope, f WindowFrame) { cx.SetWindowFrame(f) }
 // SetWindowLevel puts the window at level among the others, on macOS
 // and Windows; Linux leaves stacking to the compositor.
 func SetWindowLevel(cx *core.Scope, level WindowLevel) { cx.SetWindowLevel(level) }
+
+// SetWindowPointerEvents says where the window takes the pointer, from its next frame: everywhere, the default, nowhere, or only where it draws something, the pointer going through to the windows below elsewhere. WindowOptions.PointerEvents and PanelOptions.PointerEvents open a window so. A window that takes none hears no presses, so an app that lets one through entirely switches it back from elsewhere, such as a global shortcut or a tray icon; one that takes the pointer where it draws hears it there:
+//
+//	desktop.SetWindowPointerEvents(cx, desktop.WindowPointerPainted)
+//
+// Code held to an Access needs it to grant core.AccessOverlay, else the window takes the pointer. A view whose background fills the window makes a painted window take it everywhere.
+func SetWindowPointerEvents(cx *core.Scope, p WindowPointerEvents) { cx.SetWindowPointerEvents(p) }
 
 // SetWindowConstraints limits the window's content size and says whether
 // it resizes, minimizes and maximizes; the zero WindowConstraints limits

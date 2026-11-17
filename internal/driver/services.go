@@ -166,6 +166,8 @@ const (
 	WindowDestroy
 	// WindowSetAnchor places a panel beside AnchorBounds on Placement's side, moving it at once if it shows, and keeps the placement for later shows; it changes neither whether it shows nor the focus.
 	WindowSetAnchor
+	// WindowSetPointerEvents says where the window takes the pointer (PointerEvents).
+	WindowSetPointerEvents
 )
 
 // SurfaceKind is what an opened surface shows in.
@@ -214,6 +216,8 @@ type SurfaceConfig struct {
 	HideOnBlur bool
 	// NoActivate keeps a panel from ever taking the keyboard or activating the app, shown, focused or clicked.
 	NoActivate bool
+	// PointerEvents is where a window or a panel takes the pointer (WindowSetPointerEvents).
+	PointerEvents WindowPointerEvents
 	// Tray is the tray icon a SurfaceTrayIcon draws.
 	Tray uint32
 }
@@ -253,6 +257,8 @@ type WindowCommand struct {
 	// AnchorBounds is the rectangle, in the screen coordinates of DisplayInfo, that WindowShow and WindowSetAnchor place a panel beside, on Placement's side; WindowPlaceDefault places none.
 	AnchorBounds Bounds
 	Placement    WindowPlacement
+	// PointerEvents is what WindowSetPointerEvents sets.
+	PointerEvents WindowPointerEvents
 }
 
 // WindowControls is how a hidden title bar shows the system's window
@@ -386,6 +392,53 @@ const (
 	// bottom of the others, where activating it raises it again.
 	WindowLevelDesktop
 )
+
+// WindowPointerEvents is where a desktop window takes the pointer, by CSS's pointer-events names: everywhere, nowhere, or only where it draws something, the pointer going through to what is below it elsewhere.
+type WindowPointerEvents uint8
+
+const (
+	// WindowPointerAuto takes the pointer everywhere in the window.
+	WindowPointerAuto WindowPointerEvents = iota
+	// WindowPointerNone takes it nowhere: presses, scrolls and hovering go through to what is below.
+	WindowPointerNone
+	// WindowPointerPainted takes it only where a view under it is Painted.
+	WindowPointerPainted
+)
+
+// pointerEvents are the events of a view that hears the pointer.
+const pointerEvents = 1<<EventPress | 1<<EventPressDown | 1<<EventPressUp | 1<<EventLongPress | 1<<EventMouseEnter |
+	1<<EventMouseLeave | 1<<EventMouseMove | 1<<EventContextMenu | 1<<EventPan | 1<<EventPinch | 1<<EventRotation |
+	1<<EventWheel | 1<<EventTouch | 1<<EventFileDragEnter | 1<<EventFileDragLeave | 1<<EventFileDrop
+
+// Painted reports whether a view takes the pointer in a window that takes it only where it draws something (WindowPointerPainted): a view that hears the pointer or drags the window, of a kind that draws its whole frame, such as a text, an image or an input, or a container whose style fills or edges it. Shadows and outlines, drawn around the frame, do not count. macOS and Windows ask it of the innermost view the pointer reaches, by its pointer events, and of the views that view is in; Linux, which gives its surface an input region rather than following the pointer, of every view, by its bounds within what clips it.
+func Painted(kind ViewKind, style *ViewStyle, events EventMask, drag WindowDrag) bool {
+	if events&pointerEvents != 0 || drag == WindowDragOn {
+		return true
+	}
+	if style.Hidden || style.Opacity <= 0 {
+		return false
+	}
+	switch kind {
+	case KindView, KindModal, KindScroll:
+	default:
+		return true
+	}
+	if style.Background&0xff != 0 || style.Glass != GlassNone {
+		return true
+	}
+	if style.Borders == (Edges{}) {
+		if style.BorderWidth > 0 && style.BorderColor&0xff != 0 && style.BorderStyle != BorderNone && style.BorderStyle != BorderHidden {
+			return true
+		}
+	} else if style.BorderStyle != BorderNone && style.BorderStyle != BorderHidden {
+		b, c := style.Borders, style.BorderColors
+		if b.Top > 0 && c.Top&0xff != 0 || b.Right > 0 && c.Right&0xff != 0 || b.Bottom > 0 && c.Bottom&0xff != 0 || b.Left > 0 && c.Left&0xff != 0 {
+			return true
+		}
+	}
+	e := style.Effects
+	return e != nil && (len(e.Gradients) > 0 || len(e.BackdropFilters) > 0)
+}
 
 // MenuBarMode says when Windows and Linux show the menu bar the window
 // draws for the application menu. macOS's menu bar is the system's and
