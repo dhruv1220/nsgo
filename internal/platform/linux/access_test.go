@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,10 @@ import (
 // Read the states through the same AT-SPI interface a screen reader uses,
 // on a private session bus so the test sees only its own window.
 func TestAccessibilitySelectedAndExpandedReachATSPI(t *testing.T) {
+	if want := os.Getenv("NSGO_TEST_ACCESS_WANT"); want != "" {
+		probeAccessibilityStates(t, want == "true")
+		return
+	}
 	if os.Getenv("NSGO_TEST_ACCESS_PROCESS") != t.Name() {
 		bus, err := exec.LookPath("dbus-run-session")
 		if err != nil {
@@ -24,18 +29,49 @@ func TestAccessibilitySelectedAndExpandedReachATSPI(t *testing.T) {
 		}
 		cmd := exec.Command(bus, "--", os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v", "-test.timeout=45s")
 		cmd.Env = append(os.Environ(), "NSGO_TEST_ACCESS_PROCESS="+t.Name(), "GTK_A11Y=atspi")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("%v\n%s", err, out)
-		}
-		if strings.Contains(string(out), "g_value_get_int:") {
-			t.Fatalf("GTK rejected an accessibility state's type:\n%s", out)
-		}
-		if strings.Contains(string(out), "--- SKIP:") {
-			t.Skip(string(out))
-		}
+		runAccessibilityProcess(t, cmd)
 		return
 	}
+	var update func(bool)
+	w := startTestWindow(t, func(cx *core.Scope) core.Node {
+		on := core.NewSignal(cx, true)
+		update = func(v bool) { cx.Post(func() { on.Set(v) }) }
+		cx.Effect(func() { cx.SetTitle(fmt.Sprintf("access-states|%v", on.Get())) })
+		return core.View{Role: core.RoleTreeItem, Label: accessTestLabel, Selected: on.Get, Expanded: on.Get,
+			Style: core.Style{Width: core.Pt(100), Height: core.Pt(100)}}
+	}, Options{Title: "access-states", Width: 150, Height: 150})
+	waitForTitle(t, w, "access-states|true")
+	for _, want := range []bool{true, false, true} {
+		update(want)
+		waitForTitle(t, w, fmt.Sprintf("access-states|%v", want))
+		// AT-SPI's synchronous calls iterate GLib's default context. Keep
+		// the client in another process so it cannot dispatch GTK callbacks
+		// on the test goroutine while the window's thread uses that context.
+		cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v", "-test.timeout=15s")
+		cmd.Env = append(os.Environ(), fmt.Sprintf("NSGO_TEST_ACCESS_WANT=%v", want))
+		runAccessibilityProcess(t, cmd)
+	}
+}
+
+func runAccessibilityProcess(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "g_value_get_int:") {
+		t.Fatalf("GTK rejected an accessibility state's type:\n%s", out)
+	}
+	if strings.Contains(string(out), "--- SKIP:") {
+		t.Skip(string(out))
+	}
+}
+
+const accessTestLabel = "NSGo selected and expanded regression"
+
+func probeAccessibilityStates(t *testing.T, want bool) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	lib, err := purego.Dlopen("libatspi.so.0", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 	if err != nil {
 		t.Skip("needs libatspi: ", err)
@@ -61,16 +97,6 @@ func TestAccessibilitySelectedAndExpandedReachATSPI(t *testing.T) {
 	if init() != 0 {
 		t.Fatal("AT-SPI could not connect to the private bus")
 	}
-	const label = "NSGo selected and expanded regression"
-	var update func(bool)
-	w := startTestWindow(t, func(cx *core.Scope) core.Node {
-		on := core.NewSignal(cx, true)
-		update = func(v bool) { cx.Post(func() { on.Set(v) }) }
-		cx.Effect(func() { cx.SetTitle(fmt.Sprintf("access-states|%v", on.Get())) })
-		return core.View{Role: core.RoleTreeItem, Label: label, Selected: on.Get, Expanded: on.Get,
-			Style: core.Style{Width: core.Pt(100), Height: core.Pt(100)}}
-	}, Options{Title: "access-states", Width: 150, Height: 150})
-	waitForTitle(t, w, "access-states|true")
 	// GTK registers with the accessibility bus asynchronously.
 	var find func(uintptr, int) uintptr
 	find = func(node uintptr, depth int) uintptr {
@@ -81,7 +107,7 @@ func TestAccessibilitySelectedAndExpandedReachATSPI(t *testing.T) {
 		s := name(node, nil)
 		got := goString(s)
 		gFree(s)
-		if got == label {
+		if got == accessTestLabel {
 			retain(node)
 			return node
 		}
@@ -99,7 +125,11 @@ func TestAccessibilitySelectedAndExpandedReachATSPI(t *testing.T) {
 	}
 	var node uintptr
 	for deadline := time.Now().Add(10 * time.Second); node == 0; time.Sleep(20 * time.Millisecond) {
-		node = find(desktop(0), 0)
+		root := desktop(0)
+		node = find(root, 0)
+		if root != 0 {
+			gObjectUnref(root)
+		}
 		if time.Now().After(deadline) {
 			t.Fatal("the labelled view did not appear on the AT-SPI bus")
 		}
@@ -107,20 +137,16 @@ func TestAccessibilitySelectedAndExpandedReachATSPI(t *testing.T) {
 	defer gObjectUnref(node)
 	// AtspiStateType's stable protocol values.
 	const expanded, selected = 10, 23
-	for _, want := range []bool{true, false, true} {
-		update(want)
-		waitForTitle(t, w, fmt.Sprintf("access-states|%v", want))
-		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-			clear(node)
-			set := states(node)
-			x, s := contains(set, expanded) != 0, contains(set, selected) != 0
-			gObjectUnref(set)
-			if x == want && s == want {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("AT-SPI expanded %v, selected %v; want both %v", x, s, want)
-			}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		clear(node)
+		set := states(node)
+		x, s := contains(set, expanded) != 0, contains(set, selected) != 0
+		gObjectUnref(set)
+		if x == want && s == want {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("AT-SPI expanded %v, selected %v; want both %v", x, s, want)
 		}
 	}
 }
