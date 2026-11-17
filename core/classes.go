@@ -16,7 +16,9 @@ type nodeClasses struct {
 	normal, important Style
 	props             classProps
 	// bound is set once the node follows the environment.
-	bound bool
+	bound   bool
+	related bool
+	watch   uint16
 }
 
 // setClasses gives n the classes in class, resolved now.
@@ -26,6 +28,7 @@ func (t *Tree) setClasses(n *node, class string) {
 		// no classes, so classes set again do not follow it twice.
 		if n.cls == nil || !n.cls.bound {
 			n.cls = nil
+			t.trackClassRelations(n)
 			return
 		}
 		class = " "
@@ -42,6 +45,7 @@ func (t *Tree) setClasses(n *node, class string) {
 		c.bound = old.bound
 	}
 	n.cls = c
+	t.trackClassRelations(n)
 	t.resolveClasses(n)
 	// A replacement theme may define a previously unknown color.
 	if (l.env || len(l.unknown) > 0 || hasEnvSpans(n)) && !c.bound {
@@ -129,6 +133,7 @@ func (t *Tree) followEnv(n *node) {
 			if !c.list.parsedFor(&env) {
 				c.list = t.rt.parseClasses(&env, c.list.class)
 				t.rt.reportUnknown(c.list)
+				t.trackClassRelations(n)
 			}
 			t.resolveClasses(n)
 			t.resolveSpanClasses(n)
@@ -154,6 +159,13 @@ func (t *Tree) classEnv(n *node) classEnv {
 func (t *Tree) resolveClasses(n *node) {
 	c := n.cls
 	env := c.env
+	if c.related {
+		t.resolveRelationClasses(n)
+		return
+	}
+	if len(c.list.rules) > 0 && c.list.relational {
+		env.has = func(s *classSelector) bool { return s.has(t, n) }
+	}
 	if c.list.positional {
 		env.position = n.position()
 	}

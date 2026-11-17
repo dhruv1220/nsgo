@@ -59,7 +59,7 @@ jobs:
         env:
           GDK_BACKEND: x11
           GSK_RENDERER: cairo
-        run: xvfb-run -a go tool nsgo test -target linux -run '^TestPressModifiersReachTheApp$' ./internal/testhost/testdata/press
+        run: xvfb-run -a go tool nsgo test -target linux -run '^(TestPressModifiersReachTheApp|TestRelationalSelectorsFollowNativeInput)$' ./internal/testhost/testdata/press
       - name: Test
         env:
           GDK_BACKEND: x11
@@ -74,6 +74,10 @@ jobs:
         run: xvfb-run -a go tool nsgo test -target linux -run '^(TestRadioGroupIsOneStopItsArrowsMoveThrough|TestTabsTakeHomeEndAndSwapLeftAndRightRightToLeft)$' ./base
       - name: Test browser focus, styles and activation
         run: go tool nsgo test -target web -run '^TestRefFocusUsesNativeKeyboardStops$' ./internal/platform/web
+      - name: Test browser relational selectors
+        run: |
+          go tool nsgo test -target web -run '^TestRelationalSelectorsFollowNativeInput$' ./internal/testhost/testdata/press
+          go tool nsgo test -target web -run '^TestRelationalClassesFromTSX$' ./tsx
       - name: Test browser radio and tab focus
         run: go tool nsgo test -target web -run '^(TestRadioGroupIsOneStopItsArrowsMoveThrough|TestTabsTakeHomeEndAndSwapLeftAndRightRightToLeft)$' ./base
 
@@ -110,7 +114,7 @@ jobs:
           GOGC: "1"
         run: go tool nsgo test -run '^TestWindowObserversSurviveGC$' ./internal/platform/macos -- -race -timeout=180s
       - name: Test native modified presses
-        run: go tool nsgo test -target macos -run '^TestPressModifiersReachTheApp$' ./internal/testhost/testdata/press
+        run: go tool nsgo test -target macos -run '^(TestPressModifiersReachTheApp|TestRelationalSelectorsFollowNativeInput)$' ./internal/testhost/testdata/press
       - name: Test native radio and tab focus
         run: go tool nsgo test -target macos -run '^(TestRadioGroupIsOneStopItsArrowsMoveThrough|TestTabsTakeHomeEndAndSwapLeftAndRightRightToLeft)$' ./base
       - name: Test composited captures
@@ -130,7 +134,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test native modified presses
-        run: go tool nsgo test -target windows -run '^TestPressModifiersReachTheApp$' ./internal/testhost/testdata/press
+        run: go tool nsgo test -target windows -run '^(TestPressModifiersReachTheApp|TestRelationalSelectorsFollowNativeInput)$' ./internal/testhost/testdata/press
       - name: Test native focus, styles and activation
         run: go tool nsgo test -run '^TestRefFocusUsesNativeKeyboardStops$' ./internal/platform/windows
       - name: Test native radio and tab focus

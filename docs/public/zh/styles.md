@@ -60,6 +60,11 @@ core.View{Class: "flex items-center gap-3 rounded-xl border border-zinc-200 bg-w
 
 类名合并在样式之下，因此样式字段优先。`ClassFunc` 让类名跟随变化，状态变体（`hover:bg-zinc-100`、`checked:opacity-100`）会成为样式的状态。`group` 和 `group-hover:` 让子元素跟随父元素的状态，`first:` 和 `last:` 跟随子元素的位置，`aria-checked:`、`data-open:` 和 `focus-within:` 跟随控件展示的状态。
 
+`has-[>svg]:px-3` 在父元素有直接图标子元素时改变其内边距；`[&_svg]:size-4 [&_svg]:shrink-0` 设置后代图标的尺寸。`svg` 匹配 `core.Icon` 和 `SVGView`，条件渲染的区域不算一层元素。子元素、类名或状态变化时会重新匹配。`hover:[&_svg]` 跟随父元素的悬停，`[&_svg]:hover` 跟随各图标的悬停。匹配规则先比较选择器优先级，再比较变体顺序；内联样式优先，除非类名标为 important。
+
+选择器在所有目标上匹配 NSGo 元素，支持列表、子元素（`>`）、后代（`_`）、相邻（`+`）和后续兄弟（`~`）关系，类名、`data-*` 存在或相等条件、角色、支持的布尔无障碍状态，以及 `:is`、`:where`、`:not`、`:has` 和子元素位置。类型包括 `view`/`div`、`text`/`span`（整个文本节点）、`scroll`、`input`、`textarea`、`image`/`img`、`canvas`、`svg`、`video`、`webview` 和 `native`。任意选择器的每个分支使用一个顶层 `&`；省略时测试元素自身。浏览器专属选择器、伪元素、at-rule、转义和函数内显式的 `&` 均视为未知；选择器不会触及后端实现视图或单独的文本片段。
+
+
 主题的 `Tailwind` 字段用颜色、断点和工具类扩展默认主题；调色板没有的颜色可以写成 `Palette` 的角色名（`bg-accent`、`text-text-muted/70`），或主题定义的颜色，从节点所在主题的当前外观读取。
 
 ## 主题

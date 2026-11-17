@@ -60,6 +60,11 @@ core.View{Class: "flex items-center gap-3 rounded-xl border border-zinc-200 bg-w
 
 A class merges under the style, so the style's fields win. Classes can follow what changes with `ClassFunc`, and a state variant (`hover:bg-zinc-100`, `checked:opacity-100`) becomes the style's state. `group` and `group-hover:` style children from a parent's state, `first:` and `last:` follow a child's place, and `aria-checked:`, `data-open:` and `focus-within:` follow the states a control shows.
 
+`has-[>svg]:px-3` changes a parent's padding when it has a direct icon child; `[&_svg]:size-4 [&_svg]:shrink-0` sizes its descendant icons. `svg` selects `core.Icon` and `SVGView`, including through conditional regions. These selectors update when children, classes or states change. `hover:[&_svg]` follows the parent's hover; `[&_svg]:hover` follows each icon's. Matching selectors compete by specificity before variant order; inline styles win unless the class is important.
+
+Selectors match NSGo elements on every target. They support lists, child (`>`), descendant (`_`), adjacent (`+`) and following sibling (`~`) combinators, classes, `data-*` presence/equality, roles, supported boolean accessibility states and `:is`, `:where`, `:not`, `:has` and child positions. Types are `view`/`div`, `text`/`span` (whole text nodes), `scroll`, `input`, `textarea`, `image`/`img`, `canvas`, `svg`, `video`, `webview` and `native`. Use one top-level `&` in each arbitrary selector alternative; without it, the selector tests the element itself. Browser-only selectors, pseudo-elements, at-rules, escapes and explicit `&` inside a function are unknown; these selectors do not reach backend implementation views or individual text spans.
+
+
 The theme's `Tailwind` field extends the default theme with colors, breakpoints and utilities, and a color the palette lacks names a `Palette` role (`bg-accent`, `text-text-muted/70`) or a theme color, read from the node's theme in the appearance it shows.
 
 ## Themes

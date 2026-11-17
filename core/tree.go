@@ -141,6 +141,10 @@ type Tree struct {
 	// positional is set once a node has classes that follow its place
 	// among its siblings (first:, odd:).
 	positional bool
+	// Relational classes coalesce updates within their source's scope.
+	relationSources     map[*node]*node
+	relationRoots       map[*node]struct{}
+	refreshingRelations bool
 	// bars draws the bars of scroll views that have none of their own,
 	// and watches hear scroll views move (scrollbars.go).
 	bars    ScrollbarMaker
@@ -829,6 +833,10 @@ func (t *Tree) childrenChanged(n *node) {
 	}
 	if n != nil {
 		n.flat = nil
+		t.queueRelations(n)
+		if len(t.relationSources) > 0 {
+			t.queueRelationRoot(n)
+		}
 		t.reorder(n)
 		t.markLayout(n)
 		if t.positional || n.cls != nil && n.cls.list.spacing {
@@ -1123,6 +1131,9 @@ func (t *Tree) restyle(n *node) bool {
 	was := &n.style
 	lines, overflow, pointer, visibility, display := was.NumberOfLines, was.TextOverflow, was.PointerEvents, was.Visibility, was.Display
 	n.style = merged.withStates(statesOf(t.shownInteraction(n), &p, n.part.Data), g)
+	if n.cls != nil && n.cls.related {
+		n.style = mergeStyles(n.style, n.cls.important)
+	}
 	if p.Disabled {
 		// The platform still follows the states a disabled view's own
 		// styles wait for, which the event mask reads.
@@ -1522,6 +1533,7 @@ func (t *Tree) updatePointerEvents() {
 
 // restyleGroup restyles the nodes inside group n that follow its states.
 func (t *Tree) restyleGroup(n *node) {
+	t.queueRelations(n)
 	if n.style.Group == "" {
 		return
 	}
@@ -2694,24 +2706,28 @@ func (n *node) events() driver.EventMask {
 		}
 	}
 	h, s := &n.h, &n.style
+	var watched uint16
+	if n.cls != nil {
+		watched = n.cls.watch
+	}
 	// A group reports the states the styles inside it follow.
 	group := s.Group != ""
 	// Presses a view follows only for its styles go to a view around it
 	// that takes them, as a press on a button's face is the button's.
-	pressStyled := (s.Active != nil || group) && (n.takesPresses() || !n.insidePressable())
+	pressStyled := (s.Active != nil || group || watched&classPressed != 0) && (n.takesPresses() || !n.insidePressable())
 	bit(driver.EventPress, h.press != nil)
 	bit(driver.EventLongPress, h.longPress != nil)
 	// A press hides the tooltip of a view that takes presses.
 	bit(driver.EventPressDown, h.pressDown != nil || pressStyled || n.tip != nil && h.press != nil)
 	bit(driver.EventPressUp, h.pressUp != nil || pressStyled)
-	bit(driver.EventMouseEnter, h.mouseEnter != nil || s.Hover != nil || group || n.tip != nil)
-	bit(driver.EventMouseLeave, h.mouseLeave != nil || s.Hover != nil || group || n.tip != nil)
+	bit(driver.EventMouseEnter, h.mouseEnter != nil || s.Hover != nil || group || n.tip != nil || watched&classHovered != 0)
+	bit(driver.EventMouseLeave, h.mouseLeave != nil || s.Hover != nil || group || n.tip != nil || watched&classHovered != 0)
 	bit(driver.EventMouseMove, h.mouseMove != nil)
 	bit(driver.EventTouch, n.hearsTouches())
 	// The focus of any view that can take it is reported, for the core's
 	// own focus (focusReported).
 	focusable := n.kind == driver.KindInput || n.kind == driver.KindWeb || n.takesPresses() || n.props.Focusable
-	focusStyled := s.Focus != nil || s.FocusVisible != nil
+	focusStyled := s.Focus != nil || s.FocusVisible != nil || watched&(classFocused|classFocusVisible|classFocusWithin) != 0
 	bit(driver.EventFocus, h.focus != nil || focusStyled || focusable)
 	bit(driver.EventBlur, h.blur != nil || focusStyled || focusable)
 	bit(driver.EventSubmitEditing, h.submit != nil)
