@@ -83,3 +83,15 @@ mount(App);`)}}
 		t.Fatalf("TSX step did not change: %+v", v)
 	}
 }
+
+func TestSliderUndefinedBoundsUseDefaults(t *testing.T) {
+	files := fstest.MapFS{"App.tsx": {Data: []byte(`import { mount, View } from "nsgo";
+import { Slider } from "nsgo/ui";
+function App() { return <View><Slider testID="position" value={50} min={undefined} max={undefined} /></View>; }
+mount(App);`)}}
+	app := nsgotest.Start(t, compiler.App(files, "App.tsx"), nsgotest.Environment(core.Environment{OS: core.OSMacOS, Idiom: core.IdiomDesktop}))
+	v := app.Find("position-thumb").Props.Value
+	if v.Min != 0 || v.Max != 100 || v.Now != 50 {
+		t.Fatalf("undefined bounds = %+v, want default 0..100 at 50", v)
+	}
+}

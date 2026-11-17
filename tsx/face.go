@@ -2,7 +2,6 @@ package tsx
 
 import (
 	"github.com/nsgo-dev/nsgo/tsx/internal/js"
-	"slices"
 
 	"github.com/nsgo-dev/nsgo/core"
 )
@@ -100,15 +99,12 @@ func (p *props) peek(name string) js.Value {
 	return core.Untracked(p.r.cx, func() js.Value { return p.get(name) })
 }
 
-// has reports whether prop name is set, untracked: a component reads
-// what it needs of a prop as it renders, not to know that it is set. A
-// key the JSX gave is set, whatever it reads now (sort={sort()} while
-// sort() is undefined).
+// has reports whether prop name currently has a value. An explicitly
+// undefined value is absent, like an omitted optional prop; reading the
+// value here remains tracked so a reactive prop that starts undefined is
+// applied when it becomes defined.
 func (p *props) has(name string) bool {
-	if p.obj != nil && slices.Contains(p.obj.Keys(), name) {
-		return true
-	}
-	return core.Untracked(p.r.cx, func() bool { return defined(p.get(name)) })
+	return defined(p.get(name))
 }
 
 func (p *props) str(name string) string { return stringOf(p.get(name)) }
