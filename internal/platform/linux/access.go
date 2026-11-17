@@ -126,17 +126,6 @@ func enumValue(kind, nick string) int32 {
 	return v
 }
 
-// stateValueIsInt lists GTK states whose collect type is an integer even
-// when their value is boolean or undefined.
-func stateValueIsInt(nick string) bool {
-	switch nick {
-	case "selected", "checked", "pressed", "expanded", "invalid":
-		return true
-	default:
-		return false
-	}
-}
-
 // roleNicks are GTK's roles of NSGo's.
 var roleNicks = [...]string{
 	driver.RoleButton: "button", driver.RoleLink: "link", driver.RoleHeader: "heading", driver.RoleImage: "img",
@@ -333,15 +322,16 @@ func (w *window) updateAccess(v *view) bool {
 			continue
 		}
 		var val gValue
-		switch {
-		case stateValueIsInt(nick):
+		switch nick {
+		case "checked", "pressed":
 			// GTK reads a tristate as an int.
 			gValueInit(uintptr(unsafe.Pointer(&val)), gTypeInt)
-			if nick == "checked" || nick == "pressed" {
-				gValueSetInt(&val, enumValue("tristate", [...]string{"false", "true", "mixed"}[s]))
-			} else {
-				gValueSetInt(&val, int32(s))
-			}
+			gValueSetInt(&val, enumValue("tristate", [...]string{"false", "true", "mixed"}[s]))
+		case "selected", "expanded", "invalid":
+			// GTK collects nullable booleans (selected and expanded) as
+			// ints too, as it does GtkAccessibleInvalidState.
+			gValueInit(uintptr(unsafe.Pointer(&val)), gTypeInt)
+			gValueSetInt(&val, int32(s))
 		default:
 			gValueInit(uintptr(unsafe.Pointer(&val)), gTypeBoolean)
 			gValueSetBoolean(&val, int32(s))
