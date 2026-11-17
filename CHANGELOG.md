@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Report Android test process exits immediately with their status and complete panic output (#529 by @houko).
 - Keep Android buttons pressable after touches probe an unclipped sibling or reach a transformed child outside its container (#546 by @houko).
 
 - Add HarmonyOS as a preview target, whose ArkTS host runs the engine in ArkWeb and draws it with ArkUI views, in `nsgo build`, `nsgo run` and `nsgo test -target harmonyos` (#79 by @togotop).
