@@ -85,13 +85,39 @@ mount(App);`)}}
 }
 
 func TestSliderUndefinedBoundsUseDefaults(t *testing.T) {
-	files := fstest.MapFS{"App.tsx": {Data: []byte(`import { mount, View } from "nsgo";
-import { Slider } from "nsgo/ui";
-function App() { return <View><Slider testID="position" value={50} min={undefined} max={undefined} /></View>; }
+	files := fstest.MapFS{"App.tsx": {Data: []byte(`import { mount, signal, View } from "nsgo";
+import { Button, Slider } from "nsgo/ui";
+function Forwarded(props) { return <Slider testID="position" value={50} min={undefined} max={props.max} />; }
+function App() {
+    const maximum = signal(undefined);
+    return <View style={{width:240}}>
+        <Slider testID="omitted" value={50}/>
+        <Slider testID="undefined" value={50} max={undefined}/>
+        <Forwarded max={maximum()}/>
+        <Button testID="load" onPress={() => setTimeout(() => maximum.set(200), 1000)}>Load</Button>
+        <Button testID="zero" onPress={() => setTimeout(() => maximum.set(0), 1000)}>Zero</Button>
+        <Button testID="reset" onPress={() => setTimeout(() => maximum.set(undefined), 1000)}>Reset</Button>
+    </View>;
+}
 mount(App);`)}}
 	app := nsgotest.Start(t, compiler.App(files, "App.tsx"), nsgotest.Environment(core.Environment{OS: core.OSMacOS, Idiom: core.IdiomDesktop}))
-	v := app.Find("position-thumb").Props.Value
-	if v.Min != 0 || v.Max != 100 || v.Now != 50 {
-		t.Fatalf("undefined bounds = %+v, want default 0..100 at 50", v)
+	for _, name := range []string{"omitted-thumb", "undefined-thumb", "position-thumb"} {
+		v := app.Find(name).Props.Value
+		if v.Min != 0 || v.Max != 100 || v.Now != 50 {
+			t.Fatalf("%s: %+v, want default 0..100 at 50", name, v)
+		}
+	}
+	id := app.Find("position-thumb").ID
+	for _, step := range []struct {
+		button string
+		max    float32
+	}{{"load", 200}, {"zero", 0}, {"reset", 100}} {
+		app.Press(step.button)
+		app.Focus("position-thumb")
+		app.Advance(time.Second)
+		v := app.Find("position-thumb")
+		if v.ID != id || !v.Focused || v.Props.Value.Max != step.max {
+			t.Fatalf("%s changed identity, focus or bounds: ID %v (was %v), focused %v, %+v", step.button, v.ID, id, v.Focused, v.Props.Value)
+		}
 	}
 }

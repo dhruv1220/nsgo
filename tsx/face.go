@@ -1,9 +1,10 @@
 package tsx
 
 import (
-	"github.com/nsgo-dev/nsgo/tsx/internal/js"
+	"slices"
 
 	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/tsx/internal/js"
 )
 
 // Go components as elements (NSH's components.rs): a face makes a Go
@@ -99,12 +100,43 @@ func (p *props) peek(name string) js.Value {
 	return core.Untracked(p.r.cx, func() js.Value { return p.get(name) })
 }
 
-// has reports whether prop name currently has a value. An explicitly
-// undefined value is absent, like an omitted optional prop; reading the
-// value here remains tracked so a reactive prop that starts undefined is
-// applied when it becomes defined.
+// has reports whether prop name is set, untracked: a component reads
+// what it needs of a prop as it renders, not to know that it is set. A
+// key the JSX gave is set, whatever it reads now (sort={sort()} while
+// sort() is undefined).
 func (p *props) has(name string) bool {
-	return defined(p.get(name))
+	if p.obj != nil && slices.Contains(p.obj.Keys(), name) {
+		return true
+	}
+	return core.Untracked(p.r.cx, func() bool { return defined(p.get(name)) })
+}
+
+// getterProp keeps a reactive getter even while it returns undefined,
+// but leaves out a plain undefined value. Presence checks never track
+// the value: only the getter installed in the component does.
+func (p *props) getterProp(name string) bool {
+	if defined(p.peek(name)) {
+		return true
+	}
+	return core.Untracked(p.r.cx, func() bool {
+		object := p.r.vm.Get("Object").ToObject(p.r.vm)
+		hasGetter := func(o *js.Object) bool {
+			if o == nil {
+				return false
+			}
+			desc, ok := p.r.call(object.Get("getOwnPropertyDescriptor"), o, p.r.vm.ToValue(name)).(*js.Object)
+			return ok && isFunction(desc.Get("get"))
+		}
+		if hasGetter(p.obj) {
+			return true
+		}
+		for _, key := range p.r.platformKeys() {
+			if o, ok := p.own(key).(*js.Object); ok && hasGetter(o) {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func (p *props) str(name string) string { return stringOf(p.get(name)) }
@@ -123,10 +155,14 @@ func (p *props) boolOr(name string, def bool) bool {
 }
 
 func (p *props) float(name string) float64 {
+	return p.floatOr(name, 0)
+}
+
+func (p *props) floatOr(name string, def float64) float64 {
 	if v := p.get(name); defined(v) {
 		return v.ToFloat()
 	}
-	return 0
+	return def
 }
 
 func (p *props) int(name string) int { return int(p.float(name)) }

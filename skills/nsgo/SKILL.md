@@ -53,6 +53,7 @@ func main() { nsgo.Run(Root) }
 - Apps use `ui`'s components, which have a look and follow the theme; `base` holds the same controls without a look, for component authors; `mobile` and `desktop` hold what only phones or only desktops have. [references/components.md](references/components.md) maps needs to components.
 - A desktop app that opens its own windows, panels, tray icons and shortcuts runs `nsgo.Run(App)` with `func App(app *core.Scope)` and opens them with `desktop`.
 - TSX apps embed their sources and run `compiler.App(src, "App.tsx")`, importing `nsgo`, `nsgo/base` and `nsgo/ui`; Go components and functions reach TSX through `tsx.Register` and `tsx.RegisterFunctions` ([TSX apps](https://nsgo.dev/docs/tsx.md)).
+- Register a getter's nonzero default with `tsx.Default("Max", float64(100))` so forwarded undefined props keep that default as they change.
 
 ## Layout and styles
 
