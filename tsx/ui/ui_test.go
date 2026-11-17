@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"bytes"
+	"log"
+	"os"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -22,6 +26,36 @@ func TestReadIcon(t *testing.T) {
 	}
 	if readIcon("unknown") != nil || readIcon(nil) != nil {
 		t.Error("what names no icon reads as none")
+	}
+}
+
+// A malformed SVG string in an icon prop logs one diagnostic naming the
+// parse error, and only once for the same string (#585).
+func TestReadIconMalformedSVGLogsOnce(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	bad := "<svg"
+	if readIcon(bad) != nil {
+		t.Error("a malformed SVG reads as an icon")
+	}
+	if readIcon(bad) != nil {
+		t.Error("a malformed SVG reads as an icon on a second read")
+	}
+	got := buf.String()
+	if strings.Count(got, bad) != 1 || !strings.Contains(got, "not a valid SVG") || !strings.Contains(got, "unexpected EOF") {
+		t.Errorf("malformed icon logged %q, want one line naming the string and the parse error", got)
+	}
+	// A valid SVG and a registered name stay silent and keep working.
+	buf.Reset()
+	if readIcon(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4"/></svg>`) == nil {
+		t.Error("a valid SVG no longer reads as an icon")
+	}
+	if readIcon("plus") != lucide.Plus() {
+		t.Error("a registered name no longer reads as its icon")
+	}
+	if buf.Len() != 0 {
+		t.Errorf("valid icons logged %q, want nothing", buf.String())
 	}
 }
 

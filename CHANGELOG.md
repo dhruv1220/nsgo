@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Take the frames of what an alert's answer starts in `nsgotest`'s `Answer` and `App.OnAlert`, as every other step does, so a sheet closed from an alert's callback is gone once `Answer` returns instead of staying until the test advances the clock (#782 by @houko).
+- Report a malformed SVG string in a TSX `icon` prop once, naming the parse error, instead of silently drawing nothing (#594 by @dhruv1220).
 
 ## [0.2.0] - 2026-11-19
 

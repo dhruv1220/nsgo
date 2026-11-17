@@ -11,6 +11,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"maps"
 	"slices"
 	"strings"
@@ -33,6 +34,9 @@ const module = "nsgo/ui"
 var (
 	iconsMu sync.RWMutex
 	icons   = map[string]func() *core.SVG{}
+	// badIcons are the malformed SVG strings already reported, so a broken
+	// icon logs once no matter how often it renders, as unknown classes do.
+	badIcons = map[string]bool{}
 )
 
 // Icons names the icons TSX's icon props take, as an app lists the Lucide
@@ -46,11 +50,20 @@ func Icons(named map[string]func() *core.SVG) {
 }
 
 // readIcon reads an icon prop: an SVG document, or a name Icons gave.
+// A malformed document still reads as no icon, but logs the parse error
+// once for that string (#585), so a typo no longer fails silently.
 func readIcon(v any) *core.SVG {
 	s, _ := v.(string)
 	if strings.HasPrefix(strings.TrimSpace(s), "<") {
 		if svg, err := core.ParseSVG([]byte(s)); err == nil {
 			return svg
+		} else {
+			iconsMu.Lock()
+			if !badIcons[s] {
+				badIcons[s] = true
+				log.Printf("tsx/ui: icon %q is not a valid SVG document: %v", s, err)
+			}
+			iconsMu.Unlock()
 		}
 		return nil
 	}
