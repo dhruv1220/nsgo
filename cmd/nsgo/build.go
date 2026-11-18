@@ -302,7 +302,7 @@ func expandTargets(names []string) ([]string, error) {
 			// The bare OS, as nsgo test -target spells it (#589).
 			expanded = nil
 			for _, t := range targets {
-				if os, _, _ := strings.Cut(t, "_"); os == name && t != "android_x64" {
+				if goos, _, _ := strings.Cut(t, "_"); goos == name && t != "android_x64" {
 					expanded = append(expanded, t)
 				}
 			}

@@ -97,18 +97,15 @@ type testRun struct {
 // runTests runs the app's tests headless, or on a target, printing a line
 // per test and failing when any failed.
 func runTests(ctx context.Context, p *project, opts testOptions) error {
-	if opts.activate && opts.target != "macos" {
-		return errors.New("test: -activate goes with -target macos")
+	// -target is normalized and checked before the project is touched:
+	// an arch-qualified spelling runs the target of its OS, -activate
+	// goes with macos, and an architecture the target cannot run is
+	// refused (#589).
+	target, err := checkTestTarget(opts.target, opts.activate)
+	if err != nil {
+		return err
 	}
-	// An arch-qualified spelling runs the target of its OS, and an unknown
-	// target says which names test accepts (#589).
-	if opts.target != "" {
-		target, err := normalizeTestTarget(opts.target)
-		if err != nil {
-			return err
-		}
-		opts.target = target
-	}
+	opts.target = target
 	// go test would take another package inside the app's directory, and a target never reads it.
 	if err := testPathError(opts.args); err != nil {
 		return err

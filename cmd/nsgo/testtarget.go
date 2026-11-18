@@ -221,8 +221,8 @@ var hostBackends = []string{
 func goListFor(ctx context.Context, p *project, target string, args ...string) ([]byte, error) {
 	var env []string
 	if target != "" {
-		os, _, _ := strings.Cut(target, "_")
-		switch os {
+		goos, _, _ := strings.Cut(target, "_")
+		switch goos {
 		case "ios", "tvos", "watchos":
 			// Listing files needs only the target's build context, not its SDK or compiler, so the test host check runs before the tool looks for Xcode.
 			env = []string{"GOOS=ios", "GOARCH=arm64", "CGO_ENABLED=1"}
@@ -664,17 +664,73 @@ func sweepTargetBuilds(base string, now time.Time) {
 // runs them: one per OS, except the Apple simulators, which need Xcode.
 var testTargets = []string{"macos", "windows", "linux", "web", "ios", "ios_simulator", "tvos_simulator", "watchos_simulator", "android", "harmonyos"}
 
+// checkTestTarget normalizes -target to the test target it runs on, and
+// checks -activate and the architecture it names, before runTests touches
+// the project (#589).
+func checkTestTarget(target string, activate bool) (string, error) {
+	if target == "" {
+		if activate {
+			return "", errors.New("test: -activate goes with -target macos")
+		}
+		return "", nil
+	}
+	normalized, err := normalizeTestTarget(target)
+	if err != nil {
+		return "", err
+	}
+	if activate && normalized != "macos" {
+		return "", errors.New("test: -activate goes with -target macos")
+	}
+	if err := checkTestTargetArch(target, normalized); err != nil {
+		return "", err
+	}
+	return normalized, nil
+}
+
+// checkTestTargetArch rejects an arch-qualified spelling whose architecture
+// is not the one the target's tests run on, naming the spelling to use
+// instead (#589): a desktop target runs on this machine's architecture,
+// Android's tests always run arm64.
+func checkTestTargetArch(target, normalized string) error {
+	if target == normalized {
+		return nil
+	}
+	_, arch, _ := strings.Cut(target, "_")
+	runs := "arm64"
+	if normalized != "android" {
+		runs = hostTestArch()
+	}
+	if arch == runs {
+		return nil
+	}
+	why := fmt.Sprintf("the %s tests run for %s on this machine", normalized, runs)
+	if normalized == "android" {
+		why = "Android's tests always run arm64"
+	}
+	return fmt.Errorf("test: -target %s asks for %s, but %s; use -target %s", target, arch, why, normalized)
+}
+
+// hostTestArch is the architecture this machine's tests run for, in the
+// spellings -target uses.
+func hostTestArch() string {
+	if runtime.GOARCH == "amd64" {
+		return "x64"
+	}
+	return runtime.GOARCH
+}
+
 // normalizeTestTarget maps an arch-qualified spelling (windows_x64) to the
 // test target it runs on, as check and build spell it, or reports the names
-// test accepts (#589).
+// test accepts (#589). Only the arch-qualified names build.go's targets
+// lists are accepted, so windows_foo, macos_ or linux_riscv64 are refused.
 func normalizeTestTarget(target string) (string, error) {
 	if slices.Contains(testTargets, target) {
 		return target, nil
 	}
-	if os, _, ok := strings.Cut(target, "_"); ok {
-		switch os {
+	if goos, _, ok := strings.Cut(target, "_"); ok && slices.Contains(targets, target) {
+		switch goos {
 		case "macos", "windows", "linux", "android":
-			return os, nil
+			return goos, nil
 		}
 	}
 	return "", fmt.Errorf("unknown test target %q; use %s", target, testTargetList())

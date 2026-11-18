@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -730,7 +731,9 @@ func TestTargetTestsNeedTheTestHost(t *testing.T) {
 }
 
 func TestActivateNeedsMacOSTarget(t *testing.T) {
-	for _, target := range []string{"", "all", "windows", "linux", "web", "ios_simulator", "android"} {
+	// "all" is not a test target: it errors as unknown before the
+	// activate check, so it is not in this list.
+	for _, target := range []string{"", "windows", "linux", "web", "ios_simulator", "android"} {
 		err := runTests(t.Context(), nil, testOptions{target: target, activate: true})
 		if err == nil || !strings.Contains(err.Error(), "-activate goes with -target macos") {
 			t.Errorf("target %q: %v", target, err)
@@ -760,6 +763,51 @@ func TestNormalizeTestTarget(t *testing.T) {
 	}
 	if _, err := normalizeTestTarget("plan9"); err == nil || !strings.Contains(err.Error(), "macos, windows, linux") {
 		t.Errorf("normalizeTestTarget(plan9) = %v, want an error listing the names test accepts", err)
+	}
+	// Only the arch-qualified names build.go's targets lists are
+	// accepted: any other suffix is refused.
+	for _, name := range []string{"windows_foo", "macos_", "linux_riscv64", "miniprogram_wechat"} {
+		if _, err := normalizeTestTarget(name); err == nil || !strings.Contains(err.Error(), "unknown test target") {
+			t.Errorf("normalizeTestTarget(%q) = %v, want an unknown-target error", name, err)
+		}
+	}
+}
+
+// checkTestTarget normalizes -target first, so -activate sees the plain
+// name, and refuses an architecture the target cannot run on (#589).
+func TestCheckTestTarget(t *testing.T) {
+	hostArch, otherArch := "x64", "arm64"
+	if runtime.GOARCH == "arm64" {
+		hostArch, otherArch = "arm64", "x64"
+	}
+	for _, tc := range []struct {
+		in       string
+		activate bool
+		want     string
+		wantErr  string
+	}{
+		{"", false, "", ""},
+		{"", true, "", "-activate goes with -target macos"},
+		{"macos_" + hostArch, true, "macos", ""},
+		{"macos_" + otherArch, true, "", "use -target macos"},
+		{"windows_" + hostArch, false, "windows", ""},
+		{"windows_" + otherArch, false, "", "use -target windows"},
+		{"android_arm64", false, "android", ""},
+		{"android_x64", false, "", "use -target android"},
+		{"all", true, "", "unknown test target"},
+		{"windows_foo", false, "", "unknown test target"},
+		{"windows", true, "", "-activate goes with -target macos"},
+	} {
+		got, err := checkTestTarget(tc.in, tc.activate)
+		if tc.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("checkTestTarget(%q, activate=%v) = %q, %v; want an error containing %q", tc.in, tc.activate, got, err, tc.wantErr)
+			}
+			continue
+		}
+		if err != nil || got != tc.want {
+			t.Errorf("checkTestTarget(%q, activate=%v) = %q, %v; want %q, nil", tc.in, tc.activate, got, err, tc.want)
+		}
 	}
 }
 
