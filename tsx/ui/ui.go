@@ -36,8 +36,48 @@ var (
 	icons   = map[string]func() *core.SVG{}
 	// badIcons are the malformed SVG strings already reported, so a broken
 	// icon logs once no matter how often it renders, as unknown classes do.
-	badIcons = map[string]bool{}
+	// It keeps two generations of 1024 entries, as core's unknown-class
+	// reporting does (core/parsecache.go): an old string used again is
+	// promoted, and a full generation replaces the old one, so the set
+	// stays bounded. A string that aged out logs again.
+	badIcons badIconSet
 )
+
+// badIconSet is a bounded set of strings, in two generations of 1024: an
+// old string used again is promoted, and a full generation replaces the
+// old one. Callers hold iconsMu.
+type badIconSet struct {
+	now, old map[string]bool
+}
+
+const badIconSetSize = 1024
+
+// seen reports whether key was already recorded, promoting an old key.
+func (s *badIconSet) seen(key string) bool {
+	if s.now[key] {
+		return true
+	}
+	if s.old[key] {
+		s.add(key)
+		return true
+	}
+	return false
+}
+
+func (s *badIconSet) add(key string) {
+	if s.now == nil {
+		s.now = make(map[string]bool)
+	}
+	if len(s.now) >= badIconSetSize {
+		s.old, s.now = s.now, s.old
+		if s.now == nil {
+			s.now = make(map[string]bool)
+		} else {
+			clear(s.now)
+		}
+	}
+	s.now[key] = true
+}
 
 // Icons names the icons TSX's icon props take, as an app lists the Lucide
 // icons it uses, which keeps the others out of its binary.
@@ -55,17 +95,17 @@ func Icons(named map[string]func() *core.SVG) {
 func readIcon(v any) *core.SVG {
 	s, _ := v.(string)
 	if strings.HasPrefix(strings.TrimSpace(s), "<") {
-		if svg, err := core.ParseSVG([]byte(s)); err == nil {
-			return svg
-		} else {
+		svg, err := core.ParseSVG([]byte(s))
+		if err != nil {
 			iconsMu.Lock()
-			if !badIcons[s] {
-				badIcons[s] = true
+			if !badIcons.seen(s) {
+				badIcons.add(s)
 				log.Printf("tsx/ui: icon %q is not a valid SVG document: %v", s, err)
 			}
 			iconsMu.Unlock()
+			return nil
 		}
-		return nil
+		return svg
 	}
 	iconsMu.RLock()
 	defer iconsMu.RUnlock()

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -56,6 +57,45 @@ func TestReadIconMalformedSVGLogsOnce(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("valid icons logged %q, want nothing", buf.String())
+	}
+}
+
+// The reported-malformed set stays bounded: after more than two
+// generations of distinct strings, the earliest has aged out while a
+// recent one is still remembered.
+func TestBadIconSetStaysBounded(t *testing.T) {
+	var set badIconSet
+	for i := 0; i <= 2*badIconSetSize; i++ {
+		set.add("<svg bad-" + strconv.Itoa(i))
+	}
+	if got := len(set.now) + len(set.old); got > 2*badIconSetSize {
+		t.Errorf("badIconSet holds %d entries, want at most %d", got, 2*badIconSetSize)
+	}
+	if set.seen("<svg bad-0") {
+		t.Error("the earliest string is still remembered after aging out")
+	}
+	if !set.seen("<svg bad-" + strconv.Itoa(2*badIconSetSize)) {
+		t.Error("the latest string is not remembered")
+	}
+}
+
+// A malformed string that aged out of the bounded set logs again on its
+// next read, as the review of #594 allows.
+func TestReadIconMalformedSVGAgedOutLogsAgain(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	first := "<svg bad-0"
+	for i := 0; i <= 2*badIconSetSize; i++ {
+		if readIcon("<svg bad-"+strconv.Itoa(i)) != nil {
+			t.Fatalf("malformed string %d reads as an icon", i)
+		}
+	}
+	if readIcon(first) != nil {
+		t.Error("an aged-out malformed SVG reads as an icon")
+	}
+	if got := strings.Count(buf.String(), first); got != 2 {
+		t.Errorf("aged-out string logged %d times, want 2 (once, then again after aging out)", got)
 	}
 }
 
